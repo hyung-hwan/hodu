@@ -10,10 +10,11 @@ import "fmt"
 import "io"
 import "log"
 import "net"
-//import "os"
+import "os"
+import "os/signal"
 import "sync"
 import "sync/atomic"
-//import "syscall"
+import "syscall"
 //import "time"
 
 //import "github.com/google/uuid"
@@ -331,11 +332,13 @@ func NewClient(cfg *ClientConfig, tlscfg *tls.Config) (*Client, error) {
 
 	return &c, nil
 }
-	
+
 func (c *Client) RunTask(ctx context.Context) {
 	var conn *grpc.ClientConn
 	var cts *ServerConn
 	var err error
+
+	defer c.wg.Done();
 
 // TODO: HANDLE connection timeout..
 	//	ctx, _/*cancel*/ := context.WithTimeout(context.Background(), time.Second)
@@ -476,8 +479,9 @@ func (c *Client) RunTask(ctx context.Context) {
 
 //done:
 	c.ReqStop() // just in case...
-	c.wg.Wait()
 	c.sc.Close()
+
+	syscall.Kill(syscall.Getpid(), syscall.SIGTERM) // TODO: find a better to terminate the signal handler...
 }
 
 func (c *Client) ReqStop() {
@@ -485,6 +489,41 @@ func (c *Client) ReqStop() {
 		// TODO: notify the server.. send term command???
 		c.sc.Close()
 	}
+}
+
+
+// --------------------------------------------------------------------
+
+func (c *Client) handle_os_signals() {
+	var sighup_chan  chan os.Signal
+	var sigterm_chan chan os.Signal
+	var sig          os.Signal
+
+	defer c.wg.Done()
+
+	sighup_chan = make(chan os.Signal, 1)
+	sigterm_chan = make(chan os.Signal, 1)
+
+	signal.Notify(sighup_chan, syscall.SIGHUP)
+	signal.Notify(sigterm_chan, syscall.SIGTERM, os.Interrupt)
+
+chan_loop:
+	for {
+		select {
+		case <-sighup_chan:
+			// TODO:
+			//s.RefreshConfig()
+		case sig = <-sigterm_chan:
+			// TODO: get timeout value from config
+			//c.Shutdown(fmt.Sprintf("termination by signal %s", sig), 3*time.Second)
+			c.ReqStop()
+			//log.Debugf("termination by signal %s", sig)
+			fmt.Printf("termination by signal %s\n", sig)
+			break chan_loop
+		}
+	}
+
+fmt.Printf ("end of signal handler...\n");
 }
 
 // --------------------------------------------------------------------
@@ -510,7 +549,6 @@ func client_main(server_addr string, peer_addrs []string) error {
 	var cert_pool *x509.CertPool
 	var tlscfg *tls.Config
 	var cc ClientConfig
-	var wg sync.WaitGroup
 
 	cert_pool = x509.NewCertPool()
 	ok := cert_pool.AppendCertsFromPEM([]byte(rootCert))
@@ -527,9 +565,13 @@ func client_main(server_addr string, peer_addrs []string) error {
 		return err
 	}
 
-	wg.Add(1)
+fmt.Printf ("XXXXXXXXXXXXXXXXXXXXXXXXXXXX\n");
+	c.wg.Add(1)
+	go c.handle_os_signals()
+	c.wg.Add(1)
 	go c.RunTask(context.Background());
+	c.wg.Wait();
+fmt.Printf ("YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\n");
 
-	wg.Wait();
 	return nil
 }

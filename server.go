@@ -16,7 +16,7 @@ import "syscall"
 import "time"
 
 import "google.golang.org/grpc"
-import "google.golang.org/grpc/metadata"
+//import "google.golang.org/grpc/metadata"
 import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/stats"
 
@@ -37,7 +37,6 @@ type Server struct {
 	wg          sync.WaitGroup
 	stop_req    atomic.Bool
 
-	// grpc stuffs
 	gs          *grpc.Server
 	UnimplementedHoduServer
 }
@@ -296,12 +295,12 @@ func (cts *ClientConn) ReqStop() {
 
 // ------------------------------------
 
-func handle_os_signals(s *Server, exit_chan chan<- bool) {
-	var (
-		sighup_chan  chan os.Signal
-		sigterm_chan chan os.Signal
-		sig          os.Signal
-	)
+func (s *Server) handle_os_signals() {
+	var sighup_chan  chan os.Signal
+	var sigterm_chan chan os.Signal
+	var sig          os.Signal
+
+	defer s.wg.Done()
 
 	sighup_chan = make(chan os.Signal, 1)
 	sigterm_chan = make(chan os.Signal, 1)
@@ -321,7 +320,6 @@ chan_loop:
 			s.ReqStop()
 			//log.Debugf("termination by signal %s", sig)
 			fmt.Printf("termination by signal %s\n", sig)
-			exit_chan <- true
 			break chan_loop
 		}
 	}
@@ -491,11 +489,11 @@ func (cc *ConnCatcher) HandleConn(ctx context.Context, cs stats.ConnStats) {
 	} else {
 		addr = p.Addr.String()
 	}
-
+/*
 md,ok:=metadata.FromIncomingContext(ctx)
 fmt.Printf("%+v%+v\n",md,ok)
 if ok {
-}
+}*/
 	switch cs.(type) {
 		case *stats.ConnBegin:
 			fmt.Printf("**** client connected - [%s]\n", addr)
@@ -640,8 +638,10 @@ func (s *Server) run_grpc_server(idx int) error {
 	return nil
 }
 
-func (s *Server) MainLoop() error {
+func (s *Server) MainLoop() {
 	var idx int
+
+	defer s.wg.Done()
 
 	for idx, _ = range s.l {
 		s.l_wg.Add(1)
@@ -650,9 +650,7 @@ func (s *Server) MainLoop() error {
 
 	s.l_wg.Wait();
 	s.ReqStop()
-	s.wg.Wait()
-
-	return nil
+	syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 }
 
 func (s *Server) ReqStop() {
@@ -765,7 +763,7 @@ BAMCA0gAMEUCIEKzVMF3JqjQjuM2rX7Rx8hancI5KJhwfeKu1xbyR7XaAiEA2UT7
 func server_main(laddrs []string) error {
 	var s *Server
 	var err error
-	var exit_chan chan bool
+
 	var cert tls.Certificate
 
 	cert, err = tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
@@ -778,13 +776,11 @@ func server_main(laddrs []string) error {
 		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
 	}
 
-	exit_chan = make(chan bool, 1)
-	go handle_os_signals(s, exit_chan)
-	err = s.MainLoop() // this is blocking. ReqStop() will be called from a signal handler
-	if err != nil {
-		return err
-	}
+	s.wg.Add(1)
+	go s.handle_os_signals()
+	s.wg.Add(1)
+	go s.MainLoop() // this is blocking. ReqStop() will be called from a signal handler
+	s.wg.Wait()
 
-	<-exit_chan // wait until the term signal handler almost reaches the end
 	return nil
 }
