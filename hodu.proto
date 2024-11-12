@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+option go_package = "./main";
+
+//package hodu; // no idea if it's still important...
+
+service Hodu {
+	rpc PacketStream (stream Packet) returns (stream Packet) {}
+}
+
+enum ROUTE_PROTO {
+	TCP    = 0;
+	TCP4   = 1;
+	TCP6   = 2;
+};
+
+message RouteDesc {
+	uint32      RouteId = 1;
+	ROUTE_PROTO Proto = 2; 
+	string      AddrStr = 3;
+};
+
+message PeerDesc {
+	uint32 RouteId = 1;
+	uint32 PeerId = 2;
+};
+
+message PeerData {
+	uint32 RouteId = 1;
+	uint32 PeerId = 2;
+	bytes Data = 3;
+};
+
+enum PACKET_KIND {
+	ERROR         = 0; // generic error response
+	OK            = 1; // generic success response
+	ROUTE_START   = 2;
+	ROUTE_STOP    = 3;
+	ROUTE_STARTED = 4;
+	ROUTE_STOPPED = 5;
+	PEER_STARTED  = 6;
+	PEER_STOPPED  = 7;
+	PEER_DATA     = 8;
+};
+
+message Packet {
+	PACKET_KIND  Kind = 1;
+
+	oneof U {
+		RouteDesc Route = 2;
+		PeerDesc  Peer  = 3;
+		PeerData  Data  = 4;
+	};
+}
