@@ -136,10 +136,10 @@ func (r *ServerRoute) RunTask() {
 			go pts.RunTask()
 		}
 	}
-	
+
 	r.l.Close() // don't care about double close. it could have been closed in StopTask
 	r.pts_wg.Wait()
-	
+
 //	cts.l_wg.Done()
 // TODO:inform that the job is done?
 }
@@ -269,7 +269,7 @@ func (cts *ClientConn) RemoveServerRoute (route_id uint32) error {
 func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data []byte) error {
 	var r *ServerRoute
 	var ok bool
-	
+
 	cts.route_mtx.Lock()
 	r, ok = cts.routes[route_id]
 	if (!ok) {
@@ -277,7 +277,7 @@ func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 		return fmt.Errorf ("non-existent route id - %d", route_id)
 	}
 	cts.route_mtx.Unlock()
-	
+
 	return r.ReportEvent(pts_id, event_type, event_data)
 }
 
@@ -334,7 +334,7 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 	var pkt *Packet
 	var err error
 	var cts *ClientConn
-	
+
 	ctx = strm.Context()
 	p, ok = peer.FromContext(ctx)
 	if (!ok) {
@@ -345,7 +345,6 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 	if err != nil {
 		return fmt.Errorf("unable to add client %s - %s", p.Addr.String(), err.Error())
 	}
-
 
 	for {
 		// exit if context is done
@@ -407,7 +406,7 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 				} else {
 					// TODO: send invalid request... or simply keep quiet?
 				}
-				
+
 			case PACKET_KIND_PEER_STARTED:
 				// the connection from the client to a peer has been established
 				var x *Packet_Peer
@@ -418,12 +417,12 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 					if err != nil {
 						// TODO:
 					} else {
-						// TODO: 
+						// TODO:
 					}
 				} else {
 					// TODO
 				}
-				
+
 			case PACKET_KIND_PEER_STOPPED:
 				// the connection from the client to a peer has been established
 				var x *Packet_Peer
@@ -434,7 +433,7 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 					if err != nil {
 						// TODO:
 					} else {
-						// TODO: 
+						// TODO:
 					}
 				} else {
 					// TODO
@@ -450,7 +449,7 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 					if err != nil {
 						// TODO:
 					} else {
-						// TODO: 
+						// TODO:
 					}
 				} else {
 					// TODO
@@ -678,7 +677,7 @@ func (s *Server) AddNewClientConn(addr net.Addr, pss Hodu_PacketStreamServer) (*
 
 	cts.svr = s
 	cts.routes = make(ServerRouteMap)
-	cts.caddr = addr 
+	cts.caddr = addr
 	cts.pss = pss
 
 	cts.stop_req.Store(false)
@@ -727,7 +726,7 @@ func (s *Server) FindClientConnByAddr (addr net.Addr) *ClientConn {
 
 	cts, ok = s.cts_map[addr]
 	if !ok {
-		return nil	
+		return nil
 	}
 
 	return cts

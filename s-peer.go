@@ -58,12 +58,12 @@ wait_for_started:
 					// the socket must have been closed too.
 					goto done
 				}
-					
+
 			case <- tmr.C:
 				// connection failure, not in time
 				tmr.Stop()
 				goto done
-				
+
 			/*case <- spc->ctx->Done():
 				tmr.Stop()
 				goto done*/
@@ -115,13 +115,13 @@ func (spc *ServerPeerConn) ReqStop() {
 }
 
 func (spc *ServerPeerConn) ReportEvent (event_type PACKET_KIND, event_data []byte) error {
-	
+
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
 			if spc.client_peer_opened_received.CompareAndSwap(false, true) {
 				spc.client_peer_status_chan <- true
 			}
-	
+
 		case PACKET_KIND_PEER_STOPPED:
 			if spc.client_peer_closed_received.CompareAndSwap(false, true) {
 				spc.client_peer_status_chan <- false

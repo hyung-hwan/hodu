@@ -3,7 +3,7 @@ package main
 import "fmt"
 import "net"
 
-func NewClientPeerConn(r *ClientRoute, c *net.TCPConn, id uint32) (*ClientPeerConn) {
+func NewClientPeerConn(r *ClientRoute, c net.Conn, id uint32) (*ClientPeerConn) {
 	var cpc ClientPeerConn
 
 	cpc.route = r
