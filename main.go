@@ -2,26 +2,20 @@ package main
 
 import "flag"
 import "fmt"
+import "io"
 import "os"
 import "strings"
-
-type VoidWriter struct {
-}
-
-func (w *VoidWriter) Write(p []byte) (int, error) {
-	return len(p), nil
-}
 
 func main() {
 	var err error
 	var flgs *flag.FlagSet
-
 
 	if len(os.Args) < 2 {
 		goto wrong_usage
 	}
 	if strings.EqualFold(os.Args[1], "server") {
 		var la []string
+
 		la = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
@@ -29,10 +23,10 @@ func main() {
 			la = append(la, v)
 			return nil
 		})
-		flgs.SetOutput(&VoidWriter{}) // prevent usage output
+		flgs.SetOutput(io.Discard) // prevent usage output
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
-			fmt.Printf ("ERROR: unable to parse command arguments - %s\n", err.Error())
+			fmt.Printf ("ERROR: %s\n", err.Error())
 			goto wrong_usage
 		}
 
@@ -61,10 +55,10 @@ func main() {
 			sa = append(sa, v)
 			return nil
 		})
-		flgs.SetOutput(&VoidWriter{}) // prevent usage output
+		flgs.SetOutput(io.Discard)
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
-			fmt.Printf ("ERROR: unable to parse command arguments - %s\n", err.Error())
+			fmt.Printf ("ERROR: %s\n", err.Error())
 			goto wrong_usage
 		}
 

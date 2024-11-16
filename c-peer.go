@@ -2,6 +2,7 @@ package main
 
 import "fmt"
 import "net"
+import "sync"
 
 func NewClientPeerConn(r *ClientRoute, c net.Conn, id uint32) (*ClientPeerConn) {
 	var cpc ClientPeerConn
@@ -17,13 +18,14 @@ func NewClientPeerConn(r *ClientRoute, c net.Conn, id uint32) (*ClientPeerConn) 
 	return &cpc
 }
 
-func (cpc *ClientPeerConn) RunTask() error {
+func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 	//var conn *net.TCPConn
 	//var addr *net.TCPAddr
 	var err error
 	var buf [4096]byte
 	var n int
 
+	defer wg.Done()
 
 	fmt.Printf("CONNECTION ESTABLISHED TO PEER... ABOUT TO READ DATA...\n")
 	for {
@@ -43,8 +45,6 @@ func (cpc *ClientPeerConn) RunTask() error {
 
 //done:
 	cpc.ReqStop()
-	//cpc.c.RemoveClientPeerConn(cpc)
-	//cpc.c.wg.Done()
 	return nil
 }
 
