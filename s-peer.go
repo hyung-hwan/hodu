@@ -1,6 +1,7 @@
 package main
 
 import "fmt"
+import "io"
 import "net"
 import "sync/atomic"
 import "time"
@@ -43,7 +44,7 @@ func (spc *ServerPeerConn) RunTask() error {
 	err = pss.Send(MakePeerStartedPacket(spc.route.id, spc.conn_id))
 	if err != nil {
 		// TODO: include route id and conn id in the error message
-		err = fmt.Errorf("unable to send start-pts - %s\n", err.Error())
+		fmt.Printf("unable to send start-pts - %s\n", err.Error())
 		goto done
 	}
 
@@ -72,23 +73,27 @@ wait_for_started:
 	tmr.Stop()
 
 	for {
+fmt.Printf("******************* TRYING TO READ...\n")
 		n, err = spc.conn.Read(buf[:])
 		if err != nil {
-			fmt.Printf("read error - %s\n", err.Error())
-			break
+			if err != io.EOF {
+				fmt.Printf("read error - %s\n", err.Error())
+			}
+			goto done
 		}
 
 // TODO: this needs to be guarded
 		err = pss.Send(MakePeerDataPacket(spc.route.id, spc.conn_id, buf[:n]))
 		if err != nil {
 			// TODO: include route id and conn id in the error message
-			err = fmt.Errorf("unable to send data - %s\n", err.Error())
+			fmt.Printf("unable to send data - %s\n", err.Error())
 			goto done;
 		}
 	}
 
 done:
-	fmt.Printf("spc really ending..................\n")
+// TODO: inform the client to close peer connection..
+	fmt.Printf("SPC really ending..................\n")
 	spc.ReqStop()
 	spc.route.RemoveServerPeerConn(spc)
 	//spc.cts.wg.Done()
@@ -118,16 +123,23 @@ func (spc *ServerPeerConn) ReportEvent (event_type PACKET_KIND, event_data []byt
 
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
+fmt.Printf("******************* AAAAAAAAAAAAAAAAAAAaaa\n")
 			if spc.client_peer_opened_received.CompareAndSwap(false, true) {
 				spc.client_peer_status_chan <- true
 			}
 
 		case PACKET_KIND_PEER_STOPPED:
-			if spc.client_peer_closed_received.CompareAndSwap(false, true) {
-				spc.client_peer_status_chan <- false
-			}
+fmt.Printf("******************* BBBBBBBBBBBBBBBBBBBBBBBB\n")
+			//if spc.client_peer_closed_received.CompareAndSwap(false, true) {
+			//	spc.client_peer_status_chan <- false
+			//}
+			// this event needs to close on the server-side peer connection.
+			// sending false to the client_peer_status_chan isn't good enough to break
+			// the Recv loop in RunTask().
+			spc.ReqStop()
 
 		case PACKET_KIND_PEER_DATA:
+fmt.Printf("******************* CCCCCCCCCCCCCCCCCCCCCCCccc\n")
 			var err error
 
 			_, err = spc.conn.Write(event_data)

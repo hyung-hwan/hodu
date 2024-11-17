@@ -6,6 +6,7 @@ import "context"
 import "crypto/tls"
 import "crypto/x509"
 import "encoding/json"
+import "errors"
 import "fmt"
 import "io"
 import "log"
@@ -164,8 +165,8 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32) {
 
 	d.LocalAddr = nil // TOOD: use this if local address is specified
 	conn, err = d.DialContext(ctx, "tcp", r.peer_addr.String());
-	//conn, err = net.DialTCP("tcp", nil, r.peer_addr);
 	if err != nil {
+// TODO: make send peer started failure mesage?
 		fmt.Printf ("failed to connect to %s - %s\n", r.peer_addr.String(), err.Error())
 		return
 	}
@@ -173,11 +174,18 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32) {
 	ptc, err = r.AddNewClientPeerConn(conn)
 	if err != nil {
 		// TODO: logging
+// TODO: make send peer started failure mesage?
 		fmt.Printf("YYYYYYYY - %s\n", err.Error())
 		conn.Close()
 		return
 	}
 	fmt.Printf("STARTED NEW SERVER PEER STAK\n")
+	err = r.cts.psc.Send(MakePeerStartedPacket(r.id, ptc.conn_id))
+	if err != nil {
+		fmt.Printf("CLOSING NEW SERVER PEER STAK - %s\n", err.Error())
+		conn.Close()
+		return
+	}
 
 	r.ptc_wg.Add(1)
 	go ptc.RunTask(&r.ptc_wg)
@@ -187,6 +195,22 @@ func (r* ClientRoute) ReportEvent (pts_id uint32, event_type PACKET_KIND, event_
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
 			r.ConnectToPeer(pts_id)
+
+// TODO:
+//		case PACKET_KIND_PEER_STOPPED:
+//			r.DisconnectFromPeer(pts_id)
+
+		case PACKET_KIND_PEER_DATA:
+			var ptc *ClientPeerConn
+			var ok bool
+			var err error
+			ptc, ok = r.ptc_map[pts_id]
+			if ok {
+				_, err = ptc.conn.Write(event_data)
+				return err
+			} else {
+
+			}
 
 		// TODO: other types
 	}
@@ -367,12 +391,12 @@ fmt.Printf("[%v]\n", cts.route_map)
 				goto done
 
 			default:
-				// no other case is ready.
+				// no other case is ready. run the code below select.
 				// without the default case, the select construct would block
 		}
 
 		pkt, err = psc.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			fmt.Printf("server disconnected\n")
 			goto reconnect_to_server
 		}
@@ -448,12 +472,14 @@ fmt.Printf("[%v]\n", cts.route_map)
 
 			case PACKET_KIND_PEER_DATA:
 				// the connection from the client to a peer has been established
+	fmt.Printf ("**** GOT PEER DATA\n")
 				var x *Packet_Data
 				var ok bool
 				x, ok = pkt.U.(*Packet_Data)
 				if ok {
 					err = cts.ReportEvent(x.Data.RouteId, x.Data.PeerId, PACKET_KIND_PEER_DATA, x.Data.Data)
 					if err != nil {
+		fmt.Printf ("failed to report event - %s\n", err.Error())
 						// TODO:
 					} else {
 						// TODO:

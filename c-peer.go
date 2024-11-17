@@ -43,7 +43,8 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 		}
 	}
 
-//done:
+	cpc.route.cts.psc.Send(MakePeerStoppedPacket(cpc.route.id, cpc.conn_id)) // nothing much to do upon failure. no error check here
+
 	cpc.ReqStop()
 	return nil
 }

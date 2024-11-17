@@ -4,12 +4,14 @@ package main
 //import "bytes"
 import "context"
 import "crypto/tls"
+import "errors"
 import "fmt"
 import "io"
 import "math/rand"
 import "net"
 import "os"
 import "os/signal"
+//import "strings"
 import "sync"
 import "sync/atomic"
 import "syscall"
@@ -121,7 +123,13 @@ func (r *ServerRoute) RunTask() {
 		conn, err = r.l.AcceptTCP()
 		if err != nil {
 			// TODO: logging
-			fmt.Printf("[%s,%d] accept failure - %s\n", r.cts.caddr.String(), r.id, err.Error())
+			//if strings.Contains(err.Error(), "use of closed network connection") {
+			//if err == net.ErrClosed {
+			if errors.Is(err, net.ErrClosed) {
+				fmt.Printf("[%s,%d] END OF TASK...[%#v] [%#v]\n", r.cts.caddr.String(), r.id, err, net.ErrClosed)
+			} else {
+				fmt.Printf("[%s,%d] accept failure - %s\n", r.cts.caddr.String(), r.id, err.Error())
+			}
 			break
 		}
 
@@ -145,7 +153,7 @@ func (r *ServerRoute) RunTask() {
 }
 
 func (r *ServerRoute) StopTask() {
-fmt.Printf ("stoppping stak..\n")
+fmt.Printf ("stoppping taak..\n")
 	// TODO: all pts stop...
 	r.l.Close();
 // TODO: wait??
@@ -358,7 +366,7 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 		}
 
 		pkt, err = strm.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			// return will close stream from server side
 			return nil
 		}
