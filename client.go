@@ -65,14 +65,14 @@ type ClientPeerConn struct {
 
 // client connection to server
 type ServerConn struct {
-	cli    *Client
-	cfg    *ClientConfig
-	saddr  *net.TCPAddr // server address that is connected to
+	cli     *Client
+	cfg     *ClientConfig
+	saddr   *net.TCPAddr // server address that is connected to
 
-	conn   *grpc.ClientConn // grpc connection to the server
-	hdc    HoduClient
-	psc    Hodu_PacketStreamClient // grpc stream
-	psc_mtx sync.Mutex
+	conn    *grpc.ClientConn // grpc connection to the server
+	hdc      HoduClient
+	psc     *GuardedPacketStreamClient // guarded grpc stream
+	psc_mtx  sync.Mutex
 
 	route_mtx  sync.Mutex
 	route_map ClientRouteMap
@@ -102,6 +102,29 @@ type ClientCtlParamServer struct {
 	ServerAddr string  `json:"server-addr"`
 	PeerAddrs []string `json:"peer-addrs"`
 }
+
+type GuardedPacketStreamClient struct {
+	mtx sync.Mutex
+	//psc Hodu_PacketStreamClient
+	Hodu_PacketStreamClient
+}
+
+// ------------------------------------
+
+func (g *GuardedPacketStreamClient) Send(data *Packet) error {
+	g.mtx.Lock()
+	defer g.mtx.Unlock()
+	//return g.psc.Send(data)
+	return g.Hodu_PacketStreamClient.Send(data)
+}
+
+/*func (g *GuardedPacketStreamClient) Recv() (*Packet, error) {
+	return g.psc.Recv()
+}
+
+func (g *GuardedPacketStreamClient) Context() context.Context {
+	return g.psc.Context()
+}*/
 
 // --------------------------------------------------------------------
 func NewClientRoute(cts *ServerConn, id uint32, addr *net.TCPAddr, proto ROUTE_PROTO) *ClientRoute {
@@ -368,7 +391,8 @@ fmt.Printf ("Connecting GRPC to [%s]\n", cts.saddr.String())
 
 	cts.conn = conn
 	cts.hdc = hdc
-	cts.psc = psc
+	//cts.psc = &GuardedPacketStreamClient{psc: psc}
+	cts.psc = &GuardedPacketStreamClient{Hodu_PacketStreamClient: psc}
 
 	// the connection structure to a server is ready.
 	// let's add routes to the client-side peers.

@@ -33,15 +33,8 @@ func MakePeerStoppedPacket(route_id uint32, pts_id uint32) *Packet {
 	}}
 }
 
-func MakePtcStartedPacket(route_id uint32, pts_id uint32) *Packet {
-	// the connection from the client to a peer has been established
-	return &Packet{Kind: PACKET_KIND_PEER_STARTED,
-		U: &Packet_Peer{Peer: &PeerDesc{RouteId: route_id, PeerId: pts_id}},
-	}
-}
-
-func MakePtcStoppedPacket(route_id uint32, pts_id uint32) *Packet {
-	return &Packet{Kind: PACKET_KIND_PEER_STOPPED,
+func MakePeerEofPacket(route_id uint32, pts_id uint32) *Packet {
+	return &Packet{Kind: PACKET_KIND_PEER_EOF,
 		U: &Packet_Peer{Peer: &PeerDesc{RouteId: route_id, PeerId: pts_id},
 	}}
 }

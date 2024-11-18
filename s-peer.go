@@ -1,8 +1,10 @@
 package main
 
+import "errors"
 import "fmt"
 import "io"
 import "net"
+import "sync"
 import "sync/atomic"
 import "time"
 
@@ -12,6 +14,7 @@ type ServerPeerConn struct {
 	cts *ClientConn
 	conn *net.TCPConn
 	stop_req atomic.Bool
+	stop_chan chan bool
 	client_peer_status_chan chan bool
 	client_peer_opened_received atomic.Bool
 	client_peer_closed_received atomic.Bool
@@ -24,6 +27,7 @@ func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) (*ServerPeerCo
 	spc.conn = c
 	spc.conn_id = id
 	spc.stop_req.Store(false)
+	spc.stop_chan = make(chan bool, 1)
 	spc.client_peer_status_chan = make(chan bool, 16)
 	spc.client_peer_opened_received.Store(false)
 	spc.client_peer_closed_received.Store(false)
@@ -31,16 +35,17 @@ func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) (*ServerPeerCo
 	return &spc
 }
 
-func (spc *ServerPeerConn) RunTask() error {
-	var pss Hodu_PacketStreamServer
+func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
+	var pss *GuardedPacketStreamServer
 	var n int
 	var buf [4096]byte
 	var tmr *time.Timer
 	var status bool
 	var err error = nil
 
+	defer wg.Done()
+
 	pss = spc.route.cts.pss
-//TODO: this needs to be guarded
 	err = pss.Send(MakePeerStartedPacket(spc.route.id, spc.conn_id))
 	if err != nil {
 		// TODO: include route id and conn id in the error message
@@ -65,24 +70,27 @@ wait_for_started:
 				tmr.Stop()
 				goto done
 
-			/*case <- spc->ctx->Done():
+			case <- spc.stop_chan:
 				tmr.Stop()
-				goto done*/
+				goto done
 		}
 	}
 	tmr.Stop()
 
 	for {
-fmt.Printf("******************* TRYING TO READ...\n")
 		n, err = spc.conn.Read(buf[:])
 		if err != nil {
-			if err != io.EOF {
+			if !errors.Is(err, io.EOF) {
 				fmt.Printf("read error - %s\n", err.Error())
+				goto done
 			}
-			goto done
+			if pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id)) != nil {
+				fmt.Printf("unable to report data - %s\n", err.Error())
+				goto done
+			}
+			goto wait_for_stopped
 		}
 
-// TODO: this needs to be guarded
 		err = pss.Send(MakePeerDataPacket(spc.route.id, spc.conn_id, buf[:n]))
 		if err != nil {
 			// TODO: include route id and conn id in the error message
@@ -91,22 +99,33 @@ fmt.Printf("******************* TRYING TO READ...\n")
 		}
 	}
 
+wait_for_stopped:
+	//if spc.client_peer_open {
+		for {
+			select {
+				case status = <- spc.client_peer_status_chan: // something not right... may use a different channel for closing...
+					goto done
+				case <- spc.stop_chan:
+					goto done
+			}
+		}
+	//}
+
 done:
 // TODO: inform the client to close peer connection..
 	fmt.Printf("SPC really ending..................\n")
 	spc.ReqStop()
 	spc.route.RemoveServerPeerConn(spc)
 	//spc.cts.wg.Done()
-	return err
 }
 
 func (spc *ServerPeerConn) ReqStop() {
 	if spc.stop_req.CompareAndSwap(false, true) {
-		var pss Hodu_PacketStreamServer
+		var pss *GuardedPacketStreamServer
 		var err error
 
 		pss = spc.route.cts.pss
-
+		spc.stop_chan <- true
 		if spc.client_peer_opened_received.CompareAndSwap(false, true) {
 			spc.client_peer_status_chan <- false
 		}
