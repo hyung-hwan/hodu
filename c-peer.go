@@ -4,7 +4,7 @@ import "fmt"
 import "net"
 import "sync"
 
-func NewClientPeerConn(r *ClientRoute, c net.Conn, id uint32) (*ClientPeerConn) {
+func NewClientPeerConn(r *ClientRoute, c *net.TCPConn, id uint32) (*ClientPeerConn) {
 	var cpc ClientPeerConn
 
 	cpc.route = r
@@ -59,12 +59,7 @@ func (cpc *ClientPeerConn) ReqStop() {
 func (cpc* ClientPeerConn) CloseWrite() {
 	if cpc.server_peer_eof.CompareAndSwap(false, true) {
 		if cpc.conn != nil {
-			var conn *net.TCPConn
-			var ok bool
-			conn, ok = cpc.conn.(*net.TCPConn)
-			if ok {
-				conn.CloseWrite()
-			}
+			cpc.conn.CloseWrite()
 		}
 	}
 }

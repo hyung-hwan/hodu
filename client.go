@@ -55,7 +55,7 @@ type Client struct {
 type ClientPeerConn struct {
 	route *ClientRoute
 	conn_id uint32
-	conn net.Conn
+	conn *net.TCPConn
 	remot_conn_id uint32
 
 	addr     string // peer address
@@ -179,10 +179,12 @@ fmt.Printf ("*** Sent stop request to Route..\n");
 func (r* ClientRoute) ConnectToPeer(pts_id uint32) {
 	var err error
 	var conn net.Conn
+	var real_conn *net.TCPConn
 	var ptc *ClientPeerConn
 	var d net.Dialer
 	var ctx context.Context
 	//var cancel context.CancelFunc
+	var ok bool
 
 // TODO: how to abort blocking DialTCP()? call cancellation funtion?
 // TODO: make timeuot value configurable
@@ -198,7 +200,14 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32) {
 		return
 	}
 
-	ptc, err = r.AddNewClientPeerConn(conn, pts_id)
+	real_conn, ok = conn.(*net.TCPConn)
+	if !ok {
+		fmt.Printf("not tcp connection - %s\n", err.Error())
+		conn.Close()
+		return
+	}
+
+	ptc, err = r.AddNewClientPeerConn(real_conn, pts_id)
 	if err != nil {
 		// TODO: logging
 // TODO: make send peer started failure mesage?
@@ -641,7 +650,7 @@ func (cts *ServerConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 }
 // --------------------------------------------------------------------
 
-func (r *ClientRoute) AddNewClientPeerConn (c net.Conn, pts_id uint32) (*ClientPeerConn, error) {
+func (r *ClientRoute) AddNewClientPeerConn (c *net.TCPConn, pts_id uint32) (*ClientPeerConn, error) {
 	var ptc *ClientPeerConn
 	//var ok bool
 	//var start_id uint32
