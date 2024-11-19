@@ -13,11 +13,14 @@ type ServerPeerConn struct {
 	conn_id uint32
 	cts *ClientConn
 	conn *net.TCPConn
-	stop_req atomic.Bool
+
 	stop_chan chan bool
+	stop_req  atomic.Bool
+
 	client_peer_status_chan chan bool
-	client_peer_opened_received atomic.Bool
-	client_peer_closed_received atomic.Bool
+	client_peer_started atomic.Bool
+	client_peer_stopped atomic.Bool
+	client_peer_eof atomic.Bool
 }
 
 func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) (*ServerPeerConn) {
@@ -26,12 +29,15 @@ func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) (*ServerPeerCo
 	spc.route = r
 	spc.conn = c
 	spc.conn_id = id
-	spc.stop_req.Store(false)
-	spc.stop_chan = make(chan bool, 1)
-	spc.client_peer_status_chan = make(chan bool, 16)
-	spc.client_peer_opened_received.Store(false)
-	spc.client_peer_closed_received.Store(false)
 
+	spc.stop_chan = make(chan bool, 8)
+	spc.stop_req.Store(false)
+
+	spc.client_peer_status_chan = make(chan bool, 8)
+	spc.client_peer_started.Store(false)
+	spc.client_peer_stopped.Store(false)
+	spc.client_peer_eof.Store(false)
+fmt.Printf ("~~~~~~~~~~~~~~~ NEW SERVER PEER CONNECTION ADDED %p\n", &spc)
 	return &spc
 }
 
@@ -50,7 +56,7 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 	if err != nil {
 		// TODO: include route id and conn id in the error message
 		fmt.Printf("unable to send start-pts - %s\n", err.Error())
-		goto done
+		goto done_without_stop
 	}
 
 	tmr = time.NewTimer(2 * time.Second) // TODO: make this configurable...
@@ -80,15 +86,16 @@ wait_for_started:
 	for {
 		n, err = spc.conn.Read(buf[:])
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
+			if errors.Is(err, io.EOF) {
+				if pss.Send(MakePeerEofPacket(spc.route.id, spc.conn_id)) != nil {
+					fmt.Printf("unable to report data - %s\n", err.Error())
+					goto done
+				}
+				goto wait_for_stopped
+			} else {
 				fmt.Printf("read error - %s\n", err.Error())
 				goto done
 			}
-			if pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id)) != nil {
-				fmt.Printf("unable to report data - %s\n", err.Error())
-				goto done
-			}
-			goto wait_for_stopped
 		}
 
 		err = pss.Send(MakePeerDataPacket(spc.route.id, spc.conn_id, buf[:n]))
@@ -100,41 +107,45 @@ wait_for_started:
 	}
 
 wait_for_stopped:
-	//if spc.client_peer_open {
-		for {
-			select {
-				case status = <- spc.client_peer_status_chan: // something not right... may use a different channel for closing...
-					goto done
-				case <- spc.stop_chan:
-					goto done
-			}
+	for {
+fmt.Printf ("******************* Waiting for peer Stop\n")
+		select {
+			case status = <- spc.client_peer_status_chan: // something not right... may use a different channel for closing...
+				goto done
+			case <- spc.stop_chan:
+				goto done
 		}
-	//}
+	}
+fmt.Printf ("******************* Sending peer stopped\n")
+	if pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id)) != nil {
+		fmt.Printf("unable to report data - %s\n", err.Error())
+		goto done
+	}
 
 done:
-// TODO: inform the client to close peer connection..
+	if pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id)) != nil {
+		fmt.Printf("unable to report data - %s\n", err.Error())
+		// nothing much to do about the failure of sending this
+	}
+
+done_without_stop:
 	fmt.Printf("SPC really ending..................\n")
 	spc.ReqStop()
 	spc.route.RemoveServerPeerConn(spc)
-	//spc.cts.wg.Done()
 }
 
 func (spc *ServerPeerConn) ReqStop() {
 	if spc.stop_req.CompareAndSwap(false, true) {
-		var pss *GuardedPacketStreamServer
-		var err error
-
-		pss = spc.route.cts.pss
 		spc.stop_chan <- true
-		if spc.client_peer_opened_received.CompareAndSwap(false, true) {
+
+		if spc.client_peer_started.CompareAndSwap(false, true) {
 			spc.client_peer_status_chan <- false
 		}
-		spc.conn.Close()
-		err = pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id))
-		if err != nil {
-			// TODO: print warning
-			fmt.Printf ("WARNING - failed to report event to %s - %s\n", spc.route.cts.caddr, err.Error())
+		if spc.client_peer_stopped.CompareAndSwap(false, true) {
+			spc.client_peer_status_chan <- false
 		}
+
+		spc.conn.Close() // to abort the main Recv() loop
 	}
 }
 
@@ -143,28 +154,37 @@ func (spc *ServerPeerConn) ReportEvent (event_type PACKET_KIND, event_data []byt
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
 fmt.Printf("******************* AAAAAAAAAAAAAAAAAAAaaa\n")
-			if spc.client_peer_opened_received.CompareAndSwap(false, true) {
+			if spc.client_peer_started.CompareAndSwap(false, true) {
 				spc.client_peer_status_chan <- true
 			}
 
 		case PACKET_KIND_PEER_STOPPED:
 fmt.Printf("******************* BBBBBBBBBBBBBBBBBBBBBBBB\n")
-			//if spc.client_peer_closed_received.CompareAndSwap(false, true) {
-			//	spc.client_peer_status_chan <- false
-			//}
 			// this event needs to close on the server-side peer connection.
 			// sending false to the client_peer_status_chan isn't good enough to break
 			// the Recv loop in RunTask().
 			spc.ReqStop()
 
+		case PACKET_KIND_PEER_EOF:
+fmt.Printf("******************* BBBBBBBBBBBBBBBBBBBBBBBB CLIENT PEER EOF\n")
+			// the client-side peer is not supposed to send data any more
+			if spc.client_peer_eof.CompareAndSwap(false, true) {
+				spc.conn.CloseWrite()
+			}
+
 		case PACKET_KIND_PEER_DATA:
 fmt.Printf("******************* CCCCCCCCCCCCCCCCCCCCCCCccc\n")
-			var err error
+			if spc.client_peer_eof.Load() == false {
+				var err error
 
-			_, err = spc.conn.Write(event_data)
-			if err != nil {
-				// TODO: logging
-				fmt.Printf ("WARNING - failed to write data from %s to %s\n", spc.route.cts.caddr, spc.conn.RemoteAddr().String())
+				_, err = spc.conn.Write(event_data)
+				if err != nil {
+					// TODO: logging
+					fmt.Printf ("WARNING - failed to write data from %s to %s\n", spc.route.cts.caddr, spc.conn.RemoteAddr().String())
+				}
+			} else {
+				// protocol error. the client must not relay more data from the client-side peer after EOF.
+				fmt.Printf ("WARNING - broken client - redundant data from %s to %s\n", spc.route.cts.caddr, spc.conn.RemoteAddr().String())
 			}
 
 		default:
@@ -173,6 +193,3 @@ fmt.Printf("******************* CCCCCCCCCCCCCCCCCCCCCCCccc\n")
 	}
 	return nil
 }
-
-
-

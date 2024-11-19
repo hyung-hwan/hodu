@@ -5,7 +5,13 @@ option go_package = "./main";
 //package hodu; // no idea if it's still important...
 
 service Hodu {
+	rpc GetSeed (Seed) returns (Seed) {}
 	rpc PacketStream (stream Packet) returns (stream Packet) {}
+}
+
+message Seed {
+	uint32 Version = 1;
+	uint64 Flags = 2;
 }
 
 enum ROUTE_PROTO {

@@ -59,26 +59,30 @@ type ClientPeerConn struct {
 	remot_conn_id uint32
 
 	addr     string // peer address
-	stop_req atomic.Bool
+
 	stop_chan chan bool
+	stop_req atomic.Bool
+	server_peer_eof atomic.Bool
 }
 
 // client connection to server
 type ServerConn struct {
-	cli     *Client
-	cfg     *ClientConfig
-	saddr   *net.TCPAddr // server address that is connected to
+	cli      *Client
+	cfg      *ClientConfig
+	saddr    *net.TCPAddr // server address that is connected to
 
-	conn    *grpc.ClientConn // grpc connection to the server
-	hdc      HoduClient
-	psc     *GuardedPacketStreamClient // guarded grpc stream
-	psc_mtx  sync.Mutex
+	conn     *grpc.ClientConn // grpc connection to the server
+	hdc       HoduClient
+	psc      *GuardedPacketStreamClient // guarded grpc stream
 
-	route_mtx  sync.Mutex
+	s_seed    Seed
+	c_seed    Seed
+
+	route_mtx sync.Mutex
 	route_map ClientRouteMap
-	route_wg   sync.WaitGroup
+	route_wg  sync.WaitGroup
 
-	stop_req atomic.Bool
+	stop_req  atomic.Bool
 	stop_chan chan bool
 }
 
@@ -194,7 +198,7 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32) {
 		return
 	}
 
-	ptc, err = r.AddNewClientPeerConn(conn)
+	ptc, err = r.AddNewClientPeerConn(conn, pts_id)
 	if err != nil {
 		// TODO: logging
 // TODO: make send peer started failure mesage?
@@ -214,14 +218,60 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32) {
 	go ptc.RunTask(&r.ptc_wg)
 }
 
+func (r* ClientRoute) DisconnectFromPeer(pts_id uint32) error {
+	var ptc *ClientPeerConn
+	var ok bool
+
+	r.ptc_mtx.Lock()
+	ptc, ok = r.ptc_map[pts_id]
+	if !ok {
+		r.ptc_mtx.Unlock()
+		return fmt.Errorf("non-existent connection id - %u", pts_id)
+	}
+	r.ptc_mtx.Unlock()
+
+	ptc.ReqStop()
+	return nil
+}
+
+func (r* ClientRoute) CloseWriteToPeer(pts_id uint32) error {
+	var ptc *ClientPeerConn
+	var ok bool
+
+	r.ptc_mtx.Lock()
+	ptc, ok = r.ptc_map[pts_id]
+	if !ok {
+		r.ptc_mtx.Unlock()
+		return fmt.Errorf("non-existent connection id - %u", pts_id)
+	}
+	r.ptc_mtx.Unlock()
+
+	ptc.CloseWrite()
+	return nil
+}
+
+
 func (r* ClientRoute) ReportEvent (pts_id uint32, event_type PACKET_KIND, event_data []byte) error {
+	var err error
+
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
+fmt.Printf ("GOT PEER STARTD . CONENCT TO CLIENT_SIDE PEER\n")
 			r.ConnectToPeer(pts_id)
 
-// TODO:
-//		case PACKET_KIND_PEER_STOPPED:
-//			r.DisconnectFromPeer(pts_id)
+		case PACKET_KIND_PEER_STOPPED:
+fmt.Printf ("GOT PEER STOPPED . DISCONNECTION FROM CLIENT_SIDE PEER\n")
+			err = r.DisconnectFromPeer(pts_id)
+			if err != nil {
+				// TODO:
+			}
+
+		case PACKET_KIND_PEER_EOF:
+fmt.Printf ("GOT PEER EOF. REMEMBER EOF\n")
+			err = r.CloseWriteToPeer(pts_id)
+			if err != nil {
+				// TODO:
+			}
 
 		case PACKET_KIND_PEER_DATA:
 			var ptc *ClientPeerConn
@@ -367,6 +417,8 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 	var hdc HoduClient
 	var psc PacketStreamClient
 	var slpctx context.Context
+	var c_seed Seed
+	var s_seed *Seed
 	var err error
 
 	defer wg.Done() // arrange to call at the end of this function
@@ -383,6 +435,19 @@ fmt.Printf ("Connecting GRPC to [%s]\n", cts.saddr.String())
 	}
 
 	hdc = NewHoduClient(conn)
+
+	// seed exchange is for furture expansion of the protocol
+	// there is nothing to do much about it for now.
+	c_seed.Version = HODU_VERSION
+	c_seed.Flags = 0
+	s_seed, err = hdc.GetSeed(cts.cli.ctx, &c_seed)
+	if err != nil {
+		fmt.Printf("ERROR: unable to get seed from %s - %s\n", cts.cfg.server_addr, err.Error())
+		goto reconnect_to_server
+	}
+	cts.s_seed = *s_seed
+	cts.c_seed = c_seed
+
 	psc, err = hdc.PacketStream(cts.cli.ctx)
 	if err != nil {
 		fmt.Printf ("ERROR: unable to get grpc packet stream - %s\n", err.Error())
@@ -494,6 +559,21 @@ fmt.Printf("[%v]\n", cts.route_map)
 					// TODO
 				}
 
+			case PACKET_KIND_PEER_EOF:
+				var x *Packet_Peer
+				var ok bool
+				x, ok = pkt.U.(*Packet_Peer)
+				if ok {
+					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_EOF, nil)
+					if err != nil {
+						// TODO:
+					} else {
+						// TODO:
+					}
+				} else {
+					// TODO
+				}
+
 			case PACKET_KIND_PEER_DATA:
 				// the connection from the client to a peer has been established
 	fmt.Printf ("**** GOT PEER DATA\n")
@@ -561,14 +641,15 @@ func (cts *ServerConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 }
 // --------------------------------------------------------------------
 
-func (r *ClientRoute) AddNewClientPeerConn (c net.Conn) (*ClientPeerConn, error) {
+func (r *ClientRoute) AddNewClientPeerConn (c net.Conn, pts_id uint32) (*ClientPeerConn, error) {
 	var ptc *ClientPeerConn
-	var ok bool
-	var start_id uint32
+	//var ok bool
+	//var start_id uint32
 
 	r.ptc_mtx.Lock()
 	defer r.ptc_mtx.Unlock()
 
+/*
 	if len(r.ptc_map) >= r.ptc_limit {
 		return nil, fmt.Errorf("peer-to-client connection table full")
 	}
@@ -587,8 +668,10 @@ func (r *ClientRoute) AddNewClientPeerConn (c net.Conn) (*ClientPeerConn, error)
 	}
 
 	ptc = NewClientPeerConn(r, c, r.ptc_last_id)
+*/
+	ptc = NewClientPeerConn(r, c, pts_id)
 	r.ptc_map[ptc.conn_id] = ptc
-	r.ptc_last_id++
+	//r.ptc_last_id++
 
 	return ptc, nil
 }

@@ -6,6 +6,8 @@ import "io"
 import "os"
 import "strings"
 
+const HODU_VERSION uint32 = 0x010000
+
 func main() {
 	var err error
 	var flgs *flag.FlagSet

@@ -12,7 +12,7 @@ import "os/signal"
 import "sync"
 import "sync/atomic"
 import "syscall"
-import "time"
+//import "time"
 
 import "google.golang.org/grpc"
 //import "google.golang.org/grpc/metadata"
@@ -39,38 +39,38 @@ type Server struct {
 	cts_wg      sync.WaitGroup
 
 	gs          *grpc.Server
+
 	UnimplementedHoduServer
 }
 
 // client connection to server.
 // client connect to the server, the server accept it, and makes a tunnel request
 type ClientConn struct {
-	svr    *Server
-	caddr  net.Addr // client address that created this structure
-	pss    *GuardedPacketStreamServer
+	svr       *Server
+	caddr      net.Addr // client address that created this structure
+	pss       *GuardedPacketStreamServer
 
-	cw_mtx sync.Mutex
 	route_mtx  sync.Mutex
 	route_map  ServerRouteMap
 	route_wg   sync.WaitGroup
 
-	wg       sync.WaitGroup
-	stop_req atomic.Bool
-	stop_chan chan bool
+	wg         sync.WaitGroup
+	stop_req   atomic.Bool
+	stop_chan  chan bool
 }
 
 type ServerRoute struct {
 	cts *ClientConn
-	l *net.TCPListener
-	laddr *net.TCPAddr
-	id uint32
+	l          *net.TCPListener
+	laddr      *net.TCPAddr
+	id          uint32
 
 	pts_mtx     sync.Mutex
 	pts_map     ServerPeerConnMap
 	pts_limit   int
 	pts_last_id uint32
-	pts_wg sync.WaitGroup
-	stop_req atomic.Bool
+	pts_wg      sync.WaitGroup
+	stop_req    atomic.Bool
 }
 
 type GuardedPacketStreamServer struct {
@@ -330,11 +330,13 @@ func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 	return r.ReportEvent(pts_id, event_type, event_data)
 }
 
-func (cts *ClientConn) receive_from_stream () {
+func (cts *ClientConn) receive_from_stream(wg *sync.WaitGroup) {
 	var pkt *Packet
 	var err error
 
-	//for {
+	defer wg.Done()
+
+	for {
 		pkt, err = cts.pss.Recv()
 		if errors.Is(err, io.EOF) {
 			// return will close stream from server side
@@ -439,7 +441,7 @@ fmt.Printf ("grpd stream ended\n")
 					// TODO
 				}
 		}
-	//}
+	}
 
 done:
 	fmt.Printf ("************ stream receiver finished....\n")
@@ -451,11 +453,19 @@ func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
-
 	strm = cts.pss
 	ctx = strm.Context()
 
-	//go cts.receive_from_stream()
+	// it looks like the only proper way to interrupt the blocking Recv
+	// call on the grpc streaming server is exit from the service handler
+	// which is this function invoked from PacketStream().
+	// there is no cancel function or whatever that can interrupt it.
+	// so start the Recv() loop in a separte goroutine and let this
+	// function be the channel waiter only.
+	// increment on the wait group is for the caller to wait for
+	// these detached goroutines to finish.
+	wg.Add(1)
+	go cts.receive_from_stream(wg)
 
 	for {
 		// exit if context is done
@@ -468,11 +478,10 @@ fmt.Printf("grpd server done - %s\n", ctx.Err().Error())
 			case <- cts.stop_chan:
 				goto done
 
-			default:
+			//default:
 				// no other case is ready.
 				// without the default case, the select construct would block
 		}
-		cts.receive_from_stream()
 	}
 
 done:
@@ -527,6 +536,22 @@ chan_loop:
 }
 
 // --------------------------------------------------------------------
+
+func (s *Server) GetSeed (ctx context.Context, c_seed *Seed) (*Seed, error) {
+	var s_seed Seed
+
+	// seed exchange is for furture expansion of the protocol
+	// there is nothing to do much about it for now.
+
+	s_seed.Version = HODU_VERSION
+	s_seed.Flags = 0
+
+	// we create no ClientConn structure associated with the connection
+	// at this phase for the server. it doesn't track the client version and
+	// features. we delegate protocol selection solely to the client.
+
+	return &s_seed, nil
+}
 
 func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 	var ctx context.Context
@@ -604,12 +629,12 @@ type wrappedStream struct {
 }
 
 func (w *wrappedStream) RecvMsg(m any) error {
-	fmt.Printf("Receive a message (Type: %T) at %s\n", m, time.Now().Format(time.RFC3339))
+	//fmt.Printf("Receive a message (Type: %T) at %s\n", m, time.Now().Format(time.RFC3339))
 	return w.ServerStream.RecvMsg(m)
 }
 
 func (w *wrappedStream) SendMsg(m any) error {
-	fmt.Printf("Send a message (Type: %T) at %v\n", m, time.Now().Format(time.RFC3339))
+	//fmt.Printf("Send a message (Type: %T) at %v\n", m, time.Now().Format(time.RFC3339))
 	return w.ServerStream.SendMsg(m)
 }
 
@@ -744,8 +769,14 @@ func (s *Server) RunTask(wg *sync.WaitGroup) {
 	}
 
 	s.l_wg.Wait()
+fmt.Printf ("waiting for all client to server conn to complete\n")
 	s.cts_wg.Wait()
+fmt.Printf ("waited for all client to server conn to complete\n")
 	s.ReqStop()
+
+	// stop the main grpc server after all the other tasks are finished.
+	s.gs.Stop()
+
 	syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 }
 
@@ -755,7 +786,7 @@ func (s *Server) ReqStop() {
 		var cts *ClientConn
 
 		//s.gs.GracefulStop()
-		s.gs.Stop()
+		//s.gs.Stop()
 		for _, l = range s.l {
 			l.Close()
 		}

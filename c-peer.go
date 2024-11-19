@@ -11,9 +11,7 @@ func NewClientPeerConn(r *ClientRoute, c net.Conn, id uint32) (*ClientPeerConn) 
 	cpc.conn = c
 	cpc.conn_id = id
 	cpc.stop_req.Store(false)
-	//cpc.server_peer_status_chan = make(chan bool, 16)
-	//cpc.server_peer_opened_received.Store(false)
-	//cpc.server_peer_closed_received.Store(false)
+	cpc.server_peer_eof.Store(false)
 
 	return &cpc
 }
@@ -54,6 +52,19 @@ func (cpc *ClientPeerConn) ReqStop() {
 	if cpc.stop_req.CompareAndSwap(false, true) {
 		if cpc.conn != nil {
 			cpc.conn.Close()
+		}
+	}
+}
+
+func (cpc* ClientPeerConn) CloseWrite() {
+	if cpc.server_peer_eof.CompareAndSwap(false, true) {
+		if cpc.conn != nil {
+			var conn *net.TCPConn
+			var ok bool
+			conn, ok = cpc.conn.(*net.TCPConn)
+			if ok {
+				conn.CloseWrite()
+			}
 		}
 	}
 }
