@@ -407,6 +407,8 @@ fmt.Printf ("grpd stream ended\n")
 					// TODO
 				}
 
+			case PACKET_KIND_PEER_ABORTED:
+				fallthrough
 			case PACKET_KIND_PEER_STOPPED:
 				// the connection from the client to a peer has been established
 				var x *Packet_Peer

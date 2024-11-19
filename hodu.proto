@@ -46,8 +46,9 @@ enum PACKET_KIND {
 	ROUTE_STOPPED = 5;
 	PEER_STARTED  = 6;
 	PEER_STOPPED  = 7;
-	PEER_EOF      = 8;
-	PEER_DATA     = 9;
+	PEER_ABORTED  = 8;
+	PEER_EOF      = 9;
+	PEER_DATA     = 10;
 };
 
 message Packet {

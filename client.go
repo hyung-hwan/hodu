@@ -197,14 +197,13 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32) {
 	if err != nil {
 // TODO: make send peer started failure mesage?
 		fmt.Printf ("failed to connect to %s - %s\n", r.peer_addr.String(), err.Error())
-		return
+		goto peer_aborted
 	}
 
 	real_conn, ok = conn.(*net.TCPConn)
 	if !ok {
 		fmt.Printf("not tcp connection - %s\n", err.Error())
-		conn.Close()
-		return
+		goto peer_aborted
 	}
 
 	ptc, err = r.AddNewClientPeerConn(real_conn, pts_id)
@@ -212,19 +211,27 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32) {
 		// TODO: logging
 // TODO: make send peer started failure mesage?
 		fmt.Printf("YYYYYYYY - %s\n", err.Error())
-		conn.Close()
-		return
+		goto peer_aborted
 	}
 	fmt.Printf("STARTED NEW SERVER PEER STAK\n")
 	err = r.cts.psc.Send(MakePeerStartedPacket(r.id, ptc.conn_id))
 	if err != nil {
 		fmt.Printf("CLOSING NEW SERVER PEER STAK - %s\n", err.Error())
-		conn.Close()
-		return
+		goto peer_aborted
 	}
 
 	r.ptc_wg.Add(1)
 	go ptc.RunTask(&r.ptc_wg)
+	return
+
+peer_aborted:
+	if conn != nil {
+		conn.Close()
+		err = r.cts.psc.Send(MakePeerAbortedPacket(r.id, ptc.conn_id))
+		if err != nil {
+			// TODO: logging
+		}
+	}
 }
 
 func (r* ClientRoute) DisconnectFromPeer(pts_id uint32) error {
@@ -268,6 +275,8 @@ func (r* ClientRoute) ReportEvent (pts_id uint32, event_type PACKET_KIND, event_
 fmt.Printf ("GOT PEER STARTD . CONENCT TO CLIENT_SIDE PEER\n")
 			r.ConnectToPeer(pts_id)
 
+		case PACKET_KIND_PEER_ABORTED:
+			fallthrough
 		case PACKET_KIND_PEER_STOPPED:
 fmt.Printf ("GOT PEER STOPPED . DISCONNECTION FROM CLIENT_SIDE PEER\n")
 			err = r.DisconnectFromPeer(pts_id)
