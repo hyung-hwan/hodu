@@ -824,13 +824,13 @@ bad_request:
  * /servers/1 -        X             get server 1 details  update server 1  delete server 1
  * /servers/1/xxx -
  */
-func (c *Client) RunCtlTask() {
+func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 	var err error
 
-	defer c.wg.Done()
+	defer wg.Done()
 
 	err = c.ctl.ListenAndServe()
-	if err != http.ErrServerClosed {
+	if !errors.Is(err, http.ErrServerClosed) {
 		fmt.Printf ("------------http server error - %s\n", err.Error())
 	} else {
 		fmt.Printf ("********* http server ended\n")
@@ -952,7 +952,7 @@ func client_main(listen_on string, server_addr string, peer_addrs []string) erro
 	go c.handle_os_signals()
 
 	c.wg.Add(1)
-	go c.RunCtlTask() // control channel task
+	go c.RunCtlTask(&c.wg) // control channel task
 
 	cc.server_addr = server_addr
 	cc.peer_addrs = peer_addrs
