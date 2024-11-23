@@ -867,6 +867,6 @@ func (s *Server) WaitForTermination() {
 	s.wg.Wait()
 }
 
-func (s *Server) WriteLog (id string, level LogLevel, fmt string, args ...interface{}) {
-	s.log.Write(id, level, fmt, args...)
+func (s *Server) WriteLog (id string, level LogLevel, fmtstr string, args ...interface{}) {
+	s.log.Write(id, level, fmtstr, args...)
 }

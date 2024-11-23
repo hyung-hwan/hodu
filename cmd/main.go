@@ -7,12 +7,12 @@ import "flag"
 import "fmt"
 import "hodu"
 import "io"
-import "log"
 import "os"
 import "os/signal"
 import "strings"
 import "sync"
 import "syscall"
+import "time"
 
 
 // --------------------------------------------------------------------
@@ -44,11 +44,46 @@ BAMCA0gAMEUCIEKzVMF3JqjQjuM2rX7Rx8hancI5KJhwfeKu1xbyR7XaAiEA2UT7
 // --------------------------------------------------------------------
 
 type AppLogger struct {
-	log *log.Logger
+	id string
+	out io.Writer
+	mtx sync.Mutex
 }
 
-func (log* AppLogger) Write(id string, level hodu.LogLevel, fmt string, args ...interface{}) {
-	log.log.Printf(fmt, args...)
+func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ...interface{}) {
+	var now time.Time
+	var off_m int
+	var off_h int
+	var off_s int
+	var hdr string
+	var msg string
+	var lid string
+
+// TODO: do something with level
+	now = time.Now()
+
+	_, off_s = now.Zone()
+	off_m = off_s / 60;
+	off_h = off_m / 60;
+	off_m = off_m % 60;
+	if (off_m < 0) { off_m = -off_m; }
+
+	hdr = fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d %+03d%02d ",
+		now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), off_h, off_m)
+
+// TODO: add pid?
+	msg = fmt.Sprintf(fmtstr, args...)
+	if id == "" {
+		lid = fmt.Sprintf("%s: ", l.id)
+	} else {
+		lid = fmt.Sprintf("%s(%s): ", l.id, id)
+	}
+
+	l.mtx.Lock()
+	l.out.Write([]byte(hdr))
+	if lid != "" { l.out.Write([]byte(lid)) }
+	l.out.Write([]byte(msg))
+	if msg[len(msg) - 1] != '\n' { l.out.Write([]byte("\n")) }
+	l.mtx.Unlock()
 }
 
 // --------------------------------------------------------------------
@@ -121,7 +156,7 @@ func server_main(laddrs []string) error {
 		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
 	}
 
-	s, err = hodu.NewServer(laddrs, &AppLogger{log: log.Default()}, &tls.Config{Certificates: []tls.Certificate{cert}})
+	s, err = hodu.NewServer(laddrs, &AppLogger{id: "server", out: os.Stderr}, &tls.Config{Certificates: []tls.Certificate{cert}})
 	if err != nil {
 		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
 	}
@@ -144,7 +179,7 @@ func client_main(listen_on string, server_addr string, peer_addrs []string) erro
 	cert_pool = x509.NewCertPool()
 	ok := cert_pool.AppendCertsFromPEM([]byte(rootCert))
 	if !ok {
-		log.Fatal("failed to parse root certificate")
+		fmt.Printf("failed to parse root certificate")
 	}
 	tlscfg = &tls.Config{
 		RootCAs: cert_pool,
@@ -152,7 +187,7 @@ func client_main(listen_on string, server_addr string, peer_addrs []string) erro
 		InsecureSkipVerify: true,
 	}
 
-	c = hodu.NewClient(context.Background(), listen_on, &AppLogger{log: log.Default()}, tlscfg)
+	c = hodu.NewClient(context.Background(), listen_on, &AppLogger{id: "client", out: os.Stderr}, tlscfg)
 
 	cc.ServerAddr = server_addr
 	cc.PeerAddrs = peer_addrs

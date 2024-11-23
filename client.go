@@ -903,6 +903,6 @@ func (c *Client) WaitForTermination() {
 	c.wg.Wait()
 }
 
-func (c *Client) WriteLog (id string, level LogLevel, fmt string, args ...interface{}) {
-	c.log.Write(id, level, fmt, args...)
+func (c *Client) WriteLog (id string, level LogLevel, fmtstr string, args ...interface{}) {
+	c.log.Write(id, level, fmtstr, args...)
 }
