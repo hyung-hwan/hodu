@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "./main";
+option go_package = "./hodu";
 
 //package hodu; // no idea if it's still important...
 

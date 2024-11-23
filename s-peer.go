@@ -1,4 +1,4 @@
-package main
+package hodu
 
 import "errors"
 import "fmt"
@@ -9,10 +9,10 @@ import "sync/atomic"
 import "time"
 
 type ServerPeerConn struct {
-	route *ServerRoute
-	conn_id uint32
-	cts *ClientConn
-	conn *net.TCPConn
+	route     *ServerRoute
+	conn_id   uint32
+	cts       *ClientConn
+	conn      *net.TCPConn
 
 	stop_chan chan bool
 	stop_req  atomic.Bool

@@ -1,4 +1,4 @@
-package main
+package hodu
 
 
 func MakeRouteStartPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {

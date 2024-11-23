@@ -1,4 +1,4 @@
-package main
+package hodu
 
 import "fmt"
 import "net"

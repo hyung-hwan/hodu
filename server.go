@@ -1,19 +1,15 @@
-package main
+package hodu
 
 import "context"
 import "crypto/tls"
 import "errors"
 import "fmt"
 import "io"
-import "log"
 import "math/rand"
 import "net"
 import "net/http"
-import "os"
-import "os/signal"
 import "sync"
 import "sync/atomic"
-import "syscall"
 //import "time"
 
 import "google.golang.org/grpc"
@@ -31,9 +27,10 @@ type ServerRouteMap = map[uint32]*ServerRoute
 type Server struct {
 	tlscfg      *tls.Config
 	wg          sync.WaitGroup
+	ext_svcs    []Service
 	stop_req    atomic.Bool
 
-	ctl        *http.Server // control server
+	ctl         *http.Server // control server
 
 	l           []*net.TCPListener // main listener for grpc
 	l_wg        sync.WaitGroup
@@ -503,38 +500,6 @@ func (cts *ClientConn) ReqStop() {
 	}
 }
 
-// ------------------------------------
-
-func (s *Server) handle_os_signals() {
-	var sighup_chan  chan os.Signal
-	var sigterm_chan chan os.Signal
-	var sig          os.Signal
-
-	defer s.wg.Done()
-
-	sighup_chan = make(chan os.Signal, 1)
-	sigterm_chan = make(chan os.Signal, 1)
-
-	signal.Notify(sighup_chan, syscall.SIGHUP)
-	signal.Notify(sigterm_chan, syscall.SIGTERM, os.Interrupt)
-
-chan_loop:
-	for {
-		select {
-		case <-sighup_chan:
-			// TODO:
-			//s.RefreshConfig()
-		case sig = <-sigterm_chan:
-			// TODO: get timeout value from config
-			//s.Shutdown(fmt.Sprintf("termination by signal %s", sig), 3*time.Second)
-			s.ReqStop()
-			//log.Debugf("termination by signal %s", sig)
-			fmt.Printf("termination by signal %s\n", sig)
-			break chan_loop
-		}
-	}
-}
-
 // --------------------------------------------------------------------
 
 func (s *Server) GetSeed (ctx context.Context, c_seed *Seed) (*Seed, error) {
@@ -710,6 +675,7 @@ func NewServer(laddrs []string, logger Logger, tlscfg *tls.Config) (*Server, err
 	}
 
 	s.tlscfg = tlscfg
+	s.ext_svcs = make([]Service, 0, 1)
 	s.cts_map = make(ClientConnMap) // TODO: make it configurable...
 	s.stop_req.Store(false)
 /*
@@ -782,8 +748,6 @@ func (s *Server) RunTask(wg *sync.WaitGroup) {
 
 	// stop the main grpc server after all the other tasks are finished.
 	s.gs.Stop()
-
-	syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 }
 
 func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
@@ -878,66 +842,25 @@ func (s *Server) FindClientConnByAddr (addr net.Addr) *ClientConn {
 	return cts
 }
 
-// --------------------------------------------------------------------
-
-const serverKey = `-----BEGIN EC PARAMETERS-----
-BggqhkjOPQMBBw==
------END EC PARAMETERS-----
------BEGIN EC PRIVATE KEY-----
-MHcCAQEEIHg+g2unjA5BkDtXSN9ShN7kbPlbCcqcYdDu+QeV8XWuoAoGCCqGSM49
-AwEHoUQDQgAEcZpodWh3SEs5Hh3rrEiu1LZOYSaNIWO34MgRxvqwz1FMpLxNlx0G
-cSqrxhPubawptX5MSr02ft32kfOlYbaF5Q==
------END EC PRIVATE KEY-----
-`
-
-const serverCert = `-----BEGIN CERTIFICATE-----
-MIIB+TCCAZ+gAwIBAgIJAL05LKXo6PrrMAoGCCqGSM49BAMCMFkxCzAJBgNVBAYT
-AkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBXaWRn
-aXRzIFB0eSBMdGQxEjAQBgNVBAMMCWxvY2FsaG9zdDAeFw0xNTEyMDgxNDAxMTNa
-Fw0yNTEyMDUxNDAxMTNaMFkxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0
-YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQxEjAQBgNVBAMM
-CWxvY2FsaG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABHGaaHVod0hLOR4d
-66xIrtS2TmEmjSFjt+DIEcb6sM9RTKS8TZcdBnEqq8YT7m2sKbV+TEq9Nn7d9pHz
-pWG2heWjUDBOMB0GA1UdDgQWBBR0fqrecDJ44D/fiYJiOeBzfoqEijAfBgNVHSME
-GDAWgBR0fqrecDJ44D/fiYJiOeBzfoqEijAMBgNVHRMEBTADAQH/MAoGCCqGSM49
-BAMCA0gAMEUCIEKzVMF3JqjQjuM2rX7Rx8hancI5KJhwfeKu1xbyR7XaAiEA2UT7
-1xOP035EcraRmWPe7tO0LpXgMxlh2VItpc2uc2w=
------END CERTIFICATE-----
-`
-
-type serverLogger struct {
-	log *log.Logger
+func (s *Server) StartService(cfg interface{}) {
+	s.wg.Add(1)
+	go s.RunTask(&s.wg)
 }
 
-
-func (log* serverLogger) Write(level LogLevel, fmt string, args ...interface{}) {
-	log.log.Printf(fmt, args...)
+func (s *Server) StartExtService(svc Service, data interface{}) {
+	s.ext_svcs = append(s.ext_svcs, svc)
+	s.wg.Add(1)
+	go svc.RunTask(&s.wg)
 }
 
-func server_main(laddrs []string) error {
-	var s *Server
-	var err error
-
-	var sl serverLogger
-	var cert tls.Certificate
-
-	cert, err = tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
-	if err != nil {
-		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
+func (s *Server) StopServices() {
+	var ext_svc Service
+	s.ReqStop()
+	for _, ext_svc = range s.ext_svcs {
+		ext_svc.StopServices()
 	}
+}
 
-	sl.log = log.Default()
-	s, err = NewServer(laddrs, &sl, &tls.Config{Certificates: []tls.Certificate{cert}})
-	if err != nil {
-		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
-	}
-
-	s.wg.Add(1)
-	go s.handle_os_signals()
-
-	s.wg.Add(1)
-	go s.RunTask(&s.wg) // this is blocking. ReqStop() will be called from a signal handler
+func (s *Server) WaitForTermination() {
 	s.wg.Wait()
-
-	return nil
 }
