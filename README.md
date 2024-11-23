@@ -1,9 +1,7 @@
 
-hodu client <servee> <peer1> [<peer2> ...]
-
-    client requests server that it grants access to the list of peers
-    reserver
-
+## normal operation
+- ./hodu server --listen-on=0.0.0.0:9999 --listen-on=0.0.0.0:8888
+- ./hodu client --listen-on=127.0.0.1:7777 --server=127.0.0.1:9999 192.168.1.130:8000
 
 ## server.json
 ```
@@ -16,7 +14,8 @@ hodu client <servee> <peer1> [<peer2> ...]
 }
 ```
 
-## create a server
+## client control channel
+
 ```
 curl -X POST --data-binary @server.json http://127.0.0.1:7777/servers
 ```

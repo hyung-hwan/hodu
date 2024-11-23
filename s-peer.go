@@ -102,7 +102,7 @@ wait_for_started:
 		if err != nil {
 			// TODO: include route id and conn id in the error message
 			fmt.Printf("unable to send data - %s\n", err.Error())
-			goto done;
+			goto done
 		}
 	}
 

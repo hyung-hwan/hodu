@@ -47,11 +47,9 @@ type serverLogger struct {
 	log *log.Logger
 }
 
-
-func (log* serverLogger) Write(level hodu.LogLevel, fmt string, args ...interface{}) {
+func (log* serverLogger) Write(id string, level hodu.LogLevel, fmt string, args ...interface{}) {
 	log.log.Printf(fmt, args...)
 }
-
 
 // --------------------------------------------------------------------
 type signal_handler struct {
@@ -63,7 +61,9 @@ func (sh *signal_handler) RunTask(wg *sync.WaitGroup) {
 	var sigterm_chan chan os.Signal
 	var sig          os.Signal
 
-	defer wg.Done()
+	if wg != nil {
+		defer wg.Done()
+	}
 
 	sighup_chan = make(chan os.Signal, 1)
 	sigterm_chan = make(chan os.Signal, 1)
@@ -76,22 +76,18 @@ chan_loop:
 		select {
 		case <-sighup_chan:
 			// TODO:
-			//svc.ReqReload()
+			//sh.svc.ReqReload()
 		case sig = <-sigterm_chan:
-			// TODO: get timeout value from config
-			//c.Shutdown(fmt.Sprintf("termination by signal %s", sig), 3*time.Second)
 			sh.svc.StopServices()
-			//log.Debugf("termination by signal %s", sig)
 fmt.Printf("termination by signal %s\n", sig)
 			break chan_loop
 		}
 	}
-	
+
 	//signal.Reset(syscall.SIGHUP)
 	//signal.Reset(syscall.SIGTERM)
 	signal.Stop(sighup_chan)
 	signal.Stop(sigterm_chan)
-fmt.Printf("end of signal handler\n")
 }
 
 func (sh *signal_handler) StartService(data interface{}) {
@@ -111,11 +107,13 @@ func (sh *signal_handler) WaitForTermination() {
 	// sh.wg.Wait()
 }
 
+func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, args ...interface{}) {
+	sh.svc.WriteLog(id, level, fmt, args...)
+}
+
 func server_main(laddrs []string) error {
 	var s *hodu.Server
 	var err error
-
-	var sl serverLogger
 	var cert tls.Certificate
 
 	cert, err = tls.X509KeyPair([]byte(rootCert), []byte(rootKey))
@@ -123,8 +121,7 @@ func server_main(laddrs []string) error {
 		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
 	}
 
-	sl.log = log.Default()
-	s, err = hodu.NewServer(laddrs, &sl, &tls.Config{Certificates: []tls.Certificate{cert}})
+	s, err = hodu.NewServer(laddrs, &serverLogger{log: log.Default}, &tls.Config{Certificates: []tls.Certificate{cert}})
 	if err != nil {
 		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
 	}
@@ -155,14 +152,14 @@ func client_main(listen_on string, server_addr string, peer_addrs []string) erro
 		InsecureSkipVerify: true,
 	}
 
-	c = hodu.NewClient(context.Background(), listen_on, tlscfg)
+	c = hodu.NewClient(context.Background(), listen_on, &serverLogger{log: log.Default}, tlscfg)
 
 	cc.ServerAddr = server_addr
 	cc.PeerAddrs = peer_addrs
 
 	c.StartService(&cc)
-	c.StartCtlService()
-	c.StartExtService(&signal_handler{svc:c}, nil)
+	c.StartCtlService() // control channel
+	c.StartExtService(&signal_handler{svc:c}, nil) // signal handler task
 	c.WaitForTermination()
 
 	return nil

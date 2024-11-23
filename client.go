@@ -47,6 +47,8 @@ type Client struct {
 	wg          sync.WaitGroup
 	stop_req    atomic.Bool
 	stop_chan   chan bool
+
+	log         Logger
 }
 
 type ClientPeerConn struct {
@@ -143,7 +145,7 @@ func NewClientRoute(cts *ServerConn, id uint32, addr *net.TCPAddr, proto ROUTE_P
 	r.stop_req.Store(false)
 	r.stop_chan = make(chan bool, 1)
 
-	return &r;
+	return &r
 }
 
 func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
@@ -172,7 +174,7 @@ func (r *ClientRoute) ReqStop() {
 
 		r.stop_chan <- true
 	}
-fmt.Printf ("*** Sent stop request to Route..\n");
+fmt.Printf ("*** Sent stop request to Route..\n")
 }
 
 func (r* ClientRoute) ConnectToPeer(pts_id uint32, wg *sync.WaitGroup) {
@@ -195,7 +197,7 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32, wg *sync.WaitGroup) {
 	r.ptc_mtx.Unlock()
 
 	d.LocalAddr = nil // TOOD: use this if local address is specified
-	conn, err = d.DialContext(ctx, "tcp", r.peer_addr.String());
+	conn, err = d.DialContext(ctx, "tcp", r.peer_addr.String())
 
 	r.ptc_mtx.Lock()
 	delete(r.ptc_cancel_map, pts_id)
@@ -373,7 +375,7 @@ func (cts *ServerConn) RemoveClientRoute (route_id uint32) error {
 	cts.route_mtx.Unlock()
 
 	r.ReqStop() // TODO: make this unblocking or blocking?
-	return nil;
+	return nil
 }
 
 func (cts *ServerConn) RemoveClientRoutes () {
@@ -402,7 +404,7 @@ func (cts *ServerConn) AddClientRoutes (peer_addrs []string) error {
 	var err error
 
 	for i, v = range peer_addrs {
-		addr, err = net.ResolveTCPAddr(NET_TYPE_TCP, v)
+		addr, err = net.ResolveTCPAddr(NET_TYPE_TCP, v) // Make this interruptable
 		if err != nil {
 			return fmt.Errorf("unable to resovle %s - %s", v, err.Error())
 		}
@@ -426,7 +428,7 @@ func (cts *ServerConn) AddClientRoutes (peer_addrs []string) error {
 		}
 	}
 
-	return nil;
+	return nil
 }
 
 func (cts *ServerConn) ReqStop() {
@@ -442,7 +444,7 @@ func (cts *ServerConn) ReqStop() {
 		// TODO: notify the server.. send term command???
 		cts.stop_chan <- true
 	}
-fmt.Printf ("*** Sent stop request to ServerConn..\n");
+fmt.Printf ("*** Sent stop request to ServerConn..\n")
 }
 
 func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
@@ -534,7 +536,7 @@ fmt.Printf("[%v]\n", cts.route_map)
 				var ok bool
 				x, ok = pkt.U.(*Packet_Route)
 				if ok {
-	fmt.Printf ("SERVER LISTENING ON %s\n", x.Route.AddrStr);
+	fmt.Printf ("SERVER LISTENING ON %s\n", x.Route.AddrStr)
 					err = cts.ReportEvent(x.Route.RouteId, 0, pkt.Kind, nil)
 					if err != nil {
 						// TODO:
@@ -712,7 +714,7 @@ func (r *ClientRoute) AddNewClientPeerConn (c *net.TCPConn, pts_id uint32) (*Cli
 // --------------------------------------------------------------------
 
 
-func NewClient(ctx context.Context, listen_on string, tlscfg *tls.Config) *Client {
+func NewClient(ctx context.Context, listen_on string, logger Logger, tlscfg *tls.Config) *Client {
 	var c Client
 
 	c.ctx, c.ctx_cancel = context.WithCancel(ctx)
@@ -721,6 +723,7 @@ func NewClient(ctx context.Context, listen_on string, tlscfg *tls.Config) *Clien
 	c.cts_map = make(ServerConnMap) // TODO: make it configurable...
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 1)
+	c.log = logger
 
 	c.ctl = &http.Server{
 		Addr: listen_on,
@@ -744,15 +747,15 @@ func (c *Client) AddNewServerConn(addr *net.TCPAddr, cfg *ClientConfig) (*Server
 		return nil, fmt.Errorf("existing server - %s", addr.String())
 	}
 
-	c.cts_map[addr] = cts;
-fmt.Printf ("ADD total servers %d\n", len(c.cts_map));
+	c.cts_map[addr] = cts
+fmt.Printf ("ADD total servers %d\n", len(c.cts_map))
 	return cts, nil
 }
 
 func (c *Client) RemoveServerConn(cts *ServerConn) {
 	c.cts_mtx.Lock()
 	delete(c.cts_map, cts.saddr)
-fmt.Printf ("REMOVE total servers %d\n", len(c.cts_map));
+fmt.Printf ("REMOVE total servers %d\n", len(c.cts_map))
 	c.cts_mtx.Unlock()
 }
 
@@ -770,7 +773,7 @@ func (c *Client) ReqStop() {
 		c.stop_chan <- true
 		c.ctx_cancel()
 	}
-fmt.Printf ("*** Sent stop request to client..\n");
+fmt.Printf ("*** Sent stop request to client..\n")
 }
 
 func (c *Client) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -866,7 +869,7 @@ func (c *Client) StartService(data interface{}) {
 		return
 	}
 
-	saddr, err = net.ResolveTCPAddr(NET_TYPE_TCP, cfg.ServerAddr)
+	saddr, err = net.ResolveTCPAddr(NET_TYPE_TCP, cfg.ServerAddr) // TODO: make this interruptable...
 	if err != nil {
 		fmt.Printf("unable to resolve %s - %s", cfg.ServerAddr, err.Error())
 		return
@@ -898,4 +901,8 @@ func (c *Client) StopServices() {
 
 func (c *Client) WaitForTermination() {
 	c.wg.Wait()
+}
+
+func (c *Client) WriteLog (id string, level LogLevel, fmt string, args ...interface{}) {
+	c.log.Write(id, level, fmt, args...)
 }
