@@ -98,7 +98,6 @@ func (sh *signal_handler) StartService(data interface{}) {
 	// this isn't actually used standalone.. 
 	// if we are to implement it, it must use the wait group for signal handler itself
 	// however, this service is run through another service.
-	//
 	// sh.wg.Add(1)
 	// go sh.RunTask(&sh.wg)
 }

@@ -1,6 +1,23 @@
-all: hodu.pb.go hodu_grpc.pb.go
-	go build -x -o hodu cmd/main.go
+SRCS=\
+	c-peer.go \
+	client.go \
+	frame.go \
+	hodu.go \
+	hodu.pb.go \
+	hodu_grpc.pb.go \
+	packet.go \
+	s-peer.go \
+	server.go \
+	cmd/main.go
 
+all: hodu
+
+hodu: $(SRCS)
+	go build -x -o $@ cmd/main.go
+
+clean:
+	go clean -x -i
+	rm -f hodu
 
 hodu.pb.go: hodu.proto
 	protoc --go_out=. --go_opt=paths=source_relative \
@@ -11,3 +28,5 @@ hodu_grpc.pb.go: hodu.proto
 	protoc --go_out=. --go_opt=paths=source_relative \
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		hodu.proto
+
+.PHONY: clean
