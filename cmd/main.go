@@ -43,11 +43,11 @@ BAMCA0gAMEUCIEKzVMF3JqjQjuM2rX7Rx8hancI5KJhwfeKu1xbyR7XaAiEA2UT7
 `
 // --------------------------------------------------------------------
 
-type serverLogger struct {
+type AppLogger struct {
 	log *log.Logger
 }
 
-func (log* serverLogger) Write(id string, level hodu.LogLevel, fmt string, args ...interface{}) {
+func (log* AppLogger) Write(id string, level hodu.LogLevel, fmt string, args ...interface{}) {
 	log.log.Printf(fmt, args...)
 }
 
@@ -79,7 +79,7 @@ chan_loop:
 			//sh.svc.ReqReload()
 		case sig = <-sigterm_chan:
 			sh.svc.StopServices()
-fmt.Printf("termination by signal %s\n", sig)
+			sh.svc.WriteLog ("", hodu.LOG_INFO, "Received %s signal", sig)
 			break chan_loop
 		}
 	}
@@ -121,7 +121,7 @@ func server_main(laddrs []string) error {
 		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
 	}
 
-	s, err = hodu.NewServer(laddrs, &serverLogger{log: log.Default}, &tls.Config{Certificates: []tls.Certificate{cert}})
+	s, err = hodu.NewServer(laddrs, &AppLogger{log: log.Default()}, &tls.Config{Certificates: []tls.Certificate{cert}})
 	if err != nil {
 		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
 	}
@@ -152,7 +152,7 @@ func client_main(listen_on string, server_addr string, peer_addrs []string) erro
 		InsecureSkipVerify: true,
 	}
 
-	c = hodu.NewClient(context.Background(), listen_on, &serverLogger{log: log.Default}, tlscfg)
+	c = hodu.NewClient(context.Background(), listen_on, &AppLogger{log: log.Default()}, tlscfg)
 
 	cc.ServerAddr = server_addr
 	cc.PeerAddrs = peer_addrs

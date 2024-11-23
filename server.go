@@ -170,26 +170,28 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 	var err error
 	var conn *net.TCPConn
 	var pts *ServerPeerConn
+	var log_id string
 
 	defer wg.Done()
+	log_id = fmt.Sprintf("%s,%d", r.cts.caddr.String(), r.id)
 
 	for {
 		conn, err = r.l.AcceptTCP()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
-				r.cts.svr.log.Write("", LOG_INFO, "[%s,%d] Service-side peer listener closed\n", r.cts.caddr.String(), r.id)
+				r.cts.svr.log.Write(log_id, LOG_INFO, "Rervice-side peer listener closed")
 			} else {
-				fmt.Printf("[%s,%d] Server-side peer listener error - %s\n", r.cts.caddr.String(), r.id, err.Error())
+				r.cts.svr.log.Write(log_id, LOG_INFO, "Server-side peer listener error - %s", err.Error())
 			}
 			break
 		}
 
 		pts, err = r.AddNewServerPeerConn(conn)
 		if err != nil {
-			r.cts.svr.log.Write("", LOG_ERROR, "[%s,%d] Failed to add new server-side peer %s - %s", r.cts.caddr.String(), r.id, conn.RemoteAddr().String(), err.Error())
+			r.cts.svr.log.Write(log_id, LOG_ERROR, "Failed to add new server-side peer %s - %s", conn.RemoteAddr().String(), err.Error())
 			conn.Close()
 		} else {
-			r.cts.svr.log.Write("", LOG_DEBUG, "[%s,%d] Added new server-side peer %s", r.cts.caddr.String(), r.id, conn.RemoteAddr().String())
+			r.cts.svr.log.Write(log_id, LOG_DEBUG, "Added new server-side peer %s", conn.RemoteAddr().String())
 			r.pts_wg.Add(1)
 			go pts.RunTask(&r.pts_wg)
 		}
@@ -197,7 +199,7 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 
 	r.l.Close() // don't care about double close. it could have been closed in ReqStop
 	r.pts_wg.Wait()
-	r.cts.svr.log.Write("", LOG_DEBUG, "[%s,%d] All service-side peer handlers completed", r.cts.caddr.String(), r.id)
+	r.cts.svr.log.Write(log_id, LOG_DEBUG, "All service-side peer handlers completed")
 }
 
 func (r *ServerRoute) ReqStop() {
@@ -740,9 +742,9 @@ func (s *Server) RunTask(wg *sync.WaitGroup) {
 	}
 
 	s.l_wg.Wait()
-	s.log.Write("", LOG_DEBUG, "", "All GRPC listeners completed")
+	s.log.Write("", LOG_DEBUG, "All GRPC listeners completed")
 	s.cts_wg.Wait()
-	s.log.Write("", LOG_DEBUG, "", "All CTS handlers completed")
+	s.log.Write("", LOG_DEBUG, "All CTS handlers completed")
 
 	s.ReqStop()
 
