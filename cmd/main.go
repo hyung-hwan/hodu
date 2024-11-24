@@ -156,7 +156,7 @@ func server_main(laddrs []string) error {
 		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
 	}
 
-	s, err = hodu.NewServer(laddrs, &AppLogger{id: "server", out: os.Stderr}, &tls.Config{Certificates: []tls.Certificate{cert}})
+	s, err = hodu.NewServer(context.Background(), laddrs, &AppLogger{id: "server", out: os.Stderr}, &tls.Config{Certificates: []tls.Certificate{cert}})
 	if err != nil {
 		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
 	}

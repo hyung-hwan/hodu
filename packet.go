@@ -7,6 +7,12 @@ func MakeRouteStartPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Pack
 		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, AddrStr: addr}}}
 }
 
+func MakeRouteStopPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {
+	return &Packet{
+		Kind: PACKET_KIND_ROUTE_STOP,
+		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, AddrStr: addr}}}
+}
+
 func MakeRouteStartedPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {
 	// the connection from a peer to the server has been established
 	return &Packet{Kind: PACKET_KIND_ROUTE_STARTED,
