@@ -18,7 +18,6 @@ import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/stats"
 
 const PTS_LIMIT = 8192
-//const CTS_LIMIT = 2048
 
 type ClientConnMap = map[net.Addr]*ClientConn
 type ServerPeerConnMap = map[uint32]*ServerPeerConn
