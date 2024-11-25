@@ -23,7 +23,7 @@ type ServerPeerConn struct {
 	client_peer_eof atomic.Bool
 }
 
-func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) (*ServerPeerConn) {
+func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) *ServerPeerConn {
 	var spc ServerPeerConn
 
 	spc.route = r
@@ -37,7 +37,7 @@ func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) (*ServerPeerCo
 	spc.client_peer_started.Store(false)
 	spc.client_peer_stopped.Store(false)
 	spc.client_peer_eof.Store(false)
-fmt.Printf ("~~~~~~~~~~~~~~~ NEW SERVER PEER CONNECTION ADDED %p\n", &spc)
+fmt.Printf("~~~~~~~~~~~~~~~ NEW SERVER PEER CONNECTION ADDED %p\n", &spc)
 	return &spc
 }
 
@@ -76,7 +76,7 @@ wait_for_started:
 				tmr.Stop()
 				goto done
 
-			case <- spc.stop_chan:
+			case <-spc.stop_chan:
 				tmr.Stop()
 				goto done
 		}
@@ -110,9 +110,9 @@ wait_for_stopped:
 	for {
 fmt.Printf ("******************* Waiting for peer Stop\n")
 		select {
-			case status = <- spc.client_peer_status_chan: // something not right... may use a different channel for closing...
+			case status = <-spc.client_peer_status_chan: // something not right... may use a different channel for closing...
 				goto done
-			case <- spc.stop_chan:
+			case <-spc.stop_chan:
 				goto done
 		}
 	}
@@ -149,7 +149,7 @@ func (spc *ServerPeerConn) ReqStop() {
 	}
 }
 
-func (spc *ServerPeerConn) ReportEvent (event_type PACKET_KIND, event_data []byte) error {
+func (spc *ServerPeerConn) ReportEvent(event_type PACKET_KIND, event_data []byte) error {
 
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
@@ -184,7 +184,7 @@ fmt.Printf("******************* CCCCCCCCCCCCCCCCCCCCCCCccc\n")
 				}
 			} else {
 				// protocol error. the client must not relay more data from the client-side peer after EOF.
-				fmt.Printf ("WARNING - broken client - redundant data from %s to %s\n", spc.route.cts.caddr, spc.conn.RemoteAddr().String())
+				fmt.Printf("WARNING - broken client - redundant data from %s to %s\n", spc.route.cts.caddr, spc.conn.RemoteAddr().String())
 			}
 
 		default:

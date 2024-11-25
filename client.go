@@ -1,29 +1,25 @@
 package hodu
 
-
-//import "bufio"
 import "context"
 import "crypto/tls"
-import "encoding/json"
 import "errors"
 import "fmt"
+import "math/rand"
 import "net"
 import "net/http"
 import "sync"
 import "sync/atomic"
 import "time"
 
-//import "github.com/google/uuid"
 import "google.golang.org/grpc"
 import "google.golang.org/grpc/codes"
 import "google.golang.org/grpc/credentials/insecure"
 import "google.golang.org/grpc/status"
 
-const PTC_LIMIT = 8192
-
 type PacketStreamClient grpc.BidiStreamingClient[Packet, Packet]
 
-type ServerConnMap = map[net.Addr]*ServerConn
+type ClientConnMap = map[net.Addr]*ClientConn
+type ClientConnMapById = map[uint32]*ClientConn
 type ClientPeerConnMap = map[uint32]*ClientPeerConn
 type ClientRouteMap = map[uint32]*ClientRoute
 type ClientPeerCancelFuncMap = map[uint32]context.CancelFunc
@@ -43,13 +39,15 @@ type Client struct {
 	ctl        *http.Server // control server
 
 	cts_mtx     sync.Mutex
-	cts_map     ServerConnMap
+	cts_map     ClientConnMap
+	cts_map_by_id ClientConnMapById
 
 	wg          sync.WaitGroup
 	stop_req    atomic.Bool
 	stop_chan   chan bool
 
 	log         Logger
+	mux        *http.ServeMux
 }
 
 type ClientPeerConn struct {
@@ -66,10 +64,12 @@ type ClientPeerConn struct {
 }
 
 // client connection to server
-type ServerConn struct {
+type ClientConn struct {
 	cli      *Client
 	cfg      *ClientConfig
 	saddr    *net.TCPAddr // server address that is connected to
+	id       uint32
+	lid      string
 
 	conn     *grpc.ClientConn // grpc connection to the server
 	hdc       HoduClient
@@ -87,7 +87,7 @@ type ServerConn struct {
 }
 
 type ClientRoute struct {
-	cts *ServerConn
+	cts *ClientConn
 	id uint32
 	peer_addr *net.TCPAddr
 	proto ROUTE_PROTO
@@ -130,7 +130,7 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 }*/
 
 // --------------------------------------------------------------------
-func NewClientRoute(cts *ServerConn, id uint32, addr *net.TCPAddr, proto ROUTE_PROTO) *ClientRoute {
+func NewClientRoute(cts *ClientConn, id uint32, addr *net.TCPAddr, proto ROUTE_PROTO) *ClientRoute {
 	var r ClientRoute
 
 	r.cts = cts
@@ -152,16 +152,17 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	// most useful works are triggered by ReportEvent() and done by ConnectToPeer()
 	defer wg.Done()
 
+	r.cts.cli.log.Write("", LOG_DEBUG, "Sending route-start for id=%d peer=%s to %s", r.id, r.peer_addr.String(), r.cts.saddr.String())
 	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.proto, r.peer_addr.String()))
 	if err != nil {
-		//return fmt.Errorf("unable to send route-start packet - %s", err.Error())
-		goto done;
+		r.cts.cli.log.Write("", LOG_DEBUG, "Failed to Send route-start for id=%d peer=%s to %s", r.id, r.peer_addr.String(), r.cts.saddr.String())
+		goto done
 	}
 
 main_loop:
 	for {
 		select {
-			case <- r.stop_chan:
+			case <-r.stop_chan:
 				break main_loop
 		}
 	}
@@ -170,9 +171,10 @@ done:
 	r.ReqStop()
 	r.ptc_wg.Wait() // wait for all peer tasks are finished
 
+	r.cts.cli.log.Write("", LOG_DEBUG, "Sending route-stop for id=%d peer=%s to %s", r.id, r.peer_addr.String(), r.cts.saddr.String())
 	r.cts.psc.Send(MakeRouteStopPacket(r.id, r.proto, r.peer_addr.String()))
 	r.cts.RemoveClientRoute(r)
-fmt.Printf ("*** End fo Client Roue Task\n")
+fmt.Printf("*** End fo Client Roue Task\n")
 }
 
 func (r *ClientRoute) ReqStop() {
@@ -183,10 +185,10 @@ func (r *ClientRoute) ReqStop() {
 		}
 		r.stop_chan <- true
 	}
-fmt.Printf ("*** Sent stop request to Route..\n")
+fmt.Printf("*** Sent stop request to Route..\n")
 }
 
-func (r* ClientRoute) ConnectToPeer(pts_id uint32, wg *sync.WaitGroup) {
+func (r *ClientRoute) ConnectToPeer(pts_id uint32, wg *sync.WaitGroup) {
 	var err error
 	var conn net.Conn
 	var real_conn *net.TCPConn
@@ -214,7 +216,7 @@ func (r* ClientRoute) ConnectToPeer(pts_id uint32, wg *sync.WaitGroup) {
 
 	if err != nil {
 // TODO: make send peer started failure mesage?
-		fmt.Printf ("failed to connect to %s - %s\n", r.peer_addr.String(), err.Error())
+		fmt.Printf("failed to connect to %s - %s\n", r.peer_addr.String(), err.Error())
 		goto peer_aborted
 	}
 
@@ -252,7 +254,7 @@ peer_aborted:
 	}
 }
 
-func (r* ClientRoute) DisconnectFromPeer(pts_id uint32) error {
+func (r *ClientRoute) DisconnectFromPeer(pts_id uint32) error {
 	var ptc *ClientPeerConn
 	var cancel context.CancelFunc
 	var ok bool
@@ -260,7 +262,7 @@ func (r* ClientRoute) DisconnectFromPeer(pts_id uint32) error {
 	r.ptc_mtx.Lock()
 	cancel, ok = r.ptc_cancel_map[pts_id]
 	if ok {
-fmt.Printf ("~~~~~~~~~~~~~~~~ cancelling.....\n")
+fmt.Printf("~~~~~~~~~~~~~~~~ cancelling.....\n")
 		cancel()
 	}
 
@@ -275,7 +277,7 @@ fmt.Printf ("~~~~~~~~~~~~~~~~ cancelling.....\n")
 	return nil
 }
 
-func (r* ClientRoute) CloseWriteToPeer(pts_id uint32) error {
+func (r *ClientRoute) CloseWriteToPeer(pts_id uint32) error {
 	var ptc *ClientPeerConn
 	var ok bool
 
@@ -291,27 +293,26 @@ func (r* ClientRoute) CloseWriteToPeer(pts_id uint32) error {
 	return nil
 }
 
-
-func (r* ClientRoute) ReportEvent (pts_id uint32, event_type PACKET_KIND, event_data []byte) error {
+func (r *ClientRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_data []byte) error {
 	var err error
 
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
-fmt.Printf ("GOT PEER STARTD . CONENCT TO CLIENT_SIDE PEER\n")
+fmt.Printf("GOT PEER STARTD . CONENCT TO CLIENT_SIDE PEER\n")
 			r.ptc_wg.Add(1)
 			go r.ConnectToPeer(pts_id, &r.ptc_wg)
 
 		case PACKET_KIND_PEER_ABORTED:
 			fallthrough
 		case PACKET_KIND_PEER_STOPPED:
-fmt.Printf ("GOT PEER STOPPED . DISCONNECTION FROM CLIENT_SIDE PEER\n")
+fmt.Printf("GOT PEER STOPPED . DISCONNECTION FROM CLIENT_SIDE PEER\n")
 			err = r.DisconnectFromPeer(pts_id)
 			if err != nil {
 				// TODO:
 			}
 
 		case PACKET_KIND_PEER_EOF:
-fmt.Printf ("GOT PEER EOF. REMEMBER EOF\n")
+fmt.Printf("GOT PEER EOF. REMEMBER EOF\n")
 			err = r.CloseWriteToPeer(pts_id)
 			if err != nil {
 				// TODO:
@@ -336,8 +337,8 @@ fmt.Printf ("GOT PEER EOF. REMEMBER EOF\n")
 }
 
 // --------------------------------------------------------------------
-func NewServerConn(c *Client, addr *net.TCPAddr, cfg *ClientConfig) *ServerConn {
-	var cts ServerConn
+func NewClientConn(c *Client, addr *net.TCPAddr, cfg *ClientConfig) *ClientConn {
+	var cts ClientConn
 
 	cts.cli = c
 	cts.route_map = make(ClientRouteMap)
@@ -352,37 +353,37 @@ func NewServerConn(c *Client, addr *net.TCPAddr, cfg *ClientConfig) *ServerConn 
 	return &cts
 }
 
-func (cts *ServerConn) AddNewClientRoute(route_id uint32, addr *net.TCPAddr, proto ROUTE_PROTO) (*ClientRoute, error) {
+func (cts *ClientConn) AddNewClientRoute(route_id uint32, addr *net.TCPAddr, proto ROUTE_PROTO) (*ClientRoute, error) {
 	var r *ClientRoute
 
 	cts.route_mtx.Lock()
 	if cts.route_map[route_id] != nil {
 		cts.route_mtx.Unlock()
-		return nil, fmt.Errorf ("existent route id - %d", route_id)
+		return nil, fmt.Errorf("existent route id - %d", route_id)
 	}
 	r = NewClientRoute(cts, route_id, addr, proto)
 	cts.route_map[route_id] = r
 	cts.route_mtx.Unlock()
 
-fmt.Printf ("added client route.... %d -> %d\n", route_id, len(cts.route_map))
+fmt.Printf("added client route.... %d -> %d\n", route_id, len(cts.route_map))
 	cts.route_wg.Add(1)
 	go r.RunTask(&cts.route_wg)
 	return r, nil
 }
 
-func (cts *ServerConn) RemoveClientRoute(route *ClientRoute) error {
+func (cts *ClientConn) RemoveClientRoute(route *ClientRoute) error {
 	var r *ClientRoute
 	var ok bool
 
 	cts.route_mtx.Lock()
 	r, ok = cts.route_map[route.id]
-	if (!ok) {
+	if !ok {
 		cts.route_mtx.Unlock()
-		return fmt.Errorf ("non-existent route id - %d", route.id)
+		return fmt.Errorf("non-existent route id - %d", route.id)
 	}
 	if r != route {
 		cts.route_mtx.Unlock()
-		return fmt.Errorf ("non-existent route id - %d", route.id)
+		return fmt.Errorf("non-existent route id - %d", route.id)
 	}
 	delete(cts.route_map, route.id)
 	cts.route_mtx.Unlock()
@@ -391,15 +392,15 @@ func (cts *ServerConn) RemoveClientRoute(route *ClientRoute) error {
 	return nil
 }
 
-func (cts *ServerConn) RemoveClientRouteById(route_id uint32) error {
+func (cts *ClientConn) RemoveClientRouteById(route_id uint32) error {
 	var r *ClientRoute
 	var ok bool
 
 	cts.route_mtx.Lock()
 	r, ok = cts.route_map[route_id]
-	if (!ok) {
+	if !ok {
 		cts.route_mtx.Unlock()
-		return fmt.Errorf ("non-existent route id - %d", route_id)
+		return fmt.Errorf("non-existent route id - %d", route_id)
 	}
 	delete(cts.route_map, route_id)
 	cts.route_mtx.Unlock()
@@ -408,7 +409,7 @@ func (cts *ServerConn) RemoveClientRouteById(route_id uint32) error {
 	return nil
 }
 
-func (cts *ServerConn) AddClientRoutes (peer_addrs []string) error {
+func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 	var i int
 	var v string
 	var addr *net.TCPAddr
@@ -436,9 +437,9 @@ func (cts *ServerConn) AddClientRoutes (peer_addrs []string) error {
 	return nil
 }
 
-func (cts *ServerConn) disconnect_from_server() {
+func (cts *ClientConn) disconnect_from_server() {
 	if cts.conn != nil {
-		var r* ClientRoute
+		var r *ClientRoute
 
 		cts.route_mtx.Lock()
 		for _, r = range cts.route_map {
@@ -456,14 +457,14 @@ func (cts *ServerConn) disconnect_from_server() {
 	}
 }
 
-func (cts *ServerConn) ReqStop() {
+func (cts *ClientConn) ReqStop() {
 	if cts.stop_req.CompareAndSwap(false, true) {
 		cts.disconnect_from_server()
 		cts.stop_chan <- true
 	}
 }
 
-func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
+func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	var psc PacketStreamClient
 	var slpctx context.Context
 	var c_seed Seed
@@ -473,12 +474,10 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 	defer wg.Done() // arrange to call at the end of this function
 
 start_over:
-	cts.cli.log.Write ("", LOG_DEBUG, "Total number of server connections = %d", len(cts.cli.cts_map))
-
-	cts.cli.log.Write("", LOG_INFO, "Connecting to server %s", cts.saddr.String())
+	cts.cli.log.Write(cts.lid, LOG_INFO, "Connecting to server %s", cts.saddr.String())
 	cts.conn, err = grpc.NewClient(cts.saddr.String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		cts.cli.log.Write("", LOG_ERROR, "Failed to make client to server %s - %s", cts.saddr.String(), err.Error())
+		cts.cli.log.Write(cts.lid, LOG_ERROR, "Failed to make client to server %s - %s", cts.saddr.String(), err.Error())
 		goto reconnect_to_server
 	}
 	cts.hdc = NewHoduClient(cts.conn)
@@ -492,21 +491,21 @@ start_over:
 	c_seed.Flags = 0
 	s_seed, err = cts.hdc.GetSeed(cts.cli.ctx, &c_seed)
 	if err != nil {
-		cts.cli.log.Write("", LOG_ERROR, "Failed to get seed from server %s - %s", cts.saddr.String(), err.Error())
+		cts.cli.log.Write(cts.lid, LOG_ERROR, "Failed to get seed from server %s - %s", cts.saddr.String(), err.Error())
 		goto reconnect_to_server
 	}
 	cts.s_seed = *s_seed
 	cts.c_seed = c_seed
 
-	cts.cli.log.Write("", LOG_INFO, "Got seed from server %s - ver=%#x", cts.saddr.String(), cts.s_seed.Version)
+	cts.cli.log.Write(cts.lid, LOG_INFO, "Got seed from server %s - ver=%#x", cts.saddr.String(), cts.s_seed.Version)
 
 	psc, err = cts.hdc.PacketStream(cts.cli.ctx)
 	if err != nil {
-		cts.cli.log.Write("", LOG_ERROR, "Failed to get packet stream from server %s - %s", cts.saddr.String(), err.Error())
+		cts.cli.log.Write(cts.lid, LOG_ERROR, "Failed to get packet stream from server %s - %s", cts.saddr.String(), err.Error())
 		goto reconnect_to_server
 	}
 
-	cts.cli.log.Write("", LOG_INFO, "Got packet stream from server %s", cts.saddr.String())
+	cts.cli.log.Write(cts.lid, LOG_INFO, "Got packet stream from server %s", cts.saddr.String())
 
 	cts.psc = &GuardedPacketStreamClient{Hodu_PacketStreamClient: psc}
 
@@ -514,7 +513,7 @@ start_over:
 	// let's add routes to the client-side peers.
 	err = cts.AddClientRoutes(cts.cfg.PeerAddrs)
 	if err != nil {
-		cts.cli.log.Write("", LOG_INFO, "Failed to add routes to server %s for %v - %s", cts.saddr.String(), cts.cfg.PeerAddrs, err.Error())
+		cts.cli.log.Write(cts.lid, LOG_INFO, "Failed to add routes to server %s for %v - %s", cts.saddr.String(), cts.cfg.PeerAddrs, err.Error())
 		goto done
 	}
 
@@ -541,7 +540,7 @@ fmt.Printf("context doine... error - %s\n", cts.cli.ctx.Err().Error())
 			if status.Code(err) == codes.Canceled || errors.Is(err, net.ErrClosed) {
 				goto reconnect_to_server
 			} else {
-				cts.cli.log.Write("", LOG_INFO, "Failed to receive packet form server %s - %s", cts.saddr.String(), err.Error())
+				cts.cli.log.Write(cts.lid, LOG_INFO, "Failed to receive packet form server %s - %s", cts.saddr.String(), err.Error())
 				goto reconnect_to_server
 			}
 		}
@@ -635,7 +634,7 @@ fmt.Printf("context doine... error - %s\n", cts.cli.ctx.Err().Error())
 				if ok {
 					err = cts.ReportEvent(x.Data.RouteId, x.Data.PeerId, PACKET_KIND_PEER_DATA, x.Data.Data)
 					if err != nil {
-		fmt.Printf ("failed to report event - %s\n", err.Error())
+		fmt.Printf("failed to report event - %s\n", err.Error())
 						// TODO:
 					} else {
 						// TODO:
@@ -652,7 +651,7 @@ done:
 	cts.ReqStop()
 wait_for_termination:
 	cts.route_wg.Wait() // wait until all route tasks are finished
-	cts.cli.RemoveServerConn(cts)
+	cts.cli.RemoveClientConn(cts)
 	return
 
 reconnect_to_server:
@@ -668,19 +667,19 @@ reconnect_to_server:
 			// this signal indicates that ReqStop() has been called
 			// so jumt to the waiting label
 			goto wait_for_termination
-		case <- slpctx.Done():
+		case <-slpctx.Done():
 			// do nothing
 	}
 	goto start_over // and reconnect
 }
 
-func (cts *ServerConn) ReportEvent (route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data []byte) error {
+func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data []byte) error {
 	var r *ClientRoute
 	var ok bool
 
 	cts.route_mtx.Lock()
 	r, ok = cts.route_map[route_id]
-	if (!ok) {
+	if !ok {
 		cts.route_mtx.Unlock()
 		return fmt.Errorf ("non-existent route id - %d", route_id)
 	}
@@ -690,7 +689,7 @@ func (cts *ServerConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 }
 // --------------------------------------------------------------------
 
-func (r *ClientRoute) AddNewClientPeerConn (c *net.TCPConn, pts_id uint32) (*ClientPeerConn, error) {
+func (r *ClientRoute) AddNewClientPeerConn(c *net.TCPConn, pts_id uint32) (*ClientPeerConn, error) {
 	var ptc *ClientPeerConn
 
 	r.ptc_mtx.Lock()
@@ -704,31 +703,39 @@ func (r *ClientRoute) AddNewClientPeerConn (c *net.TCPConn, pts_id uint32) (*Cli
 
 // --------------------------------------------------------------------
 
-
 func NewClient(ctx context.Context, listen_on string, logger Logger, tlscfg *tls.Config) *Client {
 	var c Client
 
 	c.ctx, c.ctx_cancel = context.WithCancel(ctx)
 	c.tlscfg = tlscfg
 	c.ext_svcs = make([]Service, 0, 1)
-	c.cts_map = make(ServerConnMap) // TODO: make it configurable...
+	c.cts_map = make(ClientConnMap)
+	c.cts_map_by_id = make(ClientConnMapById)
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
 	c.log = logger
 
+	c.mux = http.NewServeMux()
+	c.mux.Handle("/servers", &client_ctl_servers{c: &c})
+	c.mux.Handle("/servers/{id}", &client_ctl_servers_id{c: &c})
+	c.mux.Handle("/clients", &client_ctl_clients{c: &c})
+	c.mux.Handle("/clients/{id}", &client_ctl_clients_id{c: &c})
+
 	c.ctl = &http.Server{
 		Addr: listen_on,
-		Handler: &c,
+		Handler: c.mux,
+		// TODO: more settings
 	}
 
 	return &c
 }
 
-func (c *Client) AddNewServerConn(addr *net.TCPAddr, cfg *ClientConfig) (*ServerConn, error) {
-	var cts *ServerConn
+func (c *Client) AddNewClientConn(addr *net.TCPAddr, cfg *ClientConfig) (*ClientConn, error) {
+	var cts *ClientConn
 	var ok bool
+	var id uint32
 
-	cts = NewServerConn(c, addr, cfg)
+	cts = NewClientConn(c, addr, cfg)
 
 	c.cts_mtx.Lock()
 	defer c.cts_mtx.Unlock()
@@ -738,23 +745,34 @@ func (c *Client) AddNewServerConn(addr *net.TCPAddr, cfg *ClientConfig) (*Server
 		return nil, fmt.Errorf("existing server - %s", addr.String())
 	}
 
+	id = rand.Uint32()
+	for {
+		_, ok = c.cts_map_by_id[id]
+		if !ok { break }
+		id++
+	}
+	cts.id = id
+	cts.lid = fmt.Sprintf("%d", id)
+
 	c.cts_map[addr] = cts
-fmt.Printf ("ADD total servers %d\n", len(c.cts_map))
+	c.cts_map_by_id[id] = cts
+fmt.Printf("ADD total servers %d\n", len(c.cts_map))
 	return cts, nil
 }
 
-func (c *Client) RemoveServerConn(cts *ServerConn) {
+func (c *Client) RemoveClientConn(cts *ClientConn) {
 	c.cts_mtx.Lock()
 	delete(c.cts_map, cts.saddr)
-fmt.Printf ("REMOVEDDDDDD CONNECTION FROM %s total servers %d\n", cts.saddr, len(c.cts_map))
+	delete(c.cts_map_by_id, cts.id)
+fmt.Printf("REMOVEDDDDDD CONNECTION FROM %s total servers %d\n", cts.saddr, len(c.cts_map))
 	c.cts_mtx.Unlock()
 }
 
 func (c *Client) ReqStop() {
 	if c.stop_req.CompareAndSwap(false, true) {
-		var cts *ServerConn
+		var cts *ClientConn
 
-		if (c.ctl != nil) {
+		if c.ctl != nil {
 			c.ctl.Shutdown(c.ctx) // to break c.ctl.ListenAndServe()
 		}
 
@@ -765,67 +783,18 @@ func (c *Client) ReqStop() {
 		c.stop_chan <- true
 		c.ctx_cancel()
 	}
-fmt.Printf ("*** Sent stop request to client..\n")
 }
 
-func (c *Client) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	var err error
-
-	// command handler for the control channel
-	if req.URL.String() == "/servers" {
-		switch req.Method {
-			case http.MethodGet:
-				goto bad_request // TODO:
-
-			case http.MethodPost:
-				var s ClientCtlParamServer
-				var cc ClientConfig
-				err = json.NewDecoder(req.Body).Decode(&s)
-				if err != nil {
-		fmt.Printf ("failed to decode body - %s\n", err.Error())
-					goto bad_request
-				}
-				cc.ServerAddr = s.ServerAddr
-				cc.PeerAddrs = s.PeerAddrs
-				c.StartService(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
-				w.WriteHeader(http.StatusCreated)
-
-			case http.MethodPut:
-				goto bad_request // TODO:
-
-			case http.MethodDelete:
-				var cts *ServerConn
-				for _, cts = range c.cts_map {
-					cts.ReqStop()
-				}
-		}
-	} else {
-		goto bad_request
-	}
-	fmt.Printf ("[%s][%s][%s]\n", req.RequestURI, req.URL.String(), req.Method)
-	return
-
-bad_request:
-	w.WriteHeader(http.StatusBadRequest)
-	return
-}
-
-/*
- *                       POST                 GET            PUT            DELETE
- * /servers -     create new server     list all servers    bulk update     delete all servers
- * /servers/1 -        X             get server 1 details  update server 1  delete server 1
- * /servers/1/xxx -
- */
 func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 	var err error
 
 	defer wg.Done()
 
 	err = c.ctl.ListenAndServe()
-	if !errors.Is(err, http.ErrServerClosed) {
-		fmt.Printf ("------------http server error - %s\n", err.Error())
+	if errors.Is(err, http.ErrServerClosed) {
+		c.log.Write("", LOG_DEBUG, "Control channel closed")
 	} else {
-		fmt.Printf ("********* http server ended\n")
+		c.log.Write("", LOG_ERROR, "Control channel error - %s", err.Error())
 	}
 }
 
@@ -845,7 +814,7 @@ func (c *Client) RunTask(wg *sync.WaitGroup) {
 //   RunTask - supposed to be detached as a go routine
 func (c *Client) StartService(data interface{}) {
 	var saddr *net.TCPAddr
-	var cts *ServerConn
+	var cts *ClientConn
 	var err error
 	var cfg *ClientConfig
 	var ok bool
@@ -867,7 +836,7 @@ func (c *Client) StartService(data interface{}) {
 		return
 	}
 
-	cts, err = c.AddNewServerConn(saddr, cfg)
+	cts, err = c.AddNewClientConn(saddr, cfg)
 	if err != nil {
 		fmt.Printf("unable to add server connection structure to %s - %s", cfg.ServerAddr, err.Error())
 		return
@@ -895,6 +864,6 @@ func (c *Client) WaitForTermination() {
 	c.wg.Wait()
 }
 
-func (c *Client) WriteLog (id string, level LogLevel, fmtstr string, args ...interface{}) {
+func (c *Client) WriteLog(id string, level LogLevel, fmtstr string, args ...interface{}) {
 	c.log.Write(id, level, fmtstr, args...)
 }
