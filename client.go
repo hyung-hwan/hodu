@@ -30,6 +30,11 @@ type ClientConfig struct {
 	PeerAddrs []string
 }
 
+type ClientConfigActive struct {
+	Id uint32
+	ClientConfig
+}
+
 type Client struct {
 	ctx         context.Context
 	ctx_cancel  context.CancelFunc
@@ -66,7 +71,7 @@ type ClientPeerConn struct {
 // client connection to server
 type ClientConn struct {
 	cli      *Client
-	cfg      *ClientConfig
+	cfg      ClientConfigActive
 	saddr    *net.TCPAddr // server address that is connected to
 	id       uint32
 	lid      string
@@ -343,7 +348,7 @@ func NewClientConn(c *Client, addr *net.TCPAddr, cfg *ClientConfig) *ClientConn 
 	cts.cli = c
 	cts.route_map = make(ClientRouteMap)
 	cts.saddr = addr
-	cts.cfg = cfg
+	cts.cfg.ClientConfig = *cfg
 	cts.stop_req.Store(false)
 	cts.stop_chan = make(chan bool, 8)
 
@@ -752,6 +757,7 @@ func (c *Client) AddNewClientConn(addr *net.TCPAddr, cfg *ClientConfig) (*Client
 		id++
 	}
 	cts.id = id
+	cts.cfg.Id = id // store it again in the active configuration for easy access via control channel
 	cts.lid = fmt.Sprintf("%d", id)
 
 	c.cts_map[addr] = cts
@@ -809,10 +815,7 @@ func (c *Client) RunTask(wg *sync.WaitGroup) {
 	// StartService() calls cts.RunTask() instead.
 }
 
-// naming convention:
-//   RunService - returns after having executed another go routine
-//   RunTask - supposed to be detached as a go routine
-func (c *Client) StartService(data interface{}) {
+func (c *Client) start_service(data interface{}) (*ClientConn, error) {
 	var saddr *net.TCPAddr
 	var cts *ClientConn
 	var err error
@@ -821,29 +824,43 @@ func (c *Client) StartService(data interface{}) {
 
 	cfg, ok = data.(*ClientConfig)
 	if !ok {
-		fmt.Printf("invalid configuration given")
-		return
+		err = fmt.Errorf("invalid configuration given")
+		return nil, err
 	}
 
 	if len(cfg.PeerAddrs) < 0 || len(cfg.PeerAddrs) > int(^uint16(0)) { // TODO: change this check... not really right...
-		fmt.Printf("no peer addresses or too many peer addresses")
-		return
+		err = fmt.Errorf("invalid number of peer addresses given to server connection to %s", cfg.ServerAddr)
+		return nil, err
 	}
 
 	saddr, err = net.ResolveTCPAddr(NET_TYPE_TCP, cfg.ServerAddr) // TODO: make this interruptable...
 	if err != nil {
-		fmt.Printf("unable to resolve %s - %s", cfg.ServerAddr, err.Error())
-		return
+		err = fmt.Errorf("unresolavable address %s - %s", cfg.ServerAddr, err.Error())
+		return nil, err
 	}
 
 	cts, err = c.AddNewClientConn(saddr, cfg)
 	if err != nil {
-		fmt.Printf("unable to add server connection structure to %s - %s", cfg.ServerAddr, err.Error())
-		return
+		err = fmt.Errorf("unable to add server connection structure to %s - %s", cfg.ServerAddr, err.Error())
+		return nil, err
 	}
 
 	c.wg.Add(1)
 	go cts.RunTask(&c.wg)
+
+	return cts, nil
+}
+
+func (c *Client) StartService(data interface{}) {
+	var cts *ClientConn
+	var err error
+
+	cts, err = c.start_service(data)
+	if err != nil {
+		c.log.Write("", LOG_ERROR, "Failed to start service - %s", err.Error())
+	} else {
+		c.log.Write("", LOG_INFO, "Started service for %s [%d]", cts.cfg.ServerAddr, cts.cfg.Id)
+	}
 }
 
 func (c *Client) StartExtService(svc Service, data interface{}) {
