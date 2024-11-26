@@ -723,6 +723,7 @@ func NewClient(ctx context.Context, listen_on string, logger Logger, tlscfg *tls
 	c.mux = http.NewServeMux()
 	c.mux.Handle("/servers", &client_ctl_servers{c: &c})
 	c.mux.Handle("/servers/{id}", &client_ctl_servers_id{c: &c})
+	c.mux.Handle("/servers/{id}/peers", &client_ctl_servers_id_peers{c: &c})
 	c.mux.Handle("/clients", &client_ctl_clients{c: &c})
 	c.mux.Handle("/clients/{id}", &client_ctl_clients_id{c: &c})
 
@@ -772,6 +773,21 @@ func (c *Client) RemoveClientConn(cts *ClientConn) {
 	delete(c.cts_map_by_id, cts.id)
 fmt.Printf("REMOVEDDDDDD CONNECTION FROM %s total servers %d\n", cts.saddr, len(c.cts_map))
 	c.cts_mtx.Unlock()
+}
+
+func (c *Client) FindClientConnById(id uint32) *ClientConn {
+	var cts *ClientConn
+	var ok bool
+
+	c.cts_mtx.Lock()
+	defer c.cts_mtx.Unlock()
+
+	cts, ok = c.cts_map_by_id[id]
+	if !ok {
+		return nil
+	}
+
+	return cts
 }
 
 func (c *Client) ReqStop() {

@@ -2,6 +2,7 @@ package hodu
 
 import "encoding/json"
 import "net/http"
+import "strconv"
 
 
 /*
@@ -12,8 +13,12 @@ import "net/http"
  * /servers/1112123/peers
  */
 
-type http_errmsg struct {
+type json_errmsg struct {
 	Text string `json:"error-text"`
+}
+
+type json_peer_addr struct {
+	PeerAddr string `json:"peer-addr"`
 }
 
 type client_ctl_servers struct {
@@ -21,6 +26,10 @@ type client_ctl_servers struct {
 }
 
 type client_ctl_servers_id struct {
+	c *Client
+}
+
+type client_ctl_servers_id_peers struct {
 	c *Client
 }
 
@@ -81,7 +90,7 @@ func (ctl *client_ctl_servers) ServeHTTP(w http.ResponseWriter, req *http.Reques
 				var je *json.Encoder
 				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 				je = json.NewEncoder(w)
-				if err = je.Encode(http_errmsg{Text: err.Error()}); err != nil { goto oops }
+				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
 				var je *json.Encoder
 				status_code = http.StatusCreated; w.WriteHeader(status_code)
@@ -134,6 +143,58 @@ bad_request:
 	return
 }
 
+func (ctl *client_ctl_servers_id_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var c *Client
+	var status_code int
+	var err error
+	var id string
+
+	c = ctl.c
+
+	id = req.PathValue("id")
+	switch req.Method {
+		case http.MethodGet:
+
+		case http.MethodPost:
+			var s json_peer_addr
+			var cts *ClientConn
+			var nid uint64
+
+			err = json.NewDecoder(req.Body).Decode(&s)
+			if err != nil {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				goto done
+			}
+
+			nid, err = strconv.ParseUint(id, 10, 32)
+			if err != nil {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				goto done
+			}
+
+			cts = c.FindClientConnById(uint32(nid))
+			if cts == nil {
+				status_code = http.StatusNotFound; w.WriteHeader(status_code)
+			} else {
+				//cts.AddPeerAddr()
+				status_code = http.StatusCreated; w.WriteHeader(status_code)
+			}
+
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+
+done:
+	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
+	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	return
+
+/*
+oops:
+	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+	return
+*/
+}
 // ------------------------------------
 
 func (ctl *client_ctl_clients) ServeHTTP(w http.ResponseWriter, req *http.Request) {
