@@ -10,16 +10,35 @@ import "strconv"
  * /servers -     create new server     list all servers    bulk update     delete all servers
  * /servers/1 -        X             get server 1 details  update server 1  delete server 1
  * /servers/1/xxx -
+ *
  * /servers/1112123/peers
+ *   POST add a new peer to a server
+ *   GET list all peers
+ *   PUT create/replace
+ *   PATCH partial update
  */
 
 type json_errmsg struct {
 	Text string `json:"error-text"`
 }
 
-type json_peer_addr struct {
-	PeerAddr string `json:"peer-addr"`
+type json_in_peer_addrs struct {
+	PeerAddrs []string `json:"peer-addrs"`
 }
+
+type json_out_server struct {
+	Id uint32 `json:"id"`
+	ServerAddr string `json:"server-addr"`
+	PeerAddrs []json_out_server_peer `json:"peer-addrs"`
+}
+
+type json_out_server_peer struct {
+	Id uint32 `json:"id"`
+	ClientPeerAddr string `json:"peer-addr"`
+	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
+}
+
+// ------------------------------------
 
 type client_ctl_servers struct {
 	c *Client
@@ -53,23 +72,31 @@ func (ctl *client_ctl_servers) ServeHTTP(w http.ResponseWriter, req *http.Reques
 	switch req.Method {
 		case http.MethodGet:
 			var je *json.Encoder
-			//var rc *http.ResponseController
 			var cts *ClientConn
-			var first bool = true
+			var js []json_out_server
 
-			//rc = http.NewResponseController(w)
 			status_code = http.StatusOK; w.WriteHeader(status_code)
 			je = json.NewEncoder(w)
-			if _, err = w.Write([]byte("[")); err != nil { goto oops }
+
 			c.cts_mtx.Lock()
 			for _, cts = range c.cts_map_by_id {
-				if !first { w.Write([]byte(",")) }
-				if err = je.Encode(cts.cfg); err != nil { goto oops }
-				first = false
+				var r *ClientRoute
+				var jsp []json_out_server_peer
+
+				cts.route_mtx.Lock()
+				for _, r = range cts.route_map {
+					jsp = append(jsp, json_out_server_peer{
+						Id: r.id,
+						ClientPeerAddr: r.peer_addr.String(),
+						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+					})
+				}
+				js = append(js, json_out_server{Id: cts.id, ServerAddr: cts.saddr.String(), PeerAddrs: jsp})
+				cts.route_mtx.Unlock()
 			}
 			c.cts_mtx.Unlock()
-			if _, err = w.Write([]byte("]")); err != nil { goto oops }
-			//rc.Flush()
+
+			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodPost:
 			// add a new server connection
@@ -156,11 +183,11 @@ func (ctl *client_ctl_servers_id_peers) ServeHTTP(w http.ResponseWriter, req *ht
 		case http.MethodGet:
 
 		case http.MethodPost:
-			var s json_peer_addr
+			var pa json_in_peer_addrs
 			var cts *ClientConn
 			var nid uint64
 
-			err = json.NewDecoder(req.Body).Decode(&s)
+			err = json.NewDecoder(req.Body).Decode(&pa)
 			if err != nil {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				goto done
@@ -176,8 +203,15 @@ func (ctl *client_ctl_servers_id_peers) ServeHTTP(w http.ResponseWriter, req *ht
 			if cts == nil {
 				status_code = http.StatusNotFound; w.WriteHeader(status_code)
 			} else {
-				//cts.AddPeerAddr()
-				status_code = http.StatusCreated; w.WriteHeader(status_code)
+				err = cts.AddClientRoutes(pa.PeerAddrs)
+				if err != nil {
+					var je *json.Encoder
+					status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
+					je = json.NewEncoder(w)
+					if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
+				} else {
+					status_code = http.StatusCreated; w.WriteHeader(status_code)
+				}
 			}
 
 		default:
@@ -189,11 +223,10 @@ done:
 	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
 	return
 
-/*
 oops:
 	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
 	return
-*/
+
 }
 // ------------------------------------
 
