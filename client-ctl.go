@@ -16,6 +16,8 @@ import "strconv"
  *   GET list all peers
  *   PUT create/replace
  *   PATCH partial update
+ * /servers/1112123/peers/1231344
+ *   GET get info
  */
 
 type json_errmsg struct {
@@ -26,31 +28,36 @@ type json_in_peer_addrs struct {
 	PeerAddrs []string `json:"peer-addrs"`
 }
 
-type json_out_server struct {
+type json_out_client_conn struct {
 	Id uint32 `json:"id"`
 	ServerAddr string `json:"server-addr"`
-	PeerAddrs []json_out_server_peer `json:"peer-addrs"`
+	Routes []json_out_client_route `json:"routes"`
 }
 
-type json_out_server_peer struct {
+type json_out_client_route struct {
 	Id uint32 `json:"id"`
-	ClientPeerAddr string `json:"peer-addr"`
+	ClientPeerAddr string `json:"client-peer-addr"`
 	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
 }
 
 // ------------------------------------
 
-type client_ctl_servers struct {
+type client_ctl_client_conns struct {
 	c *Client
 }
 
-type client_ctl_servers_id struct {
+type client_ctl_client_conns_id struct {
 	c *Client
 }
 
-type client_ctl_servers_id_peers struct {
+type client_ctl_client_conns_id_routes struct {
 	c *Client
 }
+
+type client_ctl_client_conns_id_routes_id struct {
+	c *Client
+}
+
 
 type client_ctl_clients struct {
 	c *Client
@@ -62,40 +69,41 @@ type client_ctl_clients_id struct {
 
 // ------------------------------------
 
-func (ctl *client_ctl_servers) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var c *Client
 	var status_code int
 	var err error
+	var je *json.Encoder
 
 	c = ctl.c
+	je = json.NewEncoder(w)
 
 	switch req.Method {
 		case http.MethodGet:
-			var je *json.Encoder
 			var cts *ClientConn
-			var js []json_out_server
+			var js []json_out_client_conn
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
-			je = json.NewEncoder(w)
-
+			js = make([]json_out_client_conn, 0)
 			c.cts_mtx.Lock()
 			for _, cts = range c.cts_map_by_id {
 				var r *ClientRoute
-				var jsp []json_out_server_peer
+				var jsp []json_out_client_route
 
+				jsp = make([]json_out_client_route, 0)
 				cts.route_mtx.Lock()
 				for _, r = range cts.route_map {
-					jsp = append(jsp, json_out_server_peer{
+					jsp = append(jsp, json_out_client_route{
 						Id: r.id,
 						ClientPeerAddr: r.peer_addr.String(),
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					})
 				}
-				js = append(js, json_out_server{Id: cts.id, ServerAddr: cts.saddr.String(), PeerAddrs: jsp})
+				js = append(js, json_out_client_conn{Id: cts.id, ServerAddr: cts.saddr.String(), Routes: jsp})
 				cts.route_mtx.Unlock()
 			}
 			c.cts_mtx.Unlock()
 
+			status_code = http.StatusOK; w.WriteHeader(status_code)
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodPost:
@@ -106,22 +114,17 @@ func (ctl *client_ctl_servers) ServeHTTP(w http.ResponseWriter, req *http.Reques
 
 			err = json.NewDecoder(req.Body).Decode(&s)
 			if err != nil {
-				status_code = http.StatusBadRequest
-				w.WriteHeader(status_code)
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				goto done
 			}
 			cc.ServerAddr = s.ServerAddr
 			cc.PeerAddrs = s.PeerAddrs
 			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
 			if err != nil {
-				var je *json.Encoder
 				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
-				je = json.NewEncoder(w)
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
-				var je *json.Encoder
 				status_code = http.StatusCreated; w.WriteHeader(status_code)
-				je = json.NewEncoder(w)
 				if err = je.Encode(cts.cfg); err != nil { goto oops }
 			}
 
@@ -131,7 +134,7 @@ func (ctl *client_ctl_servers) ServeHTTP(w http.ResponseWriter, req *http.Reques
 			c.cts_mtx.Lock()
 			for _, cts = range c.cts_map { cts.ReqStop() }
 			c.cts_mtx.Unlock()
-			w.WriteHeader(http.StatusNoContent)
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
@@ -149,43 +152,136 @@ oops:
 
 // ------------------------------------
 
-// servers/{id}
-func (ctl *client_ctl_servers_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-
-	//req.PathValue("id")
-	switch req.Method {
-		case http.MethodGet:
-
-		case http.MethodPost:
-
-		case http.MethodPut: // update
-			goto bad_request
-
-		case http.MethodDelete:
-	}
-	return
-
-bad_request:
-	w.WriteHeader(http.StatusBadRequest)
-	return
-}
-
-func (ctl *client_ctl_servers_id_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+// client-conns/{conn_id}
+func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var c *Client
 	var status_code int
 	var err error
-	var id string
+	var conn_id string
+	var conn_nid uint64
+	var je *json.Encoder
+
 
 	c = ctl.c
+	je = json.NewEncoder(w)
 
-	id = req.PathValue("id")
+	conn_id = req.PathValue("conn_id")
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+
 	switch req.Method {
 		case http.MethodGet:
+			var r *ClientRoute
+			var jsp []json_out_client_route
+			var js *json_out_client_conn
+			var cts *ClientConn
+
+			cts = c.FindClientConnById(uint32(conn_nid))
+			if cts == nil {
+				status_code = http.StatusNotFound; w.WriteHeader(status_code)
+				if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+				goto done
+			}
+
+			jsp = make([]json_out_client_route, 0)
+			cts.route_mtx.Lock()
+			for _, r = range cts.route_map {
+				jsp = append(jsp, json_out_client_route{
+					Id: r.id,
+					ClientPeerAddr: r.peer_addr.String(),
+					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+				})
+			}
+			js = &json_out_client_conn{Id: cts.id, ServerAddr: cts.saddr.String(), Routes: jsp}
+			cts.route_mtx.Unlock()
+
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			if err = je.Encode(js); err != nil { goto oops }
+
+		case http.MethodDelete:
+		/*
+			err = c.RemoveClientConnById(uint32(conn_nid))
+			if err != nil {
+				status_code = http.StatusNotFound; w.WriteHeader(status_code)
+				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
+			} else {
+				status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			}
+		*/
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+	return
+
+
+done:
+	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
+	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	return
+
+oops:
+	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+	return
+
+}
+
+func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var c *Client
+	var status_code int
+	var err error
+	var conn_id string
+	var conn_nid uint64
+	var je *json.Encoder
+	var cts *ClientConn
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	cts = c.FindClientConnById(uint32(conn_nid))
+	if cts == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			var r *ClientRoute
+			var jsp []json_out_client_route
+
+
+			jsp = make([]json_out_client_route, 0)
+			cts.route_mtx.Lock()
+			for _, r = range cts.route_map {
+				jsp = append(jsp, json_out_client_route{
+					Id: r.id,
+					ClientPeerAddr: r.peer_addr.String(),
+					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+				})
+			}
+			cts.route_mtx.Unlock()
+
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			if err = je.Encode(jsp); err != nil { goto oops }
 
 		case http.MethodPost:
 			var pa json_in_peer_addrs
 			var cts *ClientConn
-			var nid uint64
 
 			err = json.NewDecoder(req.Body).Decode(&pa)
 			if err != nil {
@@ -193,21 +289,14 @@ func (ctl *client_ctl_servers_id_peers) ServeHTTP(w http.ResponseWriter, req *ht
 				goto done
 			}
 
-			nid, err = strconv.ParseUint(id, 10, 32)
-			if err != nil {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-				goto done
-			}
-
-			cts = c.FindClientConnById(uint32(nid))
+			cts = c.FindClientConnById(uint32(conn_nid))
 			if cts == nil {
 				status_code = http.StatusNotFound; w.WriteHeader(status_code)
+				if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 			} else {
 				err = cts.AddClientRoutes(pa.PeerAddrs)
 				if err != nil {
-					var je *json.Encoder
 					status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
-					je = json.NewEncoder(w)
 					if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 				} else {
 					status_code = http.StatusCreated; w.WriteHeader(status_code)
@@ -228,6 +317,86 @@ oops:
 	return
 
 }
+
+// ------------------------------------
+
+func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var c *Client
+	var status_code int
+	var err error
+	var conn_id string
+	var route_id string
+	var conn_nid uint64
+	var route_nid uint64
+	var je *json.Encoder
+	var cts *ClientConn
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	route_id = req.PathValue("route_id")
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+	route_nid, err = strconv.ParseUint(route_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
+		goto done
+	}
+
+	cts = c.FindClientConnById(uint32(conn_nid))
+	if cts == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			var r *ClientRoute
+
+			r = cts.FindClientRouteById(uint32(route_nid))
+			if r == nil {
+				status_code = http.StatusNotFound; w.WriteHeader(status_code)
+				if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
+				goto done
+			}
+			err = je.Encode(json_out_client_route{
+				Id: r.id,
+				ClientPeerAddr: r.peer_addr.String(),
+				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+			})
+			if err != nil { goto oops }
+
+		case http.MethodDelete:
+			err = cts.RemoveClientRouteById(uint32(route_nid))
+			if err != nil {
+				status_code = http.StatusNotFound; w.WriteHeader(status_code)
+				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
+			} else {
+				status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			}
+
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+
+done:
+	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
+	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	return
+
+oops:
+	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+	return
+}
+
 // ------------------------------------
 
 func (ctl *client_ctl_clients) ServeHTTP(w http.ResponseWriter, req *http.Request) {

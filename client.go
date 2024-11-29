@@ -39,6 +39,7 @@ type Client struct {
 	ctx         context.Context
 	ctx_cancel  context.CancelFunc
 	tlscfg     *tls.Config
+	api_prefix  string
 
 	ext_svcs   []Service
 	ctl        *http.Server // control server
@@ -451,6 +452,21 @@ func (cts *ClientConn) RemoveClientRouteById(route_id uint32) error {
 	return nil
 }
 
+func (cts *ClientConn) FindClientRouteById(route_id uint32) *ClientRoute {
+	var r *ClientRoute
+	var ok bool
+
+	cts.route_mtx.Lock()
+	r, ok = cts.route_map[route_id]
+	if !ok {
+		cts.route_mtx.Unlock()
+		return nil
+	}
+	cts.route_mtx.Unlock()
+
+	return r
+}
+
 func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 	var v string
 	var addr *net.TCPAddr
@@ -755,13 +771,15 @@ func NewClient(ctx context.Context, listen_on string, logger Logger, tlscfg *tls
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
 	c.log = logger
+	c.api_prefix = "" // TODO:
 
 	c.mux = http.NewServeMux()
-	c.mux.Handle("/servers", &client_ctl_servers{c: &c})
-	c.mux.Handle("/servers/{id}", &client_ctl_servers_id{c: &c})
-	c.mux.Handle("/servers/{id}/peers", &client_ctl_servers_id_peers{c: &c})
-	c.mux.Handle("/clients", &client_ctl_clients{c: &c})
-	c.mux.Handle("/clients/{id}", &client_ctl_clients_id{c: &c})
+	c.mux.Handle(c.api_prefix + "/client-conns", &client_ctl_client_conns{c: &c})
+	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}", &client_ctl_client_conns_id{c: &c})
+	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes", &client_ctl_client_conns_id_routes{c: &c})
+	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes/{route_id}", &client_ctl_client_conns_id_routes_id{c: &c})
+	c.mux.Handle(c.api_prefix + "/server-conns", &client_ctl_clients{c: &c})
+	c.mux.Handle(c.api_prefix + "/server-conns/{id}", &client_ctl_clients_id{c: &c})
 
 	c.ctl = &http.Server{
 		Addr: listen_on,
