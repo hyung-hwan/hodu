@@ -216,7 +216,6 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodDelete:
-		/* TODO
 			err = c.RemoveClientConnById(uint32(conn_nid))
 			if err != nil {
 				status_code = http.StatusNotFound; w.WriteHeader(status_code)
@@ -224,7 +223,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			} else {
 				status_code = http.StatusNoContent; w.WriteHeader(status_code)
 			}
-		*/
+
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 	}

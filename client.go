@@ -704,7 +704,7 @@ fmt.Printf("context doine... error - %s\n", cts.cli.ctx.Err().Error())
 
 done:
 	cts.cli.log.Write("", LOG_INFO, "Disconnected from server %s", cts.cfg.ServerAddr)
-	//cts.RemoveClientRoutes()
+	//cts.RemoveClientRoutes() // this isn't needed as each task removes itself from cts upon its termination
 	cts.ReqStop()
 wait_for_termination:
 	cts.route_wg.Wait() // wait until all route tasks are finished
@@ -821,12 +821,54 @@ fmt.Printf("ADD total servers %d\n", len(c.cts_map))
 	return cts, nil
 }
 
-func (c *Client) RemoveClientConn(cts *ClientConn) {
+func (c *Client) RemoveClientConn(cts *ClientConn) error {
+	var conn *ClientConn
+	var ok bool
+
 	c.cts_mtx.Lock()
+
+	conn, ok = c.cts_map[cts.cfg.ServerAddr]
+	if !ok {
+		c.cts_mtx.Unlock()
+		return fmt.Errorf("non-existent connection id - %d", cts.id)
+	}
+	if conn != cts {
+		c.cts_mtx.Unlock()
+		return fmt.Errorf("non-existent connection id - %d", cts.id)
+	}
+
 	delete(c.cts_map, cts.cfg.ServerAddr)
 	delete(c.cts_map_by_id, cts.id)
 fmt.Printf("REMOVEDDDDDD CONNECTION FROM %s total servers %d\n", cts.cfg.ServerAddr, len(c.cts_map))
 	c.cts_mtx.Unlock()
+
+	c.ReqStop()
+	return nil
+}
+
+func (c *Client) RemoveClientConnById(conn_id uint32) error {
+	var cts *ClientConn
+	var ok bool
+
+	c.cts_mtx.Lock()
+
+	cts, ok = c.cts_map_by_id[conn_id]
+	if !ok {
+		c.cts_mtx.Unlock()
+		return fmt.Errorf("non-existent connection id - %d", conn_id)
+	}
+	if cts != cts {
+		c.cts_mtx.Unlock()
+		return fmt.Errorf("non-existent connection id - %d", conn_id)
+	}
+
+	delete(c.cts_map, cts.cfg.ServerAddr)
+	delete(c.cts_map_by_id, cts.id)
+fmt.Printf("REMOVEDDDDDD CONNECTION FROM %s total servers %d\n", cts.cfg.ServerAddr, len(c.cts_map))
+	c.cts_mtx.Unlock()
+
+	cts.ReqStop()
+	return nil
 }
 
 func (c *Client) FindClientConnById(id uint32) *ClientConn {
