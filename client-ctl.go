@@ -96,7 +96,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 
 			js = make([]json_out_client_conn, 0)
 			c.cts_mtx.Lock()
-			for _, cts = range c.cts_map_by_id {
+			for _, cts = range c.cts_map {
 				var r *ClientRoute
 				var jsp []json_out_client_route
 
@@ -145,11 +145,11 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			}
 
 		case http.MethodDelete:
-			// delete all server conneections
-			var cts *ClientConn
-			c.cts_mtx.Lock()
-			for _, cts = range c.cts_map { cts.ReqStop() }
-			c.cts_mtx.Unlock()
+			// delete all client connections to servers. if we request to stop all
+			// client connections, they will remove themselves from the client.
+			// we do passive deletion rather than doing active deletion by calling
+			// c.RemoveAllClientConns()
+			c.ReqStopAllClientConns()
 			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:
@@ -177,7 +177,6 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	var conn_nid uint64
 	var je *json.Encoder
 
-
 	c = ctl.c
 	je = json.NewEncoder(w)
 
@@ -189,7 +188,6 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
-
 
 	switch req.Method {
 		case http.MethodGet:
@@ -234,7 +232,6 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	}
 	return
 
-
 done:
 	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
 	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
@@ -243,8 +240,9 @@ done:
 oops:
 	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
 	return
-
 }
+
+// ------------------------------------
 
 func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var c *Client
@@ -313,7 +311,8 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			}
 
 		case http.MethodDelete:
-			cts.RemoveClientRoutes()
+			//cts.RemoveAllClientRoutes()
+			cts.ReqStopAllClientRoutes()
 			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:
