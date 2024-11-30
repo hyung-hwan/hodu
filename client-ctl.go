@@ -118,7 +118,12 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodPost:
-			// add a new server connection
+			// add a new client connection to a server with no client-side peers
+			// while the client code can accept one more more client-side peer address
+			// with the server added, i don't intentially accept peer addresses
+			// as it's tricky to handle erroneous cases in creating the client routes
+			// after hacing connected to the server. therefore, the json_in_client_conn
+			// type contains a server address field only.
 			var s json_in_client_conn
 			var cc ClientConfig
 			var cts *ClientConn
