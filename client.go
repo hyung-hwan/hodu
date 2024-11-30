@@ -857,10 +857,8 @@ func (c *Client) RemoveClientConnById(conn_id uint32) error {
 		c.cts_mtx.Unlock()
 		return fmt.Errorf("non-existent connection id - %d", conn_id)
 	}
-	if cts != cts {
-		c.cts_mtx.Unlock()
-		return fmt.Errorf("non-existent connection id - %d", conn_id)
-	}
+
+	// NOTE: removal by id doesn't perform identity check
 
 	delete(c.cts_map, cts.cfg.ServerAddr)
 	delete(c.cts_map_by_id, cts.id)
