@@ -56,24 +56,10 @@ type Client struct {
 	mux        *http.ServeMux
 }
 
-type ClientPeerConn struct {
-	route *ClientRoute
-	conn_id uint32
-	conn *net.TCPConn
-	remot_conn_id uint32
-
-	addr     string // peer address
-
-	stop_chan chan bool
-	stop_req atomic.Bool
-	server_peer_eof atomic.Bool
-}
-
 // client connection to server
 type ClientConn struct {
 	cli      *Client
 	cfg      ClientConfigActive
-	//saddr    *net.TCPAddr // server address that is connected to
 	id       uint32
 	lid      string
 
@@ -106,6 +92,16 @@ type ClientRoute struct {
 
 	stop_req atomic.Bool
 	stop_chan chan bool
+}
+
+type ClientPeerConn struct {
+	route *ClientRoute
+	conn_id uint32
+	conn *net.TCPConn
+
+	stop_chan chan bool
+	stop_req atomic.Bool
+	server_peer_eof atomic.Bool
 }
 
 type GuardedPacketStreamClient struct {
@@ -176,7 +172,7 @@ done:
 	r.cts.cli.log.Write("", LOG_DEBUG, "Sending route-stop for id=%d peer=%s to %s", r.id, r.peer_addr, r.cts.cfg.ServerAddr)
 	r.cts.psc.Send(MakeRouteStopPacket(r.id, r.proto, r.peer_addr))
 	r.cts.RemoveClientRoute(r)
-fmt.Printf("*** End fo Client Roue Task\n")
+fmt.Printf("*** End fo Client Route Task\n")
 }
 
 func (r *ClientRoute) ReqStop() {
@@ -790,6 +786,8 @@ func NewClient(ctx context.Context, listen_on string, logger Logger, tlscfg *tls
 	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}", &client_ctl_client_conns_id{c: &c})
 	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes", &client_ctl_client_conns_id_routes{c: &c})
 	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes/{route_id}", &client_ctl_client_conns_id_routes_id{c: &c})
+	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers", &client_ctl_client_conns_id_routes_id_peers{c: &c})
+	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}", &client_ctl_client_conns_id_routes_id_peers_id{c: &c})
 	c.mux.Handle(c.api_prefix + "/server-conns", &client_ctl_clients{c: &c})
 	c.mux.Handle(c.api_prefix + "/server-conns/{id}", &client_ctl_clients_id{c: &c})
 
@@ -918,6 +916,21 @@ func (c *Client) FindClientConnById(id uint32) *ClientConn {
 	}
 
 	return cts
+}
+
+func (c *Client) FindClientRouteById(conn_id uint32, route_id uint32) *ClientRoute {
+	var cts *ClientConn
+	var ok bool
+
+	c.cts_mtx.Lock()
+	defer c.cts_mtx.Unlock()
+
+	cts, ok = c.cts_map[conn_id]
+	if !ok {
+		return nil
+	}
+
+	return cts.FindClientRouteById(route_id)
 }
 
 func (c *Client) ReqStop() {

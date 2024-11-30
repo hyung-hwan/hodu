@@ -17,26 +17,25 @@ func NewClientPeerConn(r *ClientRoute, c *net.TCPConn, id uint32) *ClientPeerCon
 }
 
 func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
-	//var conn *net.TCPConn
-	//var addr *net.TCPAddr
 	var err error
 	var buf [4096]byte
 	var n int
 
 	defer wg.Done()
 
-	fmt.Printf("CONNECTION ESTABLISHED TO PEER... ABOUT TO READ DATA...\n")
+fmt.Printf("CONNECTION ESTABLISHED TO PEER... ABOUT TO READ DATA...\n")
 	for {
 		n, err = cpc.conn.Read(buf[:])
 		if err != nil {
-			fmt.Printf("unable to read from the client-side peer %s - %s\n", cpc.addr, err.Error())
+// TODO: add proper log header
+			cpc.route.cts.cli.log.Write("", LOG_ERROR,  "Unable to read from the client-side peer %s - %s", cpc.conn.RemoteAddr().String(), err.Error())
 			break
 		}
 
-// TODO: guarded call..
 		err = cpc.route.cts.psc.Send(MakePeerDataPacket(cpc.route.id, cpc.conn_id, buf[0:n]))
 		if err != nil {
-			fmt.Printf("unable to write data to server - %s\n", err.Error())
+// TODO: add proper log header
+			cpc.route.cts.cli.log.Write("", LOG_ERROR,  "Unable to write to server - %s", err.Error())
 			break
 		}
 	}
