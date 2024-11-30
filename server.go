@@ -29,6 +29,7 @@ type Server struct {
 	tlscfg      *tls.Config
 
 	wg          sync.WaitGroup
+	ext_mtx     sync.Mutex
 	ext_svcs    []Service
 	stop_req    atomic.Bool
 	stop_chan   chan bool
@@ -913,7 +914,9 @@ func (s *Server) StartService(cfg interface{}) {
 }
 
 func (s *Server) StartExtService(svc Service, data interface{}) {
+	s.ext_mtx.Lock()
 	s.ext_svcs = append(s.ext_svcs, svc)
+	s.ext_mtx.Unlock()
 	s.wg.Add(1)
 	go svc.RunTask(&s.wg)
 }

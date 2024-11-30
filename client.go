@@ -41,6 +41,7 @@ type Client struct {
 	tlscfg     *tls.Config
 	api_prefix  string
 
+	ext_mtx     sync.Mutex
 	ext_svcs   []Service
 	ctl        *http.Server // control server
 
@@ -1011,7 +1012,9 @@ func (c *Client) StartService(data interface{}) {
 }
 
 func (c *Client) StartExtService(svc Service, data interface{}) {
+	c.ext_mtx.Lock()
 	c.ext_svcs = append(c.ext_svcs, svc)
+	c.ext_mtx.Unlock()
 	c.wg.Add(1)
 	go svc.RunTask(&c.wg)
 }
