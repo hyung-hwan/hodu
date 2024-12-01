@@ -216,12 +216,12 @@ func main() {
 		la = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
-		flgs.Func("rpc-on", "specify a rpc listening address", func(v string) error {
-			la = append(la, v)
-			return nil
-		})
 		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
 			ctl_addr = v // TODO: support multiple addrs
+			return nil
+		})
+		flgs.Func("rpc-on", "specify a rpc listening address", func(v string) error {
+			la = append(la, v)
 			return nil
 		})
 		flgs.SetOutput(io.Discard) // prevent usage output
@@ -241,19 +241,19 @@ func main() {
 			goto oops
 		}
 	} else if strings.EqualFold(os.Args[1], "client") {
-		var la []string
-		var sa []string
+		var rpc_addr []string
+		var ctl_addr[] string
 
-		la = make([]string, 0)
-		sa = make([]string, 0)
+		ctl_addr = make([]string, 0)
+		rpc_addr = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
-		flgs.Func("rpc-on", "specify a control channel address", func(v string) error {
-			la = append(la, v)
+		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
+			ctl_addr = append(ctl_addr, v)
 			return nil
 		})
 		flgs.Func("rpc-server", "specify a rpc server address", func(v string) error {
-			sa = append(sa, v)
+			rpc_addr = append(rpc_addr, v)
 			return nil
 		})
 		flgs.SetOutput(io.Discard)
@@ -263,10 +263,10 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(la) != 1 || len(sa) != 1 || flgs.NArg() < 1 {
+		if len(ctl_addr) != 1 || len(rpc_addr) != 1 || flgs.NArg() < 1 {
 			goto wrong_usage
 		}
-		err = client_main(la[0], sa[0], flgs.Args())
+		err = client_main(ctl_addr[0], rpc_addr[0], flgs.Args())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: client error - %s\n", err.Error())
 			goto oops

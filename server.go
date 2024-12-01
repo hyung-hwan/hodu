@@ -16,8 +16,6 @@ import "google.golang.org/grpc"
 //import "google.golang.org/grpc/metadata"
 import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/stats"
-import "golang.org/x/net/websocket"
-
 
 const PTS_LIMIT = 8192
 
@@ -57,7 +55,9 @@ type Server struct {
 // client connect to the server, the server accept it, and makes a tunnel request
 type ServerConn struct {
 	svr       *Server
+	id         uint32
 	caddr      net.Addr // client address that created this structure
+	local_addr net.Addr
 	pss       *GuardedPacketStreamServer
 
 	route_mtx  sync.Mutex
@@ -73,6 +73,7 @@ type ServerRoute struct {
 	cts        *ServerConn
 	l          *net.TCPListener
 	laddr      *net.TCPAddr
+	ptc_addr    string
 	id          uint32
 
 	pts_mtx     sync.Mutex
@@ -112,7 +113,7 @@ func (g *GuardedPacketStreamServer) Context() context.Context {
 
 // ------------------------------------
 
-func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO) (*ServerRoute, error) {
+func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO, ptc_addr string) (*ServerRoute, error) {
 	var r ServerRoute
 	var l *net.TCPListener
 	var laddr *net.TCPAddr
@@ -127,6 +128,7 @@ func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO) (*ServerRoute
 	r.id = id
 	r.l = l
 	r.laddr = laddr
+	r.ptc_addr = ptc_addr
 	r.pts_limit = PTS_LIMIT
 	r.pts_map = make(ServerPeerConnMap)
 	r.pts_last_id = 0
@@ -284,7 +286,7 @@ func (cts *ServerConn) make_route_listener(proto ROUTE_PROTO) (*net.TCPListener,
 	return nil, nil, err
 }
 
-func (cts *ServerConn) AddNewServerRoute(route_id uint32, proto ROUTE_PROTO) (*ServerRoute, error) {
+func (cts *ServerConn) AddNewServerRoute(route_id uint32, proto ROUTE_PROTO, ptc_addr string) (*ServerRoute, error) {
 	var r *ServerRoute
 	var err error
 
@@ -293,7 +295,7 @@ func (cts *ServerConn) AddNewServerRoute(route_id uint32, proto ROUTE_PROTO) (*S
 		cts.route_mtx.Unlock()
 		return nil, fmt.Errorf("existent route id - %d", route_id)
 	}
-	r, err = NewServerRoute(cts, route_id, proto)
+	r, err = NewServerRoute(cts, route_id, proto, ptc_addr)
 	if err != nil {
 		cts.route_mtx.Unlock()
 		return nil, err
@@ -384,7 +386,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				if ok {
 					var r *ServerRoute
 
-					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.Proto)
+					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.Proto, x.Route.AddrStr)
 					if err != nil {
 						cts.svr.log.Write("", LOG_ERROR, "Failed to add server route for client %s peer %s", cts.caddr, x.Route.AddrStr)
 					} else {
@@ -579,7 +581,7 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 		return fmt.Errorf("failed to get peer from packet stream context")
 	}
 
-	cts, err = s.AddNewServerConn(p.Addr, strm)
+	cts, err = s.AddNewServerConn(&p.Addr, &p.LocalAddr, strm)
 	if err != nil {
 		return fmt.Errorf("unable to add client %s - %s", p.Addr.String(), err.Error())
 	}
@@ -749,8 +751,8 @@ func NewServer(ctx context.Context, ctl_addr string, laddrs []string, logger Log
 	cwd, _ = os.Getwd()
 	s.ctl_mux.Handle(s.ctl_prefix + "/ui/", http.StripPrefix(s.ctl_prefix, http.FileServer(http.Dir(cwd)))) // TODO: proper directory. it must not use the current working directory...
 	//s.ctl_mux.HandleFunc(s.ctl_prefix + "/ws/tty", websocket.Handler(server_ws_tty).ServeHTTP)
-	s.ctl_mux.Handle(s.ctl_prefix + "/ws/tty", &server_ctl_ws_tty{s: &s, h: websocket.Handler(server_ws_tty)})
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns", &server_ctl_client_conns{s: &s})
+	s.ctl_mux.Handle(s.ctl_prefix + "/ws/tty", new_server_ctl_ws_tty(&s))
+	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns", &server_ctl_server_conns{s: &s})
 
 	s.ctl = &http.Server{
 		Addr: ctl_addr,
@@ -868,13 +870,14 @@ func (s *Server) ReqStop() {
 	}
 }
 
-func (s *Server) AddNewServerConn(addr net.Addr, pss Hodu_PacketStreamServer) (*ServerConn, error) {
+func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, pss Hodu_PacketStreamServer) (*ServerConn, error) {
 	var cts ServerConn
 	var ok bool
 
 	cts.svr = s
 	cts.route_map = make(ServerRouteMap)
-	cts.caddr = addr
+	cts.caddr = *remote_addr
+	cts.local_addr = *local_addr
 	cts.pss = &GuardedPacketStreamServer{Hodu_PacketStreamServer: pss}
 
 	cts.stop_req.Store(false)
@@ -883,12 +886,12 @@ func (s *Server) AddNewServerConn(addr net.Addr, pss Hodu_PacketStreamServer) (*
 	s.cts_mtx.Lock()
 	defer s.cts_mtx.Unlock()
 
-	_, ok = s.cts_map[addr]
+	_, ok = s.cts_map[cts.caddr]
 	if ok {
-		return nil, fmt.Errorf("existing client - %s", addr.String())
+		return nil, fmt.Errorf("existing client - %s", cts.caddr.String())
 	}
-	s.cts_map[addr] = &cts
-	s.log.Write("", LOG_DEBUG, "Added client connection from %s", addr.String())
+	s.cts_map[cts.caddr] = &cts
+	s.log.Write("", LOG_DEBUG, "Added client connection from %s", cts.caddr.String())
 	return &cts, nil
 }
 
@@ -908,8 +911,8 @@ func (s *Server) RemoveServerConnByAddr(addr net.Addr) {
 
 	cts, ok = s.cts_map[addr]
 	if ok {
-		cts.ReqStop()
 		delete(s.cts_map, cts.caddr)
+		cts.ReqStop()
 	}
 }
 

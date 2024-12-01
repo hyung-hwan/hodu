@@ -55,7 +55,7 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 	err = pss.Send(MakePeerStartedPacket(spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String()))
 	if err != nil {
 		// TODO: include route id and conn id in the error message
-		fmt.Printf("unable to send start-pts - %s\n", err.Error())
+		spc.route.cts.svr.log.Write("", LOG_ERROR, "Unable to notify peer started - %s", err.Error())
 		goto done_without_stop
 	}
 
@@ -88,12 +88,12 @@ wait_for_started:
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				if pss.Send(MakePeerEofPacket(spc.route.id, spc.conn_id)) != nil {
-					fmt.Printf("unable to report data - %s\n", err.Error())
+					spc.route.cts.svr.log.Write("", LOG_ERROR, "Unable to report eof - %s", err.Error())
 					goto done
 				}
 				goto wait_for_stopped
 			} else {
-				fmt.Printf("read error - %s\n", err.Error())
+				spc.route.cts.svr.log.Write("", LOG_ERROR, "Unable to read data - %s", err.Error())
 				goto done
 			}
 		}
@@ -101,7 +101,7 @@ wait_for_started:
 		err = pss.Send(MakePeerDataPacket(spc.route.id, spc.conn_id, buf[:n]))
 		if err != nil {
 			// TODO: include route id and conn id in the error message
-			fmt.Printf("unable to send data - %s\n", err.Error())
+			spc.route.cts.svr.log.Write("", LOG_ERROR, "Unable to send data - %s", err.Error())
 			goto done
 		}
 	}

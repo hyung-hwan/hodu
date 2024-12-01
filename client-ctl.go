@@ -38,6 +38,7 @@ type json_out_client_conn_id struct {
 type json_out_client_conn struct {
 	Id uint32 `json:"id"`
 	ServerAddr string `json:"server-addr"`
+	ClientAddr string `json:"client-addr"`
 	Routes []json_out_client_route `json:"routes"`
 }
 
@@ -123,7 +124,12 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					})
 				}
-				js = append(js, json_out_client_conn{Id: cts.id, ServerAddr: cts.cfg.ServerAddr, Routes: jsp})
+				js = append(js, json_out_client_conn{
+					Id: cts.id,
+					ServerAddr: cts.remote_addr,
+					ClientAddr: cts.local_addr,
+					Routes: jsp,
+				})
 				cts.route_mtx.Unlock()
 			}
 			c.cts_mtx.Unlock()
@@ -226,7 +232,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				})
 			}
-			js = &json_out_client_conn{Id: cts.id, ServerAddr: cts.cfg.ServerAddr, Routes: jsp}
+			js = &json_out_client_conn{Id: cts.id, ServerAddr: cts.local_addr, ClientAddr: cts.remote_addr, Routes: jsp}
 			cts.route_mtx.Unlock()
 
 			status_code = http.StatusOK; w.WriteHeader(status_code)

@@ -17,7 +17,6 @@ func server_ws_tty (ws* websocket.Conn) {
 	ws.Write([]byte("it's so wrong. it's awesome\r\n"))
 	ws.Write([]byte("it's so wrong. 동키가 지나간다.it's awesome\r\n"))
 
-
 	for {
 		err = websocket.Message.Receive(ws, &msg)
 		if err != nil {
@@ -28,6 +27,10 @@ func server_ws_tty (ws* websocket.Conn) {
 
 fmt.Printf ("RECEIVED MESSAGE [%v]\n", msg)
 	}
+}
+
+func new_server_ctl_ws_tty(s *Server) *server_ctl_ws_tty {
+	return &server_ctl_ws_tty{s: s, h: websocket.Handler(server_ws_tty)}
 }
 
 func (ctl *server_ctl_ws_tty) ServeHTTP(w http.ResponseWriter, req *http.Request) {

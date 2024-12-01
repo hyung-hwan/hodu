@@ -14,6 +14,7 @@ import "time"
 import "google.golang.org/grpc"
 import "google.golang.org/grpc/codes"
 import "google.golang.org/grpc/credentials/insecure"
+import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/status"
 
 type PacketStreamClient grpc.BidiStreamingClient[Packet, Packet]
@@ -59,24 +60,26 @@ type Client struct {
 
 // client connection to server
 type ClientConn struct {
-	cli      *Client
-	cfg      ClientConfigActive
-	id       uint32
-	lid      string
+	cli        *Client
+	cfg         ClientConfigActive
+	id          uint32
+	lid         string
 
-	conn     *grpc.ClientConn // grpc connection to the server
-	hdc       HoduClient
-	psc      *GuardedPacketStreamClient // guarded grpc stream
+	local_addr  string
+	remote_addr string
+	conn       *grpc.ClientConn // grpc connection to the server
+	hdc         HoduClient
+	psc        *GuardedPacketStreamClient // guarded grpc stream
 
-	s_seed    Seed
-	c_seed    Seed
+	s_seed      Seed
+	c_seed      Seed
 
-	route_mtx sync.Mutex
-	route_map ClientRouteMap
-	route_wg  sync.WaitGroup
+	route_mtx   sync.Mutex
+	route_map   ClientRouteMap
+	route_wg    sync.WaitGroup
 
-	stop_req  atomic.Bool
-	stop_chan chan bool
+	stop_req    atomic.Bool
+	stop_chan   chan bool
 }
 
 type ClientRoute struct {
@@ -611,19 +614,13 @@ func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	var slpctx context.Context
 	var c_seed Seed
 	var s_seed *Seed
+	var p *peer.Peer
+	var ok bool
 	var err error
 
 	defer wg.Done() // arrange to call at the end of this function
 
 start_over:
-/*
-	cts.saddr, err = net.ResolveTCPAddr(NET_TYPE_TCP, cts.cfg.ServerAddr) // TODO: make this interruptable...
-	if err != nil {
-		err = fmt.Errorf("unresolavable address %s - %s", cts.saddr, err.Error())
-		goto reconnect_to_server
-	}
-*/
-
 	cts.cli.log.Write(cts.lid, LOG_INFO, "Connecting to server %s", cts.cfg.ServerAddr)
 	cts.conn, err = grpc.NewClient(cts.cfg.ServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -653,6 +650,12 @@ start_over:
 	if err != nil {
 		cts.cli.log.Write(cts.lid, LOG_ERROR, "Failed to get packet stream from server %s - %s", cts.cfg.ServerAddr, err.Error())
 		goto reconnect_to_server
+	}
+
+	p, ok = peer.FromContext(psc.Context())
+	if ok {
+		cts.remote_addr = p.Addr.String()
+		cts.local_addr = p.LocalAddr.String()
 	}
 
 	cts.cli.log.Write(cts.lid, LOG_INFO, "Got packet stream from server %s", cts.cfg.ServerAddr)
