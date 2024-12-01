@@ -54,7 +54,9 @@ type json_out_client_route struct {
 type json_out_client_peer struct {
 	Id uint32 `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
+	ClientLocalAddr string `json:"client-local-addr"`
 	ServerPeerAddr string `json:"server-peer-addr"`
+	ServerLocalAddr string `json:"server-local-addr"`
 }
 // ------------------------------------
 
@@ -471,7 +473,9 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 				jcp = append(jcp, json_out_client_peer{
 					Id: p.conn_id,
 					ClientPeerAddr: p.conn.RemoteAddr().String(),
-					//ServerPeerAddr: r.server_peer,
+					ClientLocalAddr: p.conn.LocalAddr().String(),
+					ServerPeerAddr: p.pts_raddr,
+					ServerLocalAddr: p.pts_laddr,
 				})
 			}
 			r.ptc_mtx.Unlock()
@@ -501,16 +505,19 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 	var err error
 	var conn_id string
 	var route_id string
+	var peer_id string
 	var conn_nid uint64
 	var route_nid uint64
+	var peer_nid uint64
 	var je *json.Encoder
-	var r *ClientRoute
+	var p *ClientPeerConn
 
 	c = ctl.c
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
+	peer_id = req.PathValue("peer_id")
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
 	if err != nil {
@@ -524,16 +531,35 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
+	peer_nid, err = strconv.ParseUint(peer_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong peer id - " + peer_id}); err != nil { goto oops }
+		goto done
+	}
 
-	r = c.FindClientRouteById(uint32(conn_nid), uint32(route_nid))
-	if r == nil {
+	p = c.FindClientPeerConnById(uint32(conn_nid), uint32(route_nid), uint32(peer_nid))
+	if p == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection/route id - " + conn_id + "/" + route_id}); err != nil { goto oops }
+		if err = je.Encode(json_errmsg{Text: "non-existent connection/route/peer id - " + conn_id + "/" + route_id + "/" + peer_id}); err != nil { goto oops }
 		goto done
 	}
 
 	switch req.Method {
 		case http.MethodGet:
+			var jcp *json_out_client_peer
+
+			jcp = &json_out_client_peer{
+				Id: p.conn_id,
+				ClientPeerAddr: p.conn.RemoteAddr().String(),
+				ClientLocalAddr: p.conn.LocalAddr().String(),
+				ServerPeerAddr: p.pts_raddr,
+				ServerLocalAddr: p.pts_laddr,
+			}
+
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			if err = je.Encode(jcp); err != nil { goto oops }
+
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 	}

@@ -52,7 +52,7 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	pss = spc.route.cts.pss
-	err = pss.Send(MakePeerStartedPacket(spc.route.id, spc.conn_id))
+	err = pss.Send(MakePeerStartedPacket(spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String()))
 	if err != nil {
 		// TODO: include route id and conn id in the error message
 		fmt.Printf("unable to send start-pts - %s\n", err.Error())

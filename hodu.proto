@@ -29,6 +29,8 @@ message RouteDesc {
 message PeerDesc {
 	uint32 RouteId = 1;
 	uint32 PeerId = 2;
+	string RemoteAddrStr = 3;
+	string LocalAddrStr = 4;
 };
 
 message PeerData {

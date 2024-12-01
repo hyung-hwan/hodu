@@ -24,10 +24,10 @@ func MakeRouteStoppedPacket(route_id uint32, proto ROUTE_PROTO) *Packet {
 		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto}}}
 }
 
-func MakePeerStartedPacket(route_id uint32, peer_id uint32) *Packet {
+func MakePeerStartedPacket(route_id uint32, peer_id uint32, remote_addr string, local_addr string) *Packet {
 	// the connection from a peer to the server has been established
 	return &Packet{Kind: PACKET_KIND_PEER_STARTED,
-		U: &Packet_Peer{Peer: &PeerDesc{RouteId: route_id, PeerId: peer_id}},
+		U: &Packet_Peer{Peer: &PeerDesc{RouteId: route_id, PeerId: peer_id, RemoteAddrStr: remote_addr, LocalAddrStr: local_addr}},
 	}
 }
 
