@@ -14,7 +14,7 @@ SRCS=\
 all: hodu
 
 hodu: $(SRCS)
-	go build -x -o $@ cmd/main.go
+	CGO_ENABLED=0 go build -x -o $@ cmd/main.go
 
 clean:
 	go clean -x -i
