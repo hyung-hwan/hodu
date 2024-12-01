@@ -180,6 +180,29 @@ func (r *ClientRoute) RemoveClientPeerConn(ptc *ClientPeerConn) error {
 	return nil
 }
 
+func (r *ClientRoute) RemoveAllClientPeerConns() {
+	var c *ClientPeerConn
+
+	r.ptc_mtx.Lock()
+	defer r.ptc_mtx.Unlock()
+
+	for _, c = range r.ptc_map {
+		delete(r.ptc_map, c.conn_id)
+		c.ReqStop()
+	}
+}
+
+func (r *ClientRoute) ReqStopAllClientPeerConns() {
+	var c *ClientPeerConn
+
+	r.ptc_mtx.Lock()
+	defer r.ptc_mtx.Unlock()
+
+	for _, c = range r.ptc_map {
+		c.ReqStop()
+	}
+}
+
 func (r *ClientRoute) FindClientPeerConnById(conn_id uint32) *ClientPeerConn {
 	var c *ClientPeerConn
 	var ok bool

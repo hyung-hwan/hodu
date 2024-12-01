@@ -386,7 +386,6 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	switch req.Method {
 		case http.MethodGet:
 			var r *ClientRoute
-
 			r = cts.FindClientRouteById(uint32(route_nid))
 			if r == nil {
 				status_code = http.StatusNotFound; w.WriteHeader(status_code)
@@ -401,13 +400,8 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			if err != nil { goto oops }
 
 		case http.MethodDelete:
-			err = cts.RemoveClientRouteById(uint32(route_nid))
-			if err != nil {
-				status_code = http.StatusNotFound; w.WriteHeader(status_code)
-				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
-			} else {
-				status_code = http.StatusNoContent; w.WriteHeader(status_code)
-			}
+			cts.ReqStop()
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
@@ -483,7 +477,9 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 			status_code = http.StatusOK; w.WriteHeader(status_code)
 			if err = je.Encode(jcp); err != nil { goto oops }
 
-		// TODO: implemente MethodDelete to support forced disconnect from the peer.
+		case http.MethodDelete:
+			r.ReqStopAllClientPeerConns()
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
@@ -559,6 +555,10 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 
 			status_code = http.StatusOK; w.WriteHeader(status_code)
 			if err = je.Encode(jcp); err != nil { goto oops }
+
+		case http.MethodDelete:
+			p.ReqStop()
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
