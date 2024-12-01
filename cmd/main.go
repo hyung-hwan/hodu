@@ -146,7 +146,7 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 	sh.svc.WriteLog(id, level, fmt, args...)
 }
 
-func server_main(laddrs []string) error {
+func server_main(ctl_addr string, laddrs []string) error {
 	var s *hodu.Server
 	var err error
 	var cert tls.Certificate
@@ -156,12 +156,13 @@ func server_main(laddrs []string) error {
 		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
 	}
 
-	s, err = hodu.NewServer(context.Background(), laddrs, &AppLogger{id: "server", out: os.Stderr}, &tls.Config{Certificates: []tls.Certificate{cert}})
+	s, err = hodu.NewServer(context.Background(), ctl_addr, laddrs, &AppLogger{id: "server", out: os.Stderr}, &tls.Config{Certificates: []tls.Certificate{cert}})
 	if err != nil {
 		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
 	}
 
 	s.StartService(nil)
+	s.StartCtlService()
 	s.StartExtService(&signal_handler{svc:s}, nil)
 	s.WaitForTermination()
 
@@ -170,7 +171,7 @@ func server_main(laddrs []string) error {
 
 // --------------------------------------------------------------------
 
-func client_main(listen_on string, server_addr string, peer_addrs []string) error {
+func client_main(ctl_addr string, server_addr string, peer_addrs []string) error {
 	var c *hodu.Client
 	var cert_pool *x509.CertPool
 	var tlscfg *tls.Config
@@ -187,7 +188,8 @@ func client_main(listen_on string, server_addr string, peer_addrs []string) erro
 		InsecureSkipVerify: true,
 	}
 
-	c = hodu.NewClient(context.Background(), listen_on, &AppLogger{id: "client", out: os.Stderr}, tlscfg)
+// TODO: support multiple ctl addrs
+	c = hodu.NewClient(context.Background(), ctl_addr, &AppLogger{id: "client", out: os.Stderr}, tlscfg)
 
 	cc.ServerAddr = server_addr
 	cc.PeerAddrs = peer_addrs
@@ -209,12 +211,17 @@ func main() {
 	}
 	if strings.EqualFold(os.Args[1], "server") {
 		var la []string
+		var ctl_addr string
 
 		la = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
-		flgs.Func("listen-on", "specify a listening address", func(v string) error {
+		flgs.Func("rpc-on", "specify a rpc listening address", func(v string) error {
 			la = append(la, v)
+			return nil
+		})
+		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
+			ctl_addr = v // TODO: support multiple addrs
 			return nil
 		})
 		flgs.SetOutput(io.Discard) // prevent usage output
@@ -224,11 +231,11 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(la) < 0 || flgs.NArg() > 0 {
+		if ctl_addr == "" || len(la) < 0 || flgs.NArg() > 0 {
 			goto wrong_usage
 		}
 
-		err = server_main(la)
+		err = server_main(ctl_addr, la)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops
@@ -241,11 +248,11 @@ func main() {
 		sa = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
-		flgs.Func("listen-on", "specify a control channel address", func(v string) error {
+		flgs.Func("rpc-on", "specify a control channel address", func(v string) error {
 			la = append(la, v)
 			return nil
 		})
-		flgs.Func("server", "specify a server address", func(v string) error {
+		flgs.Func("rpc-server", "specify a rpc server address", func(v string) error {
 			sa = append(sa, v)
 			return nil
 		})
@@ -271,8 +278,8 @@ func main() {
 	os.Exit(0)
 
 wrong_usage:
-	fmt.Fprintf(os.Stderr, "USAGE: %s server --listen-on=addr:port\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --listen-on=addr:port --server=addr:port peer-addr:peer-port\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port \n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-server=addr:port --ctl-on=addr:port  peer-addr:peer-port\n", os.Args[0])
 	os.Exit(1)
 
 oops:

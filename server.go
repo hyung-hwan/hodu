@@ -8,14 +8,16 @@ import "io"
 import "math/rand"
 import "net"
 import "net/http"
+import "os"
 import "sync"
 import "sync/atomic"
-//import "time"
 
 import "google.golang.org/grpc"
 //import "google.golang.org/grpc/metadata"
 import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/stats"
+import "golang.org/x/net/websocket"
+
 
 const PTS_LIMIT = 8192
 
@@ -34,6 +36,8 @@ type Server struct {
 	stop_req    atomic.Bool
 	stop_chan   chan bool
 
+	ctl_prefix  string
+	ctl_mux     *http.ServeMux
 	ctl         *http.Server // control server
 
 	l           []*net.TCPListener // main listener for grpc
@@ -689,13 +693,14 @@ func unaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, han
 	return m, err
 }
 
-func NewServer(ctx context.Context, laddrs []string, logger Logger, tlscfg *tls.Config) (*Server, error) {
+func NewServer(ctx context.Context, ctl_addr string, laddrs []string, logger Logger, tlscfg *tls.Config) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
 	var laddr *net.TCPAddr
 	var err error
 	var addr string
 	var gl *net.TCPListener
+	var cwd string
 
 	if len(laddrs) <= 0 {
 		return nil, fmt.Errorf("no server addresses provided")
@@ -737,6 +742,21 @@ func NewServer(ctx context.Context, laddrs []string, logger Logger, tlscfg *tls.
 		grpc.StatsHandler(&ConnCatcher{server: &s}),
 	) // TODO: have this outside the server struct?
 	RegisterHoduServer(s.gs, &s)
+
+	s.ctl_prefix = "" // TODO:
+
+	s.ctl_mux = http.NewServeMux()
+	cwd, _ = os.Getwd()
+	s.ctl_mux.Handle(s.ctl_prefix + "/ui/", http.StripPrefix(s.ctl_prefix, http.FileServer(http.Dir(cwd)))) // TODO: proper directory. it must not use the current working directory...
+	//s.ctl_mux.HandleFunc(s.ctl_prefix + "/ws/tty", websocket.Handler(server_ws_tty).ServeHTTP)
+	s.ctl_mux.Handle(s.ctl_prefix + "/ws/tty", &server_ctl_ws_tty{s: &s, h: websocket.Handler(server_ws_tty)})
+	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns", &server_ctl_client_conns{s: &s})
+
+	s.ctl = &http.Server{
+		Addr: ctl_addr,
+		Handler: s.ctl_mux,
+		// TODO: more settings
+	}
 
 	return &s, nil
 
@@ -919,6 +939,11 @@ func (s *Server) StartExtService(svc Service, data interface{}) {
 	s.ext_mtx.Unlock()
 	s.wg.Add(1)
 	go svc.RunTask(&s.wg)
+}
+
+func (s *Server) StartCtlService() {
+	s.wg.Add(1)
+	go s.RunCtlTask(&s.wg)
 }
 
 func (s *Server) StopServices() {

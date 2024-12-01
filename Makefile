@@ -8,7 +8,9 @@ SRCS=\
 	hodu_grpc.pb.go \
 	packet.go \
 	server.go \
+	server-ctl.go \
 	server-peer.go \
+	server-ws.go \
 	cmd/main.go
 
 all: hodu

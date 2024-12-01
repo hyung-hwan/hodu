@@ -39,10 +39,11 @@ type Client struct {
 	ctx         context.Context
 	ctx_cancel  context.CancelFunc
 	tlscfg     *tls.Config
-	api_prefix  string
+	ctl_prefix  string
 
 	ext_mtx     sync.Mutex
 	ext_svcs   []Service
+	ctl_mux    *http.ServeMux
 	ctl        *http.Server // control server
 
 	cts_mtx     sync.Mutex
@@ -54,7 +55,6 @@ type Client struct {
 	stop_chan   chan bool
 
 	log         Logger
-	mux        *http.ServeMux
 }
 
 // client connection to server
@@ -840,7 +840,7 @@ func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 
 // --------------------------------------------------------------------
 
-func NewClient(ctx context.Context, listen_on string, logger Logger, tlscfg *tls.Config) *Client {
+func NewClient(ctx context.Context, ctl_addr string, logger Logger, tlscfg *tls.Config) *Client {
 	var c Client
 
 	c.ctx, c.ctx_cancel = context.WithCancel(ctx)
@@ -851,21 +851,21 @@ func NewClient(ctx context.Context, listen_on string, logger Logger, tlscfg *tls
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
 	c.log = logger
-	c.api_prefix = "" // TODO:
+	c.ctl_prefix = "" // TODO:
 
-	c.mux = http.NewServeMux()
-	c.mux.Handle(c.api_prefix + "/client-conns", &client_ctl_client_conns{c: &c})
-	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}", &client_ctl_client_conns_id{c: &c})
-	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes", &client_ctl_client_conns_id_routes{c: &c})
-	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes/{route_id}", &client_ctl_client_conns_id_routes_id{c: &c})
-	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers", &client_ctl_client_conns_id_routes_id_peers{c: &c})
-	c.mux.Handle(c.api_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}", &client_ctl_client_conns_id_routes_id_peers_id{c: &c})
-	c.mux.Handle(c.api_prefix + "/server-conns", &client_ctl_clients{c: &c})
-	c.mux.Handle(c.api_prefix + "/server-conns/{id}", &client_ctl_clients_id{c: &c})
+	c.ctl_mux = http.NewServeMux()
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns", &client_ctl_client_conns{c: &c})
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}", &client_ctl_client_conns_id{c: &c})
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes", &client_ctl_client_conns_id_routes{c: &c})
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}", &client_ctl_client_conns_id_routes_id{c: &c})
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers", &client_ctl_client_conns_id_routes_id_peers{c: &c})
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}", &client_ctl_client_conns_id_routes_id_peers_id{c: &c})
+	c.ctl_mux.Handle(c.ctl_prefix + "/server-conns", &client_ctl_clients{c: &c})
+	c.ctl_mux.Handle(c.ctl_prefix + "/server-conns/{id}", &client_ctl_clients_id{c: &c})
 
 	c.ctl = &http.Server{
-		Addr: listen_on,
-		Handler: c.mux,
+		Addr: ctl_addr,
+		Handler: c.ctl_mux,
 		// TODO: more settings
 	}
 
