@@ -149,10 +149,11 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			var cts *ClientConn
 
 			err = json.NewDecoder(req.Body).Decode(&s)
-			if err != nil {
+			if err != nil || s.ServerAddr == "" {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				goto done
 			}
+
 			cc.ServerAddr = s.ServerAddr
 			//cc.PeerAddrs = s.PeerAddrs
 			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
@@ -196,6 +197,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	var conn_id string
 	var conn_nid uint64
 	var je *json.Encoder
+	var cts *ClientConn
 
 	c = ctl.c
 	je = json.NewEncoder(w)
@@ -209,19 +211,18 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 		goto done
 	}
 
+	cts = c.FindClientConnById(uint32(conn_nid))
+	if cts == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
 	switch req.Method {
 		case http.MethodGet:
 			var r *ClientRoute
 			var jsp []json_out_client_route
 			var js *json_out_client_conn
-			var cts *ClientConn
-
-			cts = c.FindClientConnById(uint32(conn_nid))
-			if cts == nil {
-				status_code = http.StatusNotFound; w.WriteHeader(status_code)
-				if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
-				goto done
-			}
 
 			jsp = make([]json_out_client_route, 0)
 			cts.route_mtx.Lock()
@@ -239,13 +240,9 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodDelete:
-			err = c.RemoveClientConnById(uint32(conn_nid))
-			if err != nil {
-				status_code = http.StatusNotFound; w.WriteHeader(status_code)
-				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
-			} else {
-				status_code = http.StatusNoContent; w.WriteHeader(status_code)
-			}
+			//c.RemoveClientConn(cts)
+			cts.ReqStop()
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)

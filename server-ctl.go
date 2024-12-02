@@ -2,6 +2,7 @@ package hodu
 
 import "encoding/json"
 import "net/http"
+import "strconv"
 
 
 type json_out_server_conn struct {
@@ -86,5 +87,68 @@ oops:
 // ------------------------------------
 
 func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// TODO:
+	var s *Server
+	var status_code int
+	var err error
+	var je *json.Encoder
+	var conn_id string
+	var conn_nid uint64
+	var cts *ServerConn
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	cts = s.FindServerConnById(uint32(conn_nid))
+	if cts == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			var r *ServerRoute
+			var jsp []json_out_server_route
+			var js *json_out_server_conn
+
+			jsp = make([]json_out_server_route, 0)
+			cts.route_mtx.Lock()
+			for _, r = range cts.route_map {
+				jsp = append(jsp, json_out_server_route{
+					Id: r.id,
+					ClientPeerAddr: r.ptc_addr,
+					ServerPeerListenAddr: r.laddr.String(),
+				})
+			}
+			js = &json_out_server_conn{Id: cts.id, ClientAddr: cts.caddr.String(), ServerAddr: cts.local_addr.String(), Routes: jsp}
+			cts.route_mtx.Unlock()
+
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			if err = je.Encode(js); err != nil { goto oops }
+
+		case http.MethodDelete:
+			//s.RemoveServerConn(cts)
+			cts.ReqStop()
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+
+done:
+	s.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	return
+
+oops:
+	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+	return
 }

@@ -951,7 +951,7 @@ func (c *Client) RemoveClientConn(cts *ClientConn) error {
 fmt.Printf("REMOVEDDDDDD CONNECTION FROM %s total servers %d\n", cts.cfg.ServerAddr, len(c.cts_map_by_addr))
 	c.cts_mtx.Unlock()
 
-	c.ReqStop()
+	cts.ReqStop()
 	return nil
 }
 
