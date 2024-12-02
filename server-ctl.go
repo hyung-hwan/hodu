@@ -23,6 +23,10 @@ type server_ctl_server_conns struct {
 	s *Server
 }
 
+type server_ctl_server_conns_id struct {
+	s *Server
+}
+
 // ------------------------------------
 
 func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -63,7 +67,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodDelete:
-//	TODO		s.ReqStopAllServerConns()
+			s.ReqStopAllServerConns()
 			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:
@@ -77,4 +81,10 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 oops:
 	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
 	return
+}
+
+// ------------------------------------
+
+func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// TODO:
 }

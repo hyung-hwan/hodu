@@ -895,6 +895,17 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 	return &cts, nil
 }
 
+func (s *Server) ReqStopAllServerConns() {
+	var cts *ServerConn
+
+	s.cts_mtx.Lock()
+	defer s.cts_mtx.Unlock()
+
+	for _, cts = range s.cts_map {
+		cts.ReqStop()
+	}
+}
+
 func (s *Server) RemoveServerConn(cts *ServerConn) {
 	s.cts_mtx.Lock()
 	delete(s.cts_map, cts.caddr)
