@@ -146,7 +146,7 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 	sh.svc.WriteLog(id, level, fmt, args...)
 }
 
-func server_main(ctl_addr string, laddrs []string) error {
+func server_main(ctl_addrs []string, svcaddrs []string) error {
 	var s *hodu.Server
 	var err error
 	var cert tls.Certificate
@@ -156,7 +156,7 @@ func server_main(ctl_addr string, laddrs []string) error {
 		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
 	}
 
-	s, err = hodu.NewServer(context.Background(), ctl_addr, laddrs, &AppLogger{id: "server", out: os.Stderr}, &tls.Config{Certificates: []tls.Certificate{cert}})
+	s, err = hodu.NewServer(context.Background(), ctl_addrs, svcaddrs, &AppLogger{id: "server", out: os.Stderr}, &tls.Config{Certificates: []tls.Certificate{cert}})
 	if err != nil {
 		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
 	}
@@ -171,7 +171,7 @@ func server_main(ctl_addr string, laddrs []string) error {
 
 // --------------------------------------------------------------------
 
-func client_main(ctl_addr string, server_addr string, peer_addrs []string) error {
+func client_main(ctl_addr []string, server_addr string, peer_addrs []string) error {
 	var c *hodu.Client
 	var cert_pool *x509.CertPool
 	var tlscfg *tls.Config
@@ -210,18 +210,19 @@ func main() {
 		goto wrong_usage
 	}
 	if strings.EqualFold(os.Args[1], "server") {
-		var la []string
-		var ctl_addr string
+		var rpc_addrs[] string
+		var ctl_addrs[] string
 
-		la = make([]string, 0)
+		ctl_addrs = make([]string, 0)
+		rpc_addrs = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
 		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
-			ctl_addr = v // TODO: support multiple addrs
+			ctl_addrs = append(ctl_addrs, v)
 			return nil
 		})
 		flgs.Func("rpc-on", "specify a rpc listening address", func(v string) error {
-			la = append(la, v)
+			rpc_addrs = append(rpc_addrs, v)
 			return nil
 		})
 		flgs.SetOutput(io.Discard) // prevent usage output
@@ -231,29 +232,29 @@ func main() {
 			goto wrong_usage
 		}
 
-		if ctl_addr == "" || len(la) < 0 || flgs.NArg() > 0 {
+		if len(rpc_addrs) < 1 || flgs.NArg() > 0 {
 			goto wrong_usage
 		}
 
-		err = server_main(ctl_addr, la)
+		err = server_main(ctl_addrs, rpc_addrs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops
 		}
 	} else if strings.EqualFold(os.Args[1], "client") {
-		var rpc_addr []string
-		var ctl_addr[] string
+		var rpc_addrs []string
+		var ctl_addrs []string
 
-		ctl_addr = make([]string, 0)
-		rpc_addr = make([]string, 0)
+		ctl_addrs = make([]string, 0)
+		rpc_addrs = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
 		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
-			ctl_addr = append(ctl_addr, v)
+			ctl_addrs = append(ctl_addrs, v)
 			return nil
 		})
 		flgs.Func("rpc-server", "specify a rpc server address", func(v string) error {
-			rpc_addr = append(rpc_addr, v)
+			rpc_addrs = append(rpc_addrs, v)
 			return nil
 		})
 		flgs.SetOutput(io.Discard)
@@ -263,10 +264,10 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(ctl_addr) != 1 || len(rpc_addr) != 1 || flgs.NArg() < 1 {
+		if len(rpc_addrs) < 1 || flgs.NArg() < 1 {
 			goto wrong_usage
 		}
-		err = client_main(ctl_addr[0], rpc_addr[0], flgs.Args())
+		err = client_main(ctl_addrs, rpc_addrs[0], flgs.Args())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: client error - %s\n", err.Error())
 			goto oops

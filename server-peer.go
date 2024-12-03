@@ -180,11 +180,11 @@ fmt.Printf("******************* CCCCCCCCCCCCCCCCCCCCCCCccc\n")
 				_, err = spc.conn.Write(event_data)
 				if err != nil {
 					// TODO: logging
-					fmt.Printf ("WARNING - failed to write data from %s to %s\n", spc.route.cts.caddr, spc.conn.RemoteAddr().String())
+					fmt.Printf ("WARNING - failed to write data from %s to %s\n", spc.route.cts.raddr, spc.conn.RemoteAddr().String())
 				}
 			} else {
 				// protocol error. the client must not relay more data from the client-side peer after EOF.
-				fmt.Printf("WARNING - broken client - redundant data from %s to %s\n", spc.route.cts.caddr, spc.conn.RemoteAddr().String())
+				fmt.Printf("WARNING - broken client - redundant data from %s to %s\n", spc.route.cts.raddr, spc.conn.RemoteAddr().String())
 			}
 
 		default:

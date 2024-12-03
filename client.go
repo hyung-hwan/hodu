@@ -40,12 +40,15 @@ type Client struct {
 	ctx         context.Context
 	ctx_cancel  context.CancelFunc
 	tlscfg     *tls.Config
-	ctl_prefix  string
+
 
 	ext_mtx     sync.Mutex
 	ext_svcs   []Service
+
+	ctl_addr   []string
+	ctl_prefix  string
 	ctl_mux    *http.ServeMux
-	ctl        *http.Server // control server
+	ctl        []*http.Server // control server
 
 	cts_mtx     sync.Mutex
 	cts_map_by_addr ClientConnMapByAddr
@@ -63,7 +66,7 @@ type ClientConn struct {
 	cli        *Client
 	cfg         ClientConfigActive
 	id          uint32
-	lid         string
+	sid         string // id rendered in string
 
 	local_addr  string
 	remote_addr string
@@ -621,10 +624,10 @@ func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	defer wg.Done() // arrange to call at the end of this function
 
 start_over:
-	cts.cli.log.Write(cts.lid, LOG_INFO, "Connecting to server %s", cts.cfg.ServerAddr)
+	cts.cli.log.Write(cts.sid, LOG_INFO, "Connecting to server %s", cts.cfg.ServerAddr)
 	cts.conn, err = grpc.NewClient(cts.cfg.ServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		cts.cli.log.Write(cts.lid, LOG_ERROR, "Failed to make client to server %s - %s", cts.cfg.ServerAddr, err.Error())
+		cts.cli.log.Write(cts.sid, LOG_ERROR, "Failed to make client to server %s - %s", cts.cfg.ServerAddr, err.Error())
 		goto reconnect_to_server
 	}
 	cts.hdc = NewHoduClient(cts.conn)
@@ -638,17 +641,17 @@ start_over:
 	c_seed.Flags = 0
 	s_seed, err = cts.hdc.GetSeed(cts.cli.ctx, &c_seed)
 	if err != nil {
-		cts.cli.log.Write(cts.lid, LOG_ERROR, "Failed to get seed from server %s - %s", cts.cfg.ServerAddr, err.Error())
+		cts.cli.log.Write(cts.sid, LOG_ERROR, "Failed to get seed from server %s - %s", cts.cfg.ServerAddr, err.Error())
 		goto reconnect_to_server
 	}
 	cts.s_seed = *s_seed
 	cts.c_seed = c_seed
 
-	cts.cli.log.Write(cts.lid, LOG_INFO, "Got seed from server %s - ver=%#x", cts.cfg.ServerAddr, cts.s_seed.Version)
+	cts.cli.log.Write(cts.sid, LOG_INFO, "Got seed from server %s - ver=%#x", cts.cfg.ServerAddr, cts.s_seed.Version)
 
 	psc, err = cts.hdc.PacketStream(cts.cli.ctx)
 	if err != nil {
-		cts.cli.log.Write(cts.lid, LOG_ERROR, "Failed to get packet stream from server %s - %s", cts.cfg.ServerAddr, err.Error())
+		cts.cli.log.Write(cts.sid, LOG_ERROR, "Failed to get packet stream from server %s - %s", cts.cfg.ServerAddr, err.Error())
 		goto reconnect_to_server
 	}
 
@@ -658,7 +661,7 @@ start_over:
 		cts.local_addr = p.LocalAddr.String()
 	}
 
-	cts.cli.log.Write(cts.lid, LOG_INFO, "Got packet stream from server %s", cts.cfg.ServerAddr)
+	cts.cli.log.Write(cts.sid, LOG_INFO, "Got packet stream from server %s", cts.cfg.ServerAddr)
 
 	cts.psc = &GuardedPacketStreamClient{Hodu_PacketStreamClient: psc}
 
@@ -666,7 +669,7 @@ start_over:
 	// let's add routes to the client-side peers.
 	err = cts.AddClientRoutes(cts.cfg.PeerAddrs)
 	if err != nil {
-		cts.cli.log.Write(cts.lid, LOG_INFO, "Failed to add routes to server %s for %v - %s", cts.cfg.ServerAddr, cts.cfg.PeerAddrs, err.Error())
+		cts.cli.log.Write(cts.sid, LOG_INFO, "Failed to add routes to server %s for %v - %s", cts.cfg.ServerAddr, cts.cfg.PeerAddrs, err.Error())
 		goto done
 	}
 
@@ -693,7 +696,7 @@ fmt.Printf("context doine... error - %s\n", cts.cli.ctx.Err().Error())
 			if status.Code(err) == codes.Canceled || errors.Is(err, net.ErrClosed) {
 				goto reconnect_to_server
 			} else {
-				cts.cli.log.Write(cts.lid, LOG_INFO, "Failed to receive packet form server %s - %s", cts.cfg.ServerAddr, err.Error())
+				cts.cli.log.Write(cts.sid, LOG_INFO, "Failed to receive packet form server %s - %s", cts.cfg.ServerAddr, err.Error())
 				goto reconnect_to_server
 			}
 		}
@@ -843,8 +846,9 @@ func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 
 // --------------------------------------------------------------------
 
-func NewClient(ctx context.Context, ctl_addr string, logger Logger, tlscfg *tls.Config) *Client {
+func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, tlscfg *tls.Config) *Client {
 	var c Client
+	var i int
 
 	c.ctx, c.ctx_cancel = context.WithCancel(ctx)
 	c.tlscfg = tlscfg
@@ -866,10 +870,15 @@ func NewClient(ctx context.Context, ctl_addr string, logger Logger, tlscfg *tls.
 	c.ctl_mux.Handle(c.ctl_prefix + "/server-conns", &client_ctl_clients{c: &c})
 	c.ctl_mux.Handle(c.ctl_prefix + "/server-conns/{id}", &client_ctl_clients_id{c: &c})
 
-	c.ctl = &http.Server{
-		Addr: ctl_addr,
-		Handler: c.ctl_mux,
-		// TODO: more settings
+	c.ctl_addr = make([]string, len(ctl_addrs))
+	c.ctl = make([]*http.Server, len(ctl_addrs))
+	copy(c.ctl_addr, ctl_addrs)
+	for i = 0; i < len(ctl_addrs); i++ {
+		c.ctl[i] = &http.Server{
+			Addr: ctl_addrs[i],
+			Handler: c.ctl_mux,
+			// TODO: more settings
+		}
 	}
 
 	return &c
@@ -898,7 +907,7 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 	}
 	cts.id = id
 	cts.cfg.Id = id // store it again in the active configuration for easy access via control channel
-	cts.lid = fmt.Sprintf("%d", id) // id in string used for logging
+	cts.sid = fmt.Sprintf("%d", id) // id in string used for logging
 
 	c.cts_map_by_addr[cfg.ServerAddr] = cts
 	c.cts_map[id] = cts
@@ -1035,9 +1044,10 @@ func (c *Client) FindClientPeerConnById(conn_id uint32, route_id uint32, peer_id
 func (c *Client) ReqStop() {
 	if c.stop_req.CompareAndSwap(false, true) {
 		var cts *ClientConn
+		var ctl *http.Server
 
-		if c.ctl != nil {
-			c.ctl.Shutdown(c.ctx) // to break c.ctl.ListenAndServe()
+		for _, ctl = range c.ctl {
+			ctl.Shutdown(c.ctx) // to break c.ctl.ListenAndServe()
 		}
 
 		for _, cts = range c.cts_map {
@@ -1051,15 +1061,26 @@ func (c *Client) ReqStop() {
 
 func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 	var err error
+	var ctl *http.Server
+	var idx int
+	var l_wg sync.WaitGroup
 
 	defer wg.Done()
 
-	err = c.ctl.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		c.log.Write("", LOG_DEBUG, "Control channel closed")
-	} else {
-		c.log.Write("", LOG_ERROR, "Control channel error - %s", err.Error())
+	for idx, ctl = range c.ctl {
+		l_wg.Add(1)
+		go func(i int, cs *http.Server) {
+			c.log.Write ("", LOG_INFO, "Control channel[%d] started on %s", i, c.ctl_addr[i])
+			err = cs.ListenAndServe()
+			if errors.Is(err, http.ErrServerClosed) {
+				c.log.Write("", LOG_DEBUG, "Control channel[%d] ended", i)
+			} else {
+				c.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())
+			}
+			l_wg.Done()
+		}(idx, ctl)
 	}
+	l_wg.Wait()
 }
 
 func (c *Client) StartCtlService() {
@@ -1067,10 +1088,10 @@ func (c *Client) StartCtlService() {
 	go c.RunCtlTask(&c.wg)
 }
 
-
 func (c *Client) RunTask(wg *sync.WaitGroup) {
 	// just a place holder to pacify the Service interface
-	// StartService() calls cts.RunTask() instead.
+	// StartService() calls cts.RunTask() instead. it is not called.
+	// so no call to wg.Done()
 }
 
 func (c *Client) start_service(data interface{}) (*ClientConn, error) {

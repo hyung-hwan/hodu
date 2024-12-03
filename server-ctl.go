@@ -56,10 +56,15 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					jsp = append(jsp, json_out_server_route{
 						Id: r.id,
 						ClientPeerAddr: r.ptc_addr,
-						ServerPeerListenAddr: r.laddr.String(),
+						ServerPeerListenAddr: r.svcaddr.String(),
 					})
 				}
-				js = append(js, json_out_server_conn{Id: cts.id, ClientAddr: cts.caddr.String(), ServerAddr: cts.local_addr.String(), Routes: jsp})
+				js = append(js, json_out_server_conn{
+					Id: cts.id,
+					ClientAddr: cts.raddr.String(),
+					ServerAddr: cts.laddr.String(),
+					Routes: jsp,
+				})
 				cts.route_mtx.Unlock()
 			}
 			s.cts_mtx.Unlock()
@@ -126,10 +131,15 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				jsp = append(jsp, json_out_server_route{
 					Id: r.id,
 					ClientPeerAddr: r.ptc_addr,
-					ServerPeerListenAddr: r.laddr.String(),
+					ServerPeerListenAddr: r.svcaddr.String(),
 				})
 			}
-			js = &json_out_server_conn{Id: cts.id, ClientAddr: cts.caddr.String(), ServerAddr: cts.local_addr.String(), Routes: jsp}
+			js = &json_out_server_conn{
+				Id: cts.id,
+				ClientAddr: cts.raddr.String(),
+				ServerAddr: cts.laddr.String(),
+				Routes: jsp,
+			}
 			cts.route_mtx.Unlock()
 
 			status_code = http.StatusOK; w.WriteHeader(status_code)

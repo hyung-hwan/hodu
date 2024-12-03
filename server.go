@@ -30,24 +30,26 @@ type Server struct {
 	tlscfg          *tls.Config
 
 	wg              sync.WaitGroup
-	ext_mtx         sync.Mutex
-	ext_svcs        []Service
 	stop_req        atomic.Bool
 	stop_chan       chan bool
 
+	ext_mtx         sync.Mutex
+	ext_svcs        []Service
+
+	ctl_addr        []string
 	ctl_prefix      string
 	ctl_mux         *http.ServeMux
-	ctl             *http.Server // control server
+	ctl             []*http.Server // control server
 
-	l               []*net.TCPListener // main listener for grpc
-	l_wg            sync.WaitGroup
+	rpc             []*net.TCPListener // main listener for grpc
+	rpc_wg          sync.WaitGroup
+	gs              *grpc.Server
 
 	cts_mtx         sync.Mutex
 	cts_map         ServerConnMap
 	cts_map_by_addr ServerConnMapByAddr
 	cts_wg          sync.WaitGroup
 
-	gs              *grpc.Server
 	log             Logger
 
 	UnimplementedHoduServer
@@ -58,9 +60,10 @@ type Server struct {
 type ServerConn struct {
 	svr       *Server
 	id         uint32
-	lid        string // for logging
-	caddr      net.Addr // client address that created this structure
-	local_addr net.Addr
+	sid        string // for logging
+
+	raddr      net.Addr // client address that created this structure
+	laddr      net.Addr // local address that the client is connected to
 	pss       *GuardedPacketStreamServer
 
 	route_mtx  sync.Mutex
@@ -75,7 +78,7 @@ type ServerConn struct {
 type ServerRoute struct {
 	cts        *ServerConn
 	l          *net.TCPListener
-	laddr      *net.TCPAddr
+	svcaddr      *net.TCPAddr
 	ptc_addr    string
 	id          uint32
 
@@ -119,10 +122,10 @@ func (g *GuardedPacketStreamServer) Context() context.Context {
 func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO, ptc_addr string) (*ServerRoute, error) {
 	var r ServerRoute
 	var l *net.TCPListener
-	var laddr *net.TCPAddr
+	var svcaddr *net.TCPAddr
 	var err error
 
-	l, laddr, err = cts.make_route_listener(proto)
+	l, svcaddr, err = cts.make_route_listener(proto)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +133,7 @@ func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO, ptc_addr stri
 	r.cts = cts
 	r.id = id
 	r.l = l
-	r.laddr = laddr
+	r.svcaddr = svcaddr
 	r.ptc_addr = ptc_addr
 	r.pts_limit = PTS_LIMIT
 	r.pts_map = make(ServerPeerConnMap)
@@ -186,7 +189,7 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 	var log_id string
 
 	defer wg.Done()
-	log_id = fmt.Sprintf("%s,%d", r.cts.caddr.String(), r.id)
+	log_id = fmt.Sprintf("%s,%d", r.cts.raddr.String(), r.id)
 
 	for {
 		conn, err = r.l.AcceptTCP()
@@ -252,7 +255,7 @@ func (r *ServerRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_d
 func (cts *ServerConn) make_route_listener(proto ROUTE_PROTO) (*net.TCPListener, *net.TCPAddr, error) {
 	var l *net.TCPListener
 	var err error
-	var laddr *net.TCPAddr
+	var svcaddr *net.TCPAddr
 	var port int
 	var tries int = 0
 	var nw string
@@ -269,12 +272,12 @@ func (cts *ServerConn) make_route_listener(proto ROUTE_PROTO) (*net.TCPListener,
 	for {
 		port = rand.Intn(65535-32000+1) + 32000
 
-		laddr, err = net.ResolveTCPAddr(nw, fmt.Sprintf(":%d", port))
+		svcaddr, err = net.ResolveTCPAddr(nw, fmt.Sprintf(":%d", port))
 		if err == nil {
-			l, err = net.ListenTCP(nw, laddr) // make the binding address configurable. support multiple binding addresses???
+			l, err = net.ListenTCP(nw, svcaddr) // make the binding address configurable. support multiple binding addresses???
 			if err == nil {
 				fmt.Printf("listening  .... on ... %d\n", port)
-				return l, laddr, nil
+				return l, svcaddr, nil
 			}
 		}
 
@@ -373,11 +376,11 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 	for {
 		pkt, err = cts.pss.Recv()
 		if errors.Is(err, io.EOF) {
-			cts.svr.log.Write("", LOG_INFO, "GRPC stream closed for client %s", cts.caddr)
+			cts.svr.log.Write("", LOG_INFO, "GRPC stream closed for client %s", cts.raddr)
 			goto done
 		}
 		if err != nil {
-			cts.svr.log.Write("", LOG_ERROR, "GRPC stream error for client %s - %s", cts.caddr, err.Error())
+			cts.svr.log.Write("", LOG_ERROR, "GRPC stream error for client %s - %s", cts.raddr, err.Error())
 			goto done
 		}
 
@@ -391,18 +394,18 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 
 					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.Proto, x.Route.AddrStr)
 					if err != nil {
-						cts.svr.log.Write("", LOG_ERROR, "Failed to add server route for client %s peer %s", cts.caddr, x.Route.AddrStr)
+						cts.svr.log.Write("", LOG_ERROR, "Failed to add server route for client %s peer %s", cts.raddr, x.Route.AddrStr)
 					} else {
-						cts.svr.log.Write("", LOG_INFO, "Added server route(id=%d) for client %s peer %s to cts(id=%d)", r.id, cts.caddr, x.Route.AddrStr, cts.id)
-						err = cts.pss.Send(MakeRouteStartedPacket(r.id, x.Route.Proto, r.laddr.String()))
+						cts.svr.log.Write("", LOG_INFO, "Added server route(id=%d) for client %s peer %s to cts(id=%d)", r.id, cts.raddr, x.Route.AddrStr, cts.id)
+						err = cts.pss.Send(MakeRouteStartedPacket(r.id, x.Route.Proto, r.svcaddr.String()))
 						if err != nil {
 							r.ReqStop()
-							cts.svr.log.Write("", LOG_ERROR, "Failed to inform client %s of server route started for peer %s", cts.caddr, x.Route.AddrStr)
+							cts.svr.log.Write("", LOG_ERROR, "Failed to inform client %s of server route started for peer %s", cts.raddr, x.Route.AddrStr)
 							goto done
 						}
 					}
 				} else {
-					cts.svr.log.Write("", LOG_INFO, "Received invalid packet from %s", cts.caddr)
+					cts.svr.log.Write("", LOG_INFO, "Received invalid packet from %s", cts.raddr)
 					// TODO: need to abort this client?
 				}
 
@@ -415,18 +418,18 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 
 					r, err = cts.RemoveServerRouteById(x.Route.RouteId)
 					if err != nil {
-						cts.svr.log.Write("", LOG_ERROR, "Failed to delete server route(id=%d) for client %s peer %s", x.Route.RouteId, cts.caddr, x.Route.AddrStr)
+						cts.svr.log.Write("", LOG_ERROR, "Failed to delete server route(id=%d) for client %s peer %s", x.Route.RouteId, cts.raddr, x.Route.AddrStr)
 					} else {
-						cts.svr.log.Write("", LOG_ERROR, "Deleted server route(id=%d) for client %s peer %s", x.Route.RouteId, cts.caddr, x.Route.AddrStr)
+						cts.svr.log.Write("", LOG_ERROR, "Deleted server route(id=%d) for client %s peer %s", x.Route.RouteId, cts.raddr, x.Route.AddrStr)
 						err = cts.pss.Send(MakeRouteStoppedPacket(x.Route.RouteId, x.Route.Proto))
 						if err != nil {
 							r.ReqStop()
-							cts.svr.log.Write("", LOG_ERROR, "Failed to inform client %s of server route(id=%d) stopped for peer %s", cts.caddr, x.Route.RouteId, x.Route.AddrStr)
+							cts.svr.log.Write("", LOG_ERROR, "Failed to inform client %s of server route(id=%d) stopped for peer %s", cts.raddr, x.Route.RouteId, x.Route.AddrStr)
 							goto done
 						}
 					}
 				} else {
-					cts.svr.log.Write("", LOG_INFO, "Received invalid packet from %s", cts.caddr)
+					cts.svr.log.Write("", LOG_INFO, "Received invalid packet from %s", cts.raddr)
 					// TODO: need to abort this client?
 				}
 
@@ -698,35 +701,36 @@ func unaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, han
 	return m, err
 }
 
-func NewServer(ctx context.Context, ctl_addr string, laddrs []string, logger Logger, tlscfg *tls.Config) (*Server, error) {
+func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logger Logger, tlscfg *tls.Config) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
-	var laddr *net.TCPAddr
+	var rpcaddr *net.TCPAddr
 	var err error
 	var addr string
 	var gl *net.TCPListener
+	var i int
 	var cwd string
 
-	if len(laddrs) <= 0 {
+	if len(rpc_addrs) <= 0 {
 		return nil, fmt.Errorf("no server addresses provided")
 	}
 
 	s.ctx, s.ctx_cancel = context.WithCancel(ctx)
 	s.log = logger
 	/* create the specified number of listeners */
-	s.l = make([]*net.TCPListener, 0)
-	for _, addr = range laddrs {
-		laddr, err = net.ResolveTCPAddr(NET_TYPE_TCP, addr) // Make this interruptable???
+	s.rpc = make([]*net.TCPListener, 0)
+	for _, addr = range rpc_addrs {
+		rpcaddr, err = net.ResolveTCPAddr(NET_TYPE_TCP, addr) // Make this interruptable???
 		if err != nil {
 			goto oops
 		}
 
-		l, err = net.ListenTCP(NET_TYPE_TCP, laddr)
+		l, err = net.ListenTCP(NET_TYPE_TCP, rpcaddr)
 		if err != nil {
 			goto oops
 		}
 
-		s.l = append(s.l, l)
+		s.rpc = append(s.rpc, l)
 	}
 
 	s.tlscfg = tlscfg
@@ -758,10 +762,15 @@ func NewServer(ctx context.Context, ctl_addr string, laddrs []string, logger Log
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns", &server_ctl_server_conns{s: &s})
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}", &server_ctl_server_conns_id{s: &s})
 
-	s.ctl = &http.Server{
-		Addr: ctl_addr,
-		Handler: s.ctl_mux,
-		// TODO: more settings
+	s.ctl_addr = make([]string, len(ctl_addrs))
+	s.ctl = make([]*http.Server, len(ctl_addrs))
+	copy(s.ctl_addr, ctl_addrs)
+	for i = 0; i < len(ctl_addrs); i++ {
+		s.ctl[i] = &http.Server{
+			Addr: ctl_addrs[i],
+			Handler: s.ctl_mux,
+			// TODO: more settings
+		}
 	}
 
 	return &s, nil
@@ -772,10 +781,10 @@ oops:
 		gl.Close()
 	}
 
-	for _, l = range s.l {
+	for _, l = range s.rpc {
 		l.Close()
 	}
-	s.l = make([]*net.TCPListener, 0)
+	s.rpc = make([]*net.TCPListener, 0)
 	return nil, err
 }
 
@@ -785,15 +794,15 @@ func (s *Server) run_grpc_server(idx int, wg *sync.WaitGroup) error {
 
 	defer wg.Done()
 
-	l = s.l[idx]
+	l = s.rpc[idx]
 	// it seems to be safe to call a single grpc server on differnt listening sockets multiple times
-	s.log.Write("", LOG_ERROR, "Starting GRPC server listening on %s", l.Addr().String())
+	s.log.Write("", LOG_ERROR, "Starting GRPC server on %s", l.Addr().String())
 	err = s.gs.Serve(l)
 	if err != nil {
 		if errors.Is(err, net.ErrClosed) {
-			s.log.Write("", LOG_ERROR, "GRPC server listening on %s closed", l.Addr().String())
+			s.log.Write("", LOG_ERROR, "GRPC server on %s closed", l.Addr().String())
 		} else {
-			s.log.Write("", LOG_ERROR, "Error from GRPC server listening on %s - %s", l.Addr().String(), err.Error())
+			s.log.Write("", LOG_ERROR, "Error from GRPC server on %s - %s", l.Addr().String(), err.Error())
 		}
 		return err
 	}
@@ -806,9 +815,9 @@ func (s *Server) RunTask(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
-	for idx, _ = range s.l {
-		s.l_wg.Add(1)
-		go s.run_grpc_server(idx, &s.l_wg)
+	for idx, _ = range s.rpc {
+		s.rpc_wg.Add(1)
+		go s.run_grpc_server(idx, &s.rpc_wg)
 	}
 
 	// most the work is done by in separate goroutines (s.run_grp_server)
@@ -824,7 +833,7 @@ task_loop:
 
 	s.ReqStop()
 
-	s.l_wg.Wait()
+	s.rpc_wg.Wait()
 	s.log.Write("", LOG_DEBUG, "All GRPC listeners completed")
 
 	s.cts_wg.Wait()
@@ -836,30 +845,41 @@ task_loop:
 
 func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 	var err error
+	var ctl *http.Server
+	var idx int
+	var l_wg sync.WaitGroup
 
 	defer wg.Done()
 
-	err = s.ctl.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		fmt.Printf("------------http server error - %s\n", err.Error())
-	} else {
-		fmt.Printf("********* http server ended\n")
+	for idx, ctl = range s.ctl {
+		l_wg.Add(1)
+		go func(i int, cs *http.Server) {
+			s.log.Write ("", LOG_INFO, "Control channel[%d] started on %s", i, s.ctl_addr[i])
+			err = cs.ListenAndServe()
+			if errors.Is(err, http.ErrServerClosed) {
+				s.log.Write("", LOG_DEBUG, "Control channel[%d] ended", i)
+			} else {
+				s.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())
+			}
+			l_wg.Done()
+		}(idx, ctl)
 	}
+	l_wg.Wait()
 }
 
 func (s *Server) ReqStop() {
 	if s.stop_req.CompareAndSwap(false, true) {
 		var l *net.TCPListener
 		var cts *ServerConn
+		var ctl *http.Server
 
-		if s.ctl != nil {
-			// shutdown the control server if ever started.
-			s.ctl.Shutdown(s.ctx)
+		for _, ctl = range s.ctl {
+			ctl.Shutdown(s.ctx) // to break c.ctl.ListenAndServe()
 		}
 
 		//s.gs.GracefulStop()
 		//s.gs.Stop()
-		for _, l = range s.l {
+		for _, l = range s.rpc {
 			l.Close()
 		}
 
@@ -881,8 +901,8 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 
 	cts.svr = s
 	cts.route_map = make(ServerRouteMap)
-	cts.caddr = *remote_addr
-	cts.local_addr = *local_addr
+	cts.raddr = *remote_addr
+	cts.laddr = *local_addr
 	cts.pss = &GuardedPacketStreamServer{Hodu_PacketStreamServer: pss}
 
 	cts.stop_req.Store(false)
@@ -898,15 +918,15 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 		id++
 	}
 	cts.id = id
-	cts.lid = fmt.Sprintf("%d", id) // id in string used for logging
+	cts.sid = fmt.Sprintf("%d", id) // id in string used for logging
 
-	_, ok = s.cts_map_by_addr[cts.caddr]
+	_, ok = s.cts_map_by_addr[cts.raddr]
 	if ok {
-		return nil, fmt.Errorf("existing client - %s", cts.caddr.String())
+		return nil, fmt.Errorf("existing client - %s", cts.raddr.String())
 	}
-	s.cts_map_by_addr[cts.caddr] = &cts
+	s.cts_map_by_addr[cts.raddr] = &cts
 	s.cts_map[id] = &cts;
-	s.log.Write("", LOG_DEBUG, "Added client connection from %s", cts.caddr.String())
+	s.log.Write("", LOG_DEBUG, "Added client connection from %s", cts.raddr.String())
 	return &cts, nil
 }
 
@@ -938,7 +958,7 @@ func (s *Server) RemoveServerConn(cts *ServerConn) error {
 	}
 
 	delete(s.cts_map, cts.id)
-	delete(s.cts_map_by_addr, cts.caddr)
+	delete(s.cts_map_by_addr, cts.raddr)
 	s.cts_mtx.Unlock()
 
 	cts.ReqStop()
@@ -957,7 +977,7 @@ func (s *Server) RemoveServerConnByAddr(addr net.Addr) error {
 		return fmt.Errorf("non-existent connection address - %s", addr.String())
 	}
 	delete(s.cts_map, cts.id)
-	delete(s.cts_map_by_addr, cts.caddr)
+	delete(s.cts_map_by_addr, cts.raddr)
 	s.cts_mtx.Unlock()
 
 	cts.ReqStop()
