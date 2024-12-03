@@ -43,7 +43,7 @@ type Server struct {
 
 	rpc             []*net.TCPListener // main listener for grpc
 	rpc_wg          sync.WaitGroup
-	gs              *grpc.Server
+	rpc_svr         *grpc.Server
 
 	cts_mtx         sync.Mutex
 	cts_map         ServerConnMap
@@ -58,27 +58,27 @@ type Server struct {
 // connection from client.
 // client connect to the server, the server accept it, and makes a tunnel request
 type ServerConn struct {
-	svr       *Server
-	id         uint32
-	sid        string // for logging
+	svr        *Server
+	id          uint32
+	sid         string // for logging
 
-	raddr      net.Addr // client address that created this structure
-	laddr      net.Addr // local address that the client is connected to
-	pss       *GuardedPacketStreamServer
+	remote_addr net.Addr // client address that created this structure
+	local_addr  net.Addr // local address that the client is connected to
+	pss        *GuardedPacketStreamServer
 
-	route_mtx  sync.Mutex
-	route_map  ServerRouteMap
-	route_wg   sync.WaitGroup
+	route_mtx   sync.Mutex
+	route_map   ServerRouteMap
+	route_wg    sync.WaitGroup
 
-	wg         sync.WaitGroup
-	stop_req   atomic.Bool
-	stop_chan  chan bool
+	wg          sync.WaitGroup
+	stop_req    atomic.Bool
+	stop_chan   chan bool
 }
 
 type ServerRoute struct {
 	cts        *ServerConn
 	l          *net.TCPListener
-	svcaddr      *net.TCPAddr
+	svc_addr   *net.TCPAddr // listening address
 	ptc_addr    string
 	id          uint32
 
@@ -125,7 +125,7 @@ func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO, ptc_addr stri
 	var svcaddr *net.TCPAddr
 	var err error
 
-	l, svcaddr, err = cts.make_route_listener(proto)
+	l, svcaddr, err = cts.make_route_listener(id, proto)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO, ptc_addr stri
 	r.cts = cts
 	r.id = id
 	r.l = l
-	r.svcaddr = svcaddr
+	r.svc_addr = svcaddr
 	r.ptc_addr = ptc_addr
 	r.pts_limit = PTS_LIMIT
 	r.pts_map = make(ServerPeerConnMap)
@@ -179,35 +179,33 @@ func (r *ServerRoute) RemoveServerPeerConn(pts *ServerPeerConn) {
 	r.pts_mtx.Lock()
 	delete(r.pts_map, pts.conn_id)
 	r.pts_mtx.Unlock()
-	r.cts.svr.log.Write("", LOG_DEBUG, "Removed server-side peer connection %s", pts.conn.RemoteAddr().String())
+	r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "Removed server-side peer connection %s from route(%d)", pts.conn.RemoteAddr().String(), r.id)
 }
 
 func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 	var err error
 	var conn *net.TCPConn
 	var pts *ServerPeerConn
-	var log_id string
 
 	defer wg.Done()
-	log_id = fmt.Sprintf("%s,%d", r.cts.raddr.String(), r.id)
 
 	for {
 		conn, err = r.l.AcceptTCP()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
-				r.cts.svr.log.Write(log_id, LOG_INFO, "Server-side peer listener closed")
+				r.cts.svr.log.Write(r.cts.sid, LOG_INFO, "Server-side peer listener closed on route(%d)", r.id)
 			} else {
-				r.cts.svr.log.Write(log_id, LOG_INFO, "Server-side peer listener error - %s", err.Error())
+				r.cts.svr.log.Write(r.cts.sid, LOG_INFO, "Server-side peer listener error on route(%d) - %s", r.id, err.Error())
 			}
 			break
 		}
 
 		pts, err = r.AddNewServerPeerConn(conn)
 		if err != nil {
-			r.cts.svr.log.Write(log_id, LOG_ERROR, "Failed to add new server-side peer %s - %s", conn.RemoteAddr().String(), err.Error())
+			r.cts.svr.log.Write(r.cts.sid, LOG_ERROR, "Failed to add new server-side peer %s to route(%d) - %s", r.id, conn.RemoteAddr().String(), r.id, err.Error())
 			conn.Close()
 		} else {
-			r.cts.svr.log.Write(log_id, LOG_DEBUG, "Added new server-side peer %s", conn.RemoteAddr().String())
+			r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "Added new server-side peer %s to route(%d)", conn.RemoteAddr().String(), r.id)
 			r.pts_wg.Add(1)
 			go pts.RunTask(&r.pts_wg)
 		}
@@ -216,14 +214,12 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 	r.ReqStop()
 
 	r.pts_wg.Wait()
-	r.cts.svr.log.Write(log_id, LOG_DEBUG, "All service-side peer handlers completed")
+	r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "All service-side peer handlers completed on route(%d)", r.id)
 
 	r.cts.RemoveServerRoute(r) // final phase...
 }
 
 func (r *ServerRoute) ReqStop() {
-	fmt.Printf("requesting to stop route taak..\n")
-
 	if r.stop_req.CompareAndSwap(false, true) {
 		var pts *ServerPeerConn
 
@@ -233,10 +229,9 @@ func (r *ServerRoute) ReqStop() {
 
 		r.l.Close()
 	}
-	fmt.Printf("requiested to stopp route taak..\n")
 }
 
-func (r *ServerRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_data []byte) error {
+func (r *ServerRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_data interface{}) error {
 	var spc *ServerPeerConn
 	var ok bool
 
@@ -252,7 +247,7 @@ func (r *ServerRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_d
 }
 // ------------------------------------
 
-func (cts *ServerConn) make_route_listener(proto ROUTE_PROTO) (*net.TCPListener, *net.TCPAddr, error) {
+func (cts *ServerConn) make_route_listener(id uint32, proto ROUTE_PROTO) (*net.TCPListener, *net.TCPAddr, error) {
 	var l *net.TCPListener
 	var err error
 	var svcaddr *net.TCPAddr
@@ -276,12 +271,11 @@ func (cts *ServerConn) make_route_listener(proto ROUTE_PROTO) (*net.TCPListener,
 		if err == nil {
 			l, err = net.ListenTCP(nw, svcaddr) // make the binding address configurable. support multiple binding addresses???
 			if err == nil {
-				fmt.Printf("listening  .... on ... %d\n", port)
+				cts.svr.log.Write(cts.sid, LOG_DEBUG, "Route(%d) listening on %d", id, port)
 				return l, svcaddr, nil
 			}
 		}
 
-		// TODO: implement max retries..
 		tries++
 		if tries >= 1000 {
 			err = fmt.Errorf("unable to allocate port")
@@ -352,7 +346,7 @@ func (cts *ServerConn) RemoveServerRouteById(route_id uint32) (*ServerRoute, err
 	return r, nil
 }
 
-func (cts *ServerConn) ReportEvent(route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data []byte) error {
+func (cts *ServerConn) ReportEvent(route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data interface{}) error {
 	var r *ServerRoute
 	var ok bool
 
@@ -376,11 +370,11 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 	for {
 		pkt, err = cts.pss.Recv()
 		if errors.Is(err, io.EOF) {
-			cts.svr.log.Write("", LOG_INFO, "GRPC stream closed for client %s", cts.raddr)
+			cts.svr.log.Write(cts.sid, LOG_INFO, "RPC stream closed for client %s", cts.remote_addr)
 			goto done
 		}
 		if err != nil {
-			cts.svr.log.Write("", LOG_ERROR, "GRPC stream error for client %s - %s", cts.raddr, err.Error())
+			cts.svr.log.Write(cts.sid, LOG_ERROR, "RPC stream error for client %s - %s", cts.remote_addr, err.Error())
 			goto done
 		}
 
@@ -394,18 +388,18 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 
 					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.Proto, x.Route.AddrStr)
 					if err != nil {
-						cts.svr.log.Write("", LOG_ERROR, "Failed to add server route for client %s peer %s", cts.raddr, x.Route.AddrStr)
+						cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to add route for client %s peer %s", cts.remote_addr, x.Route.AddrStr)
 					} else {
-						cts.svr.log.Write("", LOG_INFO, "Added server route(id=%d) for client %s peer %s to cts(id=%d)", r.id, cts.raddr, x.Route.AddrStr, cts.id)
-						err = cts.pss.Send(MakeRouteStartedPacket(r.id, x.Route.Proto, r.svcaddr.String()))
+						cts.svr.log.Write(cts.sid, LOG_INFO, "Added route(%d) for client %s peer %s to cts(%d)", r.id, cts.remote_addr, x.Route.AddrStr, cts.id)
+						err = cts.pss.Send(MakeRouteStartedPacket(r.id, x.Route.Proto, r.svc_addr.String()))
 						if err != nil {
 							r.ReqStop()
-							cts.svr.log.Write("", LOG_ERROR, "Failed to inform client %s of server route started for peer %s", cts.raddr, x.Route.AddrStr)
+							cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to inform client %s of route started for peer %s", cts.remote_addr, x.Route.AddrStr)
 							goto done
 						}
 					}
 				} else {
-					cts.svr.log.Write("", LOG_INFO, "Received invalid packet from %s", cts.raddr)
+					cts.svr.log.Write(cts.sid, LOG_INFO, "Received invalid packet from %s", cts.remote_addr)
 					// TODO: need to abort this client?
 				}
 
@@ -418,19 +412,18 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 
 					r, err = cts.RemoveServerRouteById(x.Route.RouteId)
 					if err != nil {
-						cts.svr.log.Write("", LOG_ERROR, "Failed to delete server route(id=%d) for client %s peer %s", x.Route.RouteId, cts.raddr, x.Route.AddrStr)
+						cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to delete route(%d) for client %s peer %s", x.Route.RouteId, cts.remote_addr, x.Route.AddrStr)
 					} else {
-						cts.svr.log.Write("", LOG_ERROR, "Deleted server route(id=%d) for client %s peer %s", x.Route.RouteId, cts.raddr, x.Route.AddrStr)
+						cts.svr.log.Write(cts.sid, LOG_ERROR, "Deleted route(%d) for client %s peer %s", x.Route.RouteId, cts.remote_addr, x.Route.AddrStr)
 						err = cts.pss.Send(MakeRouteStoppedPacket(x.Route.RouteId, x.Route.Proto))
 						if err != nil {
 							r.ReqStop()
-							cts.svr.log.Write("", LOG_ERROR, "Failed to inform client %s of server route(id=%d) stopped for peer %s", cts.raddr, x.Route.RouteId, x.Route.AddrStr)
+							cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to inform client %s of route(%d) stopped for peer %s", cts.remote_addr, x.Route.RouteId, x.Route.AddrStr)
 							goto done
 						}
 					}
 				} else {
-					cts.svr.log.Write("", LOG_INFO, "Received invalid packet from %s", cts.raddr)
-					// TODO: need to abort this client?
+					cts.svr.log.Write(cts.sid, LOG_ERROR, "Invalid route_stop event from %s", cts.remote_addr)
 				}
 
 			case PACKET_KIND_PEER_STARTED:
@@ -439,15 +432,19 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_STARTED, nil)
+					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_STARTED, x.Peer)
 					if err != nil {
-						// TODO:
-						fmt.Printf("Failed to report PEER_STARTED Event")
+						cts.svr.log.Write(cts.sid, LOG_ERROR,
+							"Failed to handle peer_started event from %s for peer(%d,%d,%s,%s) - %s",
+							cts.remote_addr, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr, err.Error())
 					} else {
-						// TODO:
+						cts.svr.log.Write(cts.sid, LOG_DEBUG,
+							"Handled peer_started event from %s for peer(%d,%d,%s,%s)",
+							cts.remote_addr, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr)
 					}
 				} else {
-					// TODO
+					// invalid event data
+					cts.svr.log.Write(cts.sid, LOG_ERROR, "Invalid peer_started event from %s", cts.remote_addr)
 				}
 
 			case PACKET_KIND_PEER_ABORTED:
@@ -460,13 +457,17 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				if ok {
 					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_STOPPED, nil)
 					if err != nil {
-						// TODO:
-						fmt.Printf("Failed to report PEER_STOPPED Event")
+						cts.svr.log.Write(cts.sid, LOG_ERROR,
+							"Failed to handle peer_started event from %s for peer(%d,%d,%s,%s) - %s",
+							cts.remote_addr, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr, err.Error())
 					} else {
-						// TODO:
+						cts.svr.log.Write(cts.sid, LOG_DEBUG,
+							"Handled peer_stopped event from %s for peer(%d,%d,%s,%s)",
+							cts.remote_addr, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr)
 					}
 				} else {
-					// TODO
+					// invalid event data
+					cts.svr.log.Write(cts.sid, LOG_ERROR, "Invalid peer_stopped event from %s", cts.remote_addr)
 				}
 
 			case PACKET_KIND_PEER_DATA:
@@ -477,19 +478,23 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				if ok {
 					err = cts.ReportEvent(x.Data.RouteId, x.Data.PeerId, PACKET_KIND_PEER_DATA, x.Data.Data)
 					if err != nil {
-						// TODO:
-						fmt.Printf("Failed to report PEER_DATA Event")
+						cts.svr.log.Write(cts.sid, LOG_ERROR,
+							"Failed to handle peer_data event from %s for peer(%d,%d) - %s",
+							cts.remote_addr, x.Data.RouteId, x.Data.PeerId, err.Error())
 					} else {
-						// TODO:
+						cts.svr.log.Write(cts.sid, LOG_DEBUG,
+							"Handled peer_data event from %s for peer(%d,%d)",
+							cts.remote_addr, x.Data.RouteId, x.Data.PeerId)
 					}
 				} else {
-					// TODO
+					// invalid event data
+					cts.svr.log.Write(cts.sid, LOG_ERROR, "Invalid peer_data event from %s", cts.remote_addr)
 				}
 		}
 	}
 
 done:
-	fmt.Printf("************ stream receiver finished....\n")
+	cts.svr.log.Write(cts.sid, LOG_INFO, "RPC stream receiver ended")
 }
 
 func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
@@ -517,7 +522,7 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 		// or continue
 		select {
 			case <-ctx.Done(): // the stream context is done
-fmt.Printf("grpc server done - %s\n", ctx.Err().Error())
+				cts.svr.log.Write(cts.sid, LOG_INFO, "RPC stream done - %s", ctx.Err().Error())
 				goto done
 
 			case <- cts.stop_chan:
@@ -533,10 +538,8 @@ fmt.Printf("grpc server done - %s\n", ctx.Err().Error())
 	}
 
 done:
-fmt.Printf("^^^^^^^^^^^^^^^^^ waiting for reoute_wg...\n")
 	cts.ReqStop() // just in case
 	cts.route_wg.Wait()
-fmt.Printf("^^^^^^^^^^^^^^^^^ waited for reoute_wg...\n")
 }
 
 func (cts *ServerConn) ReqStop() {
@@ -618,7 +621,6 @@ func (cc *ConnCatcher) TagConn(ctx context.Context, info *stats.ConnTagInfo) con
 }
 
 func (cc *ConnCatcher) HandleConn(ctx context.Context, cs stats.ConnStats) {
-//    fmt.Println(ctx.Value("user_id")) // Returns nil, can't access the value
 	var p *peer.Peer
 	var ok bool
 	var addr string
@@ -629,44 +631,46 @@ func (cc *ConnCatcher) HandleConn(ctx context.Context, cs stats.ConnStats) {
 	} else {
 		addr = p.Addr.String()
 	}
-/*
-md,ok:=metadata.FromIncomingContext(ctx)
-fmt.Printf("%+v%+v\n",md,ok)
-if ok {
-}*/
+
+	/*
+	md,ok:=metadata.FromIncomingContext(ctx)
+	if ok {
+	}*/
+
 	switch cs.(type) {
 		case *stats.ConnBegin:
-			fmt.Printf("**** client connected - [%s]\n", addr)
+			cc.server.log.Write("", LOG_INFO, "Client connected - %s", addr)
+
 		case *stats.ConnEnd:
-			fmt.Printf("**** client disconnected - [%s]\n", addr)
+			cc.server.log.Write("", LOG_INFO, "Client disconnected - %s", addr)
 			cc.server.RemoveServerConnByAddr(p.Addr)
 	}
 }
 
-// wrappedStream wraps around the embedded grpc.ServerStream, and intercepts the RecvMsg and
-// SendMsg method call.
+// ------------------------------------
+
 type wrappedStream struct {
 	grpc.ServerStream
 }
 
-func (w *wrappedStream) RecvMsg(m any) error {
-	//fmt.Printf("Receive a message (Type: %T) at %s\n", m, time.Now().Format(time.RFC3339))
-	return w.ServerStream.RecvMsg(m)
+func (w *wrappedStream) RecvMsg(msg interface{}) error {
+	return w.ServerStream.RecvMsg(msg)
 }
 
-func (w *wrappedStream) SendMsg(m any) error {
-	//fmt.Printf("Send a message (Type: %T) at %v\n", m, time.Now().Format(time.RFC3339))
-	return w.ServerStream.SendMsg(m)
+func (w *wrappedStream) SendMsg(msg interface{}) error {
+	return w.ServerStream.SendMsg(msg)
 }
 
 func newWrappedStream(s grpc.ServerStream) grpc.ServerStream {
 	return &wrappedStream{s}
 }
 
-func streamInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func streamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	var err error
+
 	// authentication (token verification)
 /*
-	md, ok := metadata.FromIncomingContext(ss.Context())
+	md, ok = metadata.FromIncomingContext(ss.Context())
 	if !ok {
 		return errMissingMetadata
 	}
@@ -675,17 +679,20 @@ func streamInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, 
 	}
 */
 
-	err := handler(srv, newWrappedStream(ss))
+	err = handler(srv, newWrappedStream(ss))
 	if err != nil {
-		fmt.Printf("RPC failed with error: %v\n", err)
+		// TODO: LOGGING
 	}
 	return err
 }
 
-func unaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+func unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	var v interface{}
+	var err error
+
 	// authentication (token verification)
 /*
-	md, ok := metadata.FromIncomingContext(ctx)
+	md, ok = metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, errMissingMetadata
 	}
@@ -693,12 +700,14 @@ func unaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, han
 //		return nil, errInvalidToken
 	}
 */
-	m, err := handler(ctx, req)
+
+	v, err = handler(ctx, req)
 	if err != nil {
-		fmt.Printf("RPC failed with error: %v\n", err)
+		//fmt.Printf("RPC failed with error: %v\n", err)
+		// TODO: Logging?
 	}
 
-	return m, err
+	return v, err
 }
 
 func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logger Logger, tlscfg *tls.Config) (*Server, error) {
@@ -746,12 +755,12 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	}
 	gs = grpc.NewServer(grpc.Creds(creds))
 */
-	s.gs = grpc.NewServer(
-		grpc.UnaryInterceptor(unaryInterceptor),
-		grpc.StreamInterceptor(streamInterceptor),
+	s.rpc_svr = grpc.NewServer(
+		//grpc.UnaryInterceptor(unaryInterceptor),
+		//grpc.StreamInterceptor(streamInterceptor),
 		grpc.StatsHandler(&ConnCatcher{server: &s}),
-	) // TODO: have this outside the server struct?
-	RegisterHoduServer(s.gs, &s)
+	)
+	RegisterHoduServer(s.rpc_svr, &s)
 
 	s.ctl_prefix = "" // TODO:
 
@@ -776,7 +785,7 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	return &s, nil
 
 oops:
-/* TODO: check if gs needs to be closed... */
+	// TODO: check if rpc_svr needs to be closed. probably not. closing the listen may be good enough
 	if gl != nil {
 		gl.Close()
 	}
@@ -796,13 +805,13 @@ func (s *Server) run_grpc_server(idx int, wg *sync.WaitGroup) error {
 
 	l = s.rpc[idx]
 	// it seems to be safe to call a single grpc server on differnt listening sockets multiple times
-	s.log.Write("", LOG_ERROR, "Starting GRPC server on %s", l.Addr().String())
-	err = s.gs.Serve(l)
+	s.log.Write("", LOG_ERROR, "Starting RPC server on %s", l.Addr().String())
+	err = s.rpc_svr.Serve(l)
 	if err != nil {
 		if errors.Is(err, net.ErrClosed) {
-			s.log.Write("", LOG_ERROR, "GRPC server on %s closed", l.Addr().String())
+			s.log.Write("", LOG_ERROR, "RPC server on %s closed", l.Addr().String())
 		} else {
-			s.log.Write("", LOG_ERROR, "Error from GRPC server on %s - %s", l.Addr().String(), err.Error())
+			s.log.Write("", LOG_ERROR, "Error from RPC server on %s - %s", l.Addr().String(), err.Error())
 		}
 		return err
 	}
@@ -834,13 +843,13 @@ task_loop:
 	s.ReqStop()
 
 	s.rpc_wg.Wait()
-	s.log.Write("", LOG_DEBUG, "All GRPC listeners completed")
+	s.log.Write("", LOG_DEBUG, "All RPC listeners completed")
 
 	s.cts_wg.Wait()
 	s.log.Write("", LOG_DEBUG, "All CTS handlers completed")
 
 	// stop the main grpc server after all the other tasks are finished.
-	s.gs.Stop()
+	s.rpc_svr.Stop()
 }
 
 func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
@@ -883,7 +892,7 @@ func (s *Server) ReqStop() {
 			l.Close()
 		}
 
-		s.cts_mtx.Lock() // TODO: this mya create dead-lock. check possibility of dead lock???
+		s.cts_mtx.Lock()
 		for _, cts = range s.cts_map {
 			cts.ReqStop() // request to stop connections from/to peer held in the cts structure
 		}
@@ -901,8 +910,8 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 
 	cts.svr = s
 	cts.route_map = make(ServerRouteMap)
-	cts.raddr = *remote_addr
-	cts.laddr = *local_addr
+	cts.remote_addr = *remote_addr
+	cts.local_addr = *local_addr
 	cts.pss = &GuardedPacketStreamServer{Hodu_PacketStreamServer: pss}
 
 	cts.stop_req.Store(false)
@@ -920,13 +929,13 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 	cts.id = id
 	cts.sid = fmt.Sprintf("%d", id) // id in string used for logging
 
-	_, ok = s.cts_map_by_addr[cts.raddr]
+	_, ok = s.cts_map_by_addr[cts.remote_addr]
 	if ok {
-		return nil, fmt.Errorf("existing client - %s", cts.raddr.String())
+		return nil, fmt.Errorf("existing client - %s", cts.remote_addr.String())
 	}
-	s.cts_map_by_addr[cts.raddr] = &cts
+	s.cts_map_by_addr[cts.remote_addr] = &cts
 	s.cts_map[id] = &cts;
-	s.log.Write("", LOG_DEBUG, "Added client connection from %s", cts.raddr.String())
+	s.log.Write("", LOG_DEBUG, "Added client connection from %s", cts.remote_addr.String())
 	return &cts, nil
 }
 
@@ -958,7 +967,7 @@ func (s *Server) RemoveServerConn(cts *ServerConn) error {
 	}
 
 	delete(s.cts_map, cts.id)
-	delete(s.cts_map_by_addr, cts.raddr)
+	delete(s.cts_map_by_addr, cts.remote_addr)
 	s.cts_mtx.Unlock()
 
 	cts.ReqStop()
@@ -977,7 +986,7 @@ func (s *Server) RemoveServerConnByAddr(addr net.Addr) error {
 		return fmt.Errorf("non-existent connection address - %s", addr.String())
 	}
 	delete(s.cts_map, cts.id)
-	delete(s.cts_map_by_addr, cts.raddr)
+	delete(s.cts_map_by_addr, cts.remote_addr)
 	s.cts_mtx.Unlock()
 
 	cts.ReqStop()

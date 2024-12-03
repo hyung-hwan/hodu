@@ -231,10 +231,10 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	// most useful works are triggered by ReportEvent() and done by ConnectToPeer()
 	defer wg.Done()
 
-	r.cts.cli.log.Write("", LOG_DEBUG, "Sending route-start for id=%d peer=%s to %s", r.id, r.peer_addr, r.cts.cfg.ServerAddr)
+	r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG, "Sending route_start for route(%d,%s) to %s", r.id, r.peer_addr, r.cts.remote_addr)
 	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.proto, r.peer_addr))
 	if err != nil {
-		r.cts.cli.log.Write("", LOG_DEBUG, "Failed to Send route-start for id=%d peer=%s to %s", r.id, r.peer_addr, r.cts.cfg.ServerAddr)
+		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG, "Failed to send route_start for route(%d,%s) to %s", r.id, r.peer_addr, r.cts.remote_addr)
 		goto done
 	}
 
@@ -250,10 +250,9 @@ done:
 	r.ReqStop()
 	r.ptc_wg.Wait() // wait for all peer tasks are finished
 
-	r.cts.cli.log.Write("", LOG_DEBUG, "Sending route-stop for id=%d peer=%s to %s", r.id, r.peer_addr, r.cts.cfg.ServerAddr)
+	r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG, "Sending route_stop for route(%d,%s) to %s", r.id, r.peer_addr, r.cts.remote_addr)
 	r.cts.psc.Send(MakeRouteStopPacket(r.id, r.proto, r.peer_addr))
 	r.cts.RemoveClientRoute(r)
-fmt.Printf("*** End fo Client Route Task\n")
 }
 
 func (r *ClientRoute) ReqStop() {
@@ -264,7 +263,6 @@ func (r *ClientRoute) ReqStop() {
 		}
 		r.stop_chan <- true
 	}
-fmt.Printf("*** Sent stop request to Route..\n")
 }
 
 func (r *ClientRoute) ConnectToPeer(pts_id uint32, pts_raddr string, pts_laddr string, wg *sync.WaitGroup) {
@@ -312,7 +310,7 @@ func (r *ClientRoute) ConnectToPeer(pts_id uint32, pts_raddr string, pts_laddr s
 		fmt.Printf("YYYYYYYY - %s\n", err.Error())
 		goto peer_aborted
 	}
-	fmt.Printf("STARTED NEW SERVER PEER STAK\n")
+
 	err = r.cts.psc.Send(MakePeerStartedPacket(r.id, ptc.conn_id, real_conn.RemoteAddr().String(), real_conn.LocalAddr().String()))
 	if err != nil {
 		fmt.Printf("CLOSING NEW SERVER PEER STAK - %s\n", err.Error())

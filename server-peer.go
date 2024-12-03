@@ -1,7 +1,6 @@
 package hodu
 
 import "errors"
-import "fmt"
 import "io"
 import "net"
 import "sync"
@@ -37,7 +36,6 @@ func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) *ServerPeerCon
 	spc.client_peer_started.Store(false)
 	spc.client_peer_stopped.Store(false)
 	spc.client_peer_eof.Store(false)
-fmt.Printf("~~~~~~~~~~~~~~~ NEW SERVER PEER CONNECTION ADDED %p\n", &spc)
 	return &spc
 }
 
@@ -54,8 +52,9 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 	pss = spc.route.cts.pss
 	err = pss.Send(MakePeerStartedPacket(spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String()))
 	if err != nil {
-		// TODO: include route id and conn id in the error message
-		spc.route.cts.svr.log.Write("", LOG_ERROR, "Unable to notify peer started - %s", err.Error())
+		spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
+			"Failed to send peer_started event(%d,%d,%s,%s) to client - %s",
+			spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
 		goto done_without_stop
 	}
 
@@ -88,27 +87,31 @@ wait_for_started:
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				if pss.Send(MakePeerEofPacket(spc.route.id, spc.conn_id)) != nil {
-					spc.route.cts.svr.log.Write("", LOG_ERROR, "Unable to report eof - %s", err.Error())
+					spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
+						"Failed to send peer_eof event(%d,%d,%s,%s) to client - %s",
+						spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
 					goto done
 				}
 				goto wait_for_stopped
 			} else {
-				spc.route.cts.svr.log.Write("", LOG_ERROR, "Unable to read data - %s", err.Error())
+				spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
+					"Failed to read data from peer(%d,%d,%s,%s) - %s",
+					spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
 				goto done
 			}
 		}
 
 		err = pss.Send(MakePeerDataPacket(spc.route.id, spc.conn_id, buf[:n]))
 		if err != nil {
-			// TODO: include route id and conn id in the error message
-			spc.route.cts.svr.log.Write("", LOG_ERROR, "Unable to send data - %s", err.Error())
+			spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
+					"Failed to send data from peer(%d,%d,%s,%s) to client - %s",
+					spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
 			goto done
 		}
 	}
 
 wait_for_stopped:
 	for {
-fmt.Printf ("******************* Waiting for peer Stop\n")
 		select {
 			case status = <-spc.client_peer_status_chan: // something not right... may use a different channel for closing...
 				goto done
@@ -116,20 +119,16 @@ fmt.Printf ("******************* Waiting for peer Stop\n")
 				goto done
 		}
 	}
-fmt.Printf ("******************* Sending peer stopped\n")
-	if pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id)) != nil {
-		fmt.Printf("unable to report data - %s\n", err.Error())
-		goto done
-	}
 
 done:
-	if pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id)) != nil {
-		fmt.Printf("unable to report data - %s\n", err.Error())
+	if pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String())) != nil {
+		spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
+			"Failed to send peer_stopped(%d,%d,%s,%s) to client - %s",
+			spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
 		// nothing much to do about the failure of sending this
 	}
 
 done_without_stop:
-	fmt.Printf("SPC really ending..................\n")
 	spc.ReqStop()
 	spc.route.RemoveServerPeerConn(spc)
 }
@@ -149,42 +148,54 @@ func (spc *ServerPeerConn) ReqStop() {
 	}
 }
 
-func (spc *ServerPeerConn) ReportEvent(event_type PACKET_KIND, event_data []byte) error {
+func (spc *ServerPeerConn) ReportEvent(event_type PACKET_KIND, event_data interface{}) error {
 
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
-fmt.Printf("******************* AAAAAAAAAAAAAAAAAAAaaa\n")
 			if spc.client_peer_started.CompareAndSwap(false, true) {
 				spc.client_peer_status_chan <- true
 			}
 
 		case PACKET_KIND_PEER_STOPPED:
-fmt.Printf("******************* BBBBBBBBBBBBBBBBBBBBBBBB\n")
 			// this event needs to close on the server-side peer connection.
 			// sending false to the client_peer_status_chan isn't good enough to break
 			// the Recv loop in RunTask().
 			spc.ReqStop()
 
 		case PACKET_KIND_PEER_EOF:
-fmt.Printf("******************* BBBBBBBBBBBBBBBBBBBBBBBB CLIENT PEER EOF\n")
 			// the client-side peer is not supposed to send data any more
 			if spc.client_peer_eof.CompareAndSwap(false, true) {
 				spc.conn.CloseWrite()
 			}
 
 		case PACKET_KIND_PEER_DATA:
-fmt.Printf("******************* CCCCCCCCCCCCCCCCCCCCCCCccc\n")
 			if spc.client_peer_eof.Load() == false {
-				var err error
+				var ok bool
+				var data []byte
 
-				_, err = spc.conn.Write(event_data)
-				if err != nil {
-					// TODO: logging
-					fmt.Printf ("WARNING - failed to write data from %s to %s\n", spc.route.cts.raddr, spc.conn.RemoteAddr().String())
+				data, ok = event_data.([]byte)
+				if ok {
+					var err error
+					_, err = spc.conn.Write(data)
+					if err != nil {
+						spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
+							"Failed to write data from %s to peer(%d,%d,%s) - %s",
+							spc.route.cts.remote_addr, spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), err.Error())
+						spc.ReqStop()
+					}
+				} else {
+					// this must not happen.
+					spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
+						"internal server error - invalid data in peer_data event from %s to peer(%d,%d,%s)",
+						spc.route.cts.remote_addr, spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String())
+					spc.ReqStop()
 				}
 			} else {
 				// protocol error. the client must not relay more data from the client-side peer after EOF.
-				fmt.Printf("WARNING - broken client - redundant data from %s to %s\n", spc.route.cts.raddr, spc.conn.RemoteAddr().String())
+				spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
+					"internal client error - redundant data from %s to (%d,%d,%s)",
+					spc.route.cts.remote_addr, spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String())
+				spc.ReqStop()
 			}
 
 		default:

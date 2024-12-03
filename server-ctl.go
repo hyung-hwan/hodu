@@ -56,13 +56,13 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					jsp = append(jsp, json_out_server_route{
 						Id: r.id,
 						ClientPeerAddr: r.ptc_addr,
-						ServerPeerListenAddr: r.svcaddr.String(),
+						ServerPeerListenAddr: r.svc_addr.String(),
 					})
 				}
 				js = append(js, json_out_server_conn{
 					Id: cts.id,
-					ClientAddr: cts.raddr.String(),
-					ServerAddr: cts.laddr.String(),
+					ClientAddr: cts.remote_addr.String(),
+					ServerAddr: cts.local_addr.String(),
 					Routes: jsp,
 				})
 				cts.route_mtx.Unlock()
@@ -131,13 +131,13 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				jsp = append(jsp, json_out_server_route{
 					Id: r.id,
 					ClientPeerAddr: r.ptc_addr,
-					ServerPeerListenAddr: r.svcaddr.String(),
+					ServerPeerListenAddr: r.svc_addr.String(),
 				})
 			}
 			js = &json_out_server_conn{
 				Id: cts.id,
-				ClientAddr: cts.raddr.String(),
-				ServerAddr: cts.laddr.String(),
+				ClientAddr: cts.remote_addr.String(),
+				ServerAddr: cts.local_addr.String(),
 				Routes: jsp,
 			}
 			cts.route_mtx.Unlock()

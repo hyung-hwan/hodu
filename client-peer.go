@@ -1,6 +1,5 @@
 package hodu
 
-import "fmt"
 import "net"
 import "sync"
 
@@ -25,32 +24,31 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 
 	defer wg.Done()
 
-fmt.Printf("CONNECTION ESTABLISHED TO PEER... ABOUT TO READ DATA...\n")
 	for {
 		n, err = cpc.conn.Read(buf[:])
 		if err != nil {
-// TODO: add proper log header
-			cpc.route.cts.cli.log.Write("", LOG_ERROR,  "Unable to read from the client-side peer %s - %s", cpc.conn.RemoteAddr().String(), err.Error())
+			cpc.route.cts.cli.log.Write(cpc.route.cts.sid, LOG_ERROR,
+				"Failed to read from the client-side peer(%d,%d,%s,%s) - %s",
+				cpc.route.id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String(), err.Error())
 			break
 		}
 
 		err = cpc.route.cts.psc.Send(MakePeerDataPacket(cpc.route.id, cpc.conn_id, buf[0:n]))
 		if err != nil {
-// TODO: add proper log header
-			cpc.route.cts.cli.log.Write("", LOG_ERROR,  "Unable to write to server - %s", err.Error())
+			cpc.route.cts.cli.log.Write(cpc.route.cts.sid, LOG_ERROR,
+				"Failed to write peer(%d,%d,%s,%s) data to server - %s",
+				cpc.route.id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String(), err.Error())
 			break
 		}
 	}
 
-	cpc.route.cts.psc.Send(MakePeerStoppedPacket(cpc.route.id, cpc.conn_id)) // nothing much to do upon failure. no error check here
-
+	cpc.route.cts.psc.Send(MakePeerStoppedPacket(cpc.route.id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String())) // nothing much to do upon failure. no error check here
 	cpc.ReqStop()
-        cpc.route.RemoveClientPeerConn(cpc)
+	cpc.route.RemoveClientPeerConn(cpc)
 	return nil
 }
 
 func (cpc *ClientPeerConn) ReqStop() {
-	// TODO: because of connect delay in Start, cpc.p may not be yet ready. handle this case...
 	if cpc.stop_req.CompareAndSwap(false, true) {
 		if cpc.conn != nil {
 			cpc.conn.Close()

@@ -31,9 +31,10 @@ func MakePeerStartedPacket(route_id uint32, peer_id uint32, remote_addr string, 
 	}
 }
 
-func MakePeerStoppedPacket(route_id uint32, peer_id uint32) *Packet {
+func MakePeerStoppedPacket(route_id uint32, peer_id uint32, remote_addr string, local_addr string) *Packet {
 	return &Packet{Kind: PACKET_KIND_PEER_STOPPED,
-		U: &Packet_Peer{Peer: &PeerDesc{RouteId: route_id, PeerId: peer_id}}}
+		U: &Packet_Peer{Peer: &PeerDesc{RouteId: route_id, PeerId: peer_id, RemoteAddrStr: remote_addr, LocalAddrStr: local_addr}},
+	}
 }
 
 func MakePeerAbortedPacket(route_id uint32, peer_id uint32) *Packet {
