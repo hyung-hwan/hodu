@@ -3,19 +3,19 @@ package hodu
 func MakeRouteStartPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {
 	return &Packet{
 		Kind: PACKET_KIND_ROUTE_START,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, AddrStr: addr}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, TargetAddrStr: addr}}}
 }
 
 func MakeRouteStopPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {
 	return &Packet{
 		Kind: PACKET_KIND_ROUTE_STOP,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, AddrStr: addr}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, TargetAddrStr: addr}}}
 }
 
 func MakeRouteStartedPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {
 	// the connection from a peer to the server has been established
 	return &Packet{Kind: PACKET_KIND_ROUTE_STARTED,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, AddrStr: addr}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, TargetAddrStr: addr}}}
 }
 
 func MakeRouteStoppedPacket(route_id uint32, proto ROUTE_PROTO) *Packet {

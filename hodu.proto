@@ -23,7 +23,8 @@ enum ROUTE_PROTO {
 message RouteDesc {
 	uint32      RouteId = 1;
 	ROUTE_PROTO Proto = 2; 
-	string      AddrStr = 3;
+	string      TargetAddrStr = 3;
+	string      ServiceNetStr = 4;
 };
 
 message PeerDesc {

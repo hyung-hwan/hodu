@@ -380,9 +380,9 @@ func (r *ClientRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_d
 				r.ReqStop()
 			} else {
 				var addr *net.TCPAddr
-				addr, err = net.ResolveTCPAddr("tcp", rd.AddrStr)
+				addr, err = net.ResolveTCPAddr("tcp", rd.TargetAddrStr)
 				if err != nil {
-					r.cts.cli.log.Write(r.cts.sid, LOG_ERROR, "Protocol error - invalid service address(%s) for server peer in route_started event(%d)", rd.AddrStr, r.id)
+					r.cts.cli.log.Write(r.cts.sid, LOG_ERROR, "Protocol error - invalid service address(%s) for server peer in route_started event(%d)", rd.TargetAddrStr, r.id)
 					r.ReqStop()
 				} else {
 					r.server_peer_listen_addr = addr
@@ -770,11 +770,11 @@ start_over:
 					if err != nil {
 						cts.cli.log.Write(cts.sid, LOG_ERROR,
 							"Failed to handle route_started event(%d,%s) from %s - %s",
-							x.Route.RouteId, x.Route.AddrStr, cts.remote_addr, err.Error())
+							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr, err.Error())
 					} else {
 						cts.cli.log.Write(cts.sid, LOG_DEBUG,
 							"Handled route_started event(%d,%s) from %s",
-							x.Route.RouteId, x.Route.AddrStr, cts.remote_addr)
+							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr)
 					}
 				} else {
 					cts.cli.log.Write(cts.sid, LOG_ERROR, "Invalid route_started event from %s", cts.remote_addr)
@@ -789,11 +789,11 @@ start_over:
 					if err != nil {
 						cts.cli.log.Write(cts.sid, LOG_ERROR,
 							"Failed to handle route_stopped event(%d,%s) from %s - %s",
-							x.Route.RouteId, x.Route.AddrStr, cts.remote_addr, err.Error())
+							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr, err.Error())
 					} else {
 						cts.cli.log.Write(cts.sid, LOG_DEBUG,
 							"Handled route_stopped event(%d,%s) from %s",
-							x.Route.RouteId, x.Route.AddrStr, cts.remote_addr)
+							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr)
 					}
 				} else {
 					cts.cli.log.Write(cts.sid, LOG_ERROR, "Invalid route_stopped event from %s", cts.remote_addr)

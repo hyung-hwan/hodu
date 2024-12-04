@@ -386,15 +386,15 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				if ok {
 					var r *ServerRoute
 
-					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.Proto, x.Route.AddrStr)
+					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.Proto, x.Route.TargetAddrStr)
 					if err != nil {
-						cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to add route for client %s peer %s", cts.remote_addr, x.Route.AddrStr)
+						cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to add route for client %s peer %s", cts.remote_addr, x.Route.TargetAddrStr)
 					} else {
-						cts.svr.log.Write(cts.sid, LOG_INFO, "Added route(%d) for client %s peer %s to cts(%d)", r.id, cts.remote_addr, x.Route.AddrStr, cts.id)
+						cts.svr.log.Write(cts.sid, LOG_INFO, "Added route(%d) for client %s peer %s to cts(%d)", r.id, cts.remote_addr, x.Route.TargetAddrStr, cts.id)
 						err = cts.pss.Send(MakeRouteStartedPacket(r.id, x.Route.Proto, r.svc_addr.String()))
 						if err != nil {
 							r.ReqStop()
-							cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to inform client %s of route started for peer %s", cts.remote_addr, x.Route.AddrStr)
+							cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to inform client %s of route started for peer %s", cts.remote_addr, x.Route.TargetAddrStr)
 							goto done
 						}
 					}
@@ -412,13 +412,13 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 
 					r, err = cts.RemoveServerRouteById(x.Route.RouteId)
 					if err != nil {
-						cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to delete route(%d) for client %s peer %s", x.Route.RouteId, cts.remote_addr, x.Route.AddrStr)
+						cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to delete route(%d) for client %s peer %s", x.Route.RouteId, cts.remote_addr, x.Route.TargetAddrStr)
 					} else {
-						cts.svr.log.Write(cts.sid, LOG_ERROR, "Deleted route(%d) for client %s peer %s", x.Route.RouteId, cts.remote_addr, x.Route.AddrStr)
+						cts.svr.log.Write(cts.sid, LOG_ERROR, "Deleted route(%d) for client %s peer %s", x.Route.RouteId, cts.remote_addr, x.Route.TargetAddrStr)
 						err = cts.pss.Send(MakeRouteStoppedPacket(x.Route.RouteId, x.Route.Proto))
 						if err != nil {
 							r.ReqStop()
-							cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to inform client %s of route(%d) stopped for peer %s", cts.remote_addr, x.Route.RouteId, x.Route.AddrStr)
+							cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to inform client %s of route(%d) stopped for peer %s", cts.remote_addr, x.Route.RouteId, x.Route.TargetAddrStr)
 							goto done
 						}
 					}
