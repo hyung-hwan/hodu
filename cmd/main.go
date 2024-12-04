@@ -264,7 +264,7 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(rpc_addrs) < 1 || flgs.NArg() < 1 {
+		if len(rpc_addrs) < 1 {
 			goto wrong_usage
 		}
 		err = client_main(ctl_addrs, rpc_addrs[0], flgs.Args())
@@ -280,7 +280,7 @@ func main() {
 
 wrong_usage:
 	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port \n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-server=addr:port --ctl-on=addr:port  peer-addr:peer-port\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-server=addr:port --ctl-on=addr:port  [peer-addr:peer-port ...]\n", os.Args[0])
 	os.Exit(1)
 
 oops:

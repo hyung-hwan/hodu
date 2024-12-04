@@ -40,17 +40,16 @@ message PeerData {
 };
 
 enum PACKET_KIND {
-	ERROR         = 0; // generic error response
-	OK            = 1; // generic success response
-	ROUTE_START   = 2;
-	ROUTE_STOP    = 3;
-	ROUTE_STARTED = 4;
-	ROUTE_STOPPED = 5;
-	PEER_STARTED  = 6;
-	PEER_STOPPED  = 7;
-	PEER_ABORTED  = 8;
-	PEER_EOF      = 9;
-	PEER_DATA     = 10;
+	RESERVED      = 0; // not used
+	ROUTE_START   = 1;
+	ROUTE_STOP    = 2;
+	ROUTE_STARTED = 3;
+	ROUTE_STOPPED = 4;
+	PEER_STARTED  = 5;
+	PEER_STOPPED  = 6;
+	PEER_ABORTED  = 7;
+	PEER_EOF      = 8;
+	PEER_DATA     = 9;
 };
 
 message Packet {

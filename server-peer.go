@@ -45,16 +45,21 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 	var buf [4096]byte
 	var tmr *time.Timer
 	var status bool
-	var err error = nil
+	var err error
+	var conn_raddr string
+	var conn_laddr string
 
 	defer wg.Done()
 
+	conn_raddr = spc.conn.RemoteAddr().String()
+	conn_laddr = spc.conn.LocalAddr().String()
+
 	pss = spc.route.cts.pss
-	err = pss.Send(MakePeerStartedPacket(spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String()))
+	err = pss.Send(MakePeerStartedPacket(spc.route.id, spc.conn_id, conn_raddr, conn_laddr))
 	if err != nil {
 		spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
 			"Failed to send peer_started event(%d,%d,%s,%s) to client - %s",
-			spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
+			spc.route.id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 		goto done_without_stop
 	}
 
@@ -86,17 +91,18 @@ wait_for_started:
 		n, err = spc.conn.Read(buf[:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				if pss.Send(MakePeerEofPacket(spc.route.id, spc.conn_id)) != nil {
+				err = pss.Send(MakePeerEofPacket(spc.route.id, spc.conn_id))
+				if err != nil {
 					spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
 						"Failed to send peer_eof event(%d,%d,%s,%s) to client - %s",
-						spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
+						spc.route.id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 					goto done
 				}
 				goto wait_for_stopped
 			} else {
 				spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
 					"Failed to read data from peer(%d,%d,%s,%s) - %s",
-					spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
+					spc.route.id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 				goto done
 			}
 		}
@@ -105,7 +111,7 @@ wait_for_started:
 		if err != nil {
 			spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
 					"Failed to send data from peer(%d,%d,%s,%s) to client - %s",
-					spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
+					spc.route.id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 			goto done
 		}
 	}
@@ -121,10 +127,11 @@ wait_for_stopped:
 	}
 
 done:
-	if pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String())) != nil {
+	err = pss.Send(MakePeerStoppedPacket(spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String()))
+	if err != nil {
 		spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
 			"Failed to send peer_stopped(%d,%d,%s,%s) to client - %s",
-			spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String(), err.Error())
+			spc.route.id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 		// nothing much to do about the failure of sending this
 	}
 
@@ -156,6 +163,9 @@ func (spc *ServerPeerConn) ReportEvent(event_type PACKET_KIND, event_data interf
 				spc.client_peer_status_chan <- true
 			}
 
+		case PACKET_KIND_PEER_ABORTED:
+			spc.ReqStop()
+
 		case PACKET_KIND_PEER_STOPPED:
 			// this event needs to close on the server-side peer connection.
 			// sending false to the client_peer_status_chan isn't good enough to break
@@ -186,14 +196,14 @@ func (spc *ServerPeerConn) ReportEvent(event_type PACKET_KIND, event_data interf
 				} else {
 					// this must not happen.
 					spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
-						"internal server error - invalid data in peer_data event from %s to peer(%d,%d,%s)",
+						"Protocol error - invalid data in peer_data event from %s to peer(%d,%d,%s)",
 						spc.route.cts.remote_addr, spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String())
 					spc.ReqStop()
 				}
 			} else {
 				// protocol error. the client must not relay more data from the client-side peer after EOF.
 				spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,
-					"internal client error - redundant data from %s to (%d,%d,%s)",
+					"Protocol error - redundant data from %s to (%d,%d,%s)",
 					spc.route.cts.remote_addr, spc.route.id, spc.conn_id, spc.conn.RemoteAddr().String())
 				spc.ReqStop()
 			}

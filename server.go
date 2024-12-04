@@ -448,17 +448,35 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				}
 
 			case PACKET_KIND_PEER_ABORTED:
-				fallthrough
+				var x *Packet_Peer
+				var ok bool
+				x, ok = pkt.U.(*Packet_Peer)
+				if ok {
+					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_ABORTED, x.Peer)
+					if err != nil {
+						cts.svr.log.Write(cts.sid, LOG_ERROR,
+							"Failed to handle peer_aborted event from %s for peer(%d,%d,%s,%s) - %s",
+							cts.remote_addr, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr, err.Error())
+					} else {
+						cts.svr.log.Write(cts.sid, LOG_DEBUG,
+							"Handled peer_aborted event from %s for peer(%d,%d,%s,%s)",
+							cts.remote_addr, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr)
+					}
+				} else {
+					// invalid event data
+					cts.svr.log.Write(cts.sid, LOG_ERROR, "Invalid peer_aborted event from %s", cts.remote_addr)
+				}
+
 			case PACKET_KIND_PEER_STOPPED:
 				// the connection from the client to a peer has been established
 				var x *Packet_Peer
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_STOPPED, nil)
+					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_STOPPED, x.Peer)
 					if err != nil {
 						cts.svr.log.Write(cts.sid, LOG_ERROR,
-							"Failed to handle peer_started event from %s for peer(%d,%d,%s,%s) - %s",
+							"Failed to handle peer_stopped event from %s for peer(%d,%d,%s,%s) - %s",
 							cts.remote_addr, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr, err.Error())
 					} else {
 						cts.svr.log.Write(cts.sid, LOG_DEBUG,
@@ -886,8 +904,8 @@ func (s *Server) ReqStop() {
 			ctl.Shutdown(s.ctx) // to break c.ctl.ListenAndServe()
 		}
 
-		//s.gs.GracefulStop()
-		//s.gs.Stop()
+		//s.rpc_svr.GracefulStop()
+		//s.rpc_svr.Stop()
 		for _, l = range s.rpc {
 			l.Close()
 		}

@@ -2,6 +2,7 @@ package hodu
 
 import "encoding/json"
 import "net/http"
+import "net/url"
 import "strconv"
 
 /*
@@ -86,14 +87,6 @@ type client_ctl_client_conns_id_routes_id_peers_id struct {
 	c *Client
 }
 
-type client_ctl_clients struct {
-	c *Client
-}
-
-type client_ctl_clients_id struct {
-	c *Client
-}
-
 // ------------------------------------
 
 func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -109,6 +102,13 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 		case http.MethodGet:
 			var cts *ClientConn
 			var js []json_out_client_conn
+			var q url.Values
+
+			q = req.URL.Query()
+
+// TODO: brief listing vs full listing
+			if q.Get("brief") == "true" {
+			}
 
 			js = make([]json_out_client_conn, 0)
 			c.cts_mtx.Lock()
@@ -321,7 +321,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			var r *ClientRoute
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
-			if err != nil {
+			if err != nil || jcr.ClientPeerAddr == "" {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				goto done
 			}
@@ -581,14 +581,4 @@ done:
 oops:
 	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
 	return
-}
-
-// ------------------------------------
-
-func (ctl *client_ctl_clients) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-}
-
-// ------------------------------------
-
-func (ctl *client_ctl_clients_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }

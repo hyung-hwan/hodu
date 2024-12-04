@@ -1,5 +1,7 @@
 package hodu
 
+import "errors"
+import "io"
 import "net"
 import "sync"
 
@@ -27,9 +29,15 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 	for {
 		n, err = cpc.conn.Read(buf[:])
 		if err != nil {
-			cpc.route.cts.cli.log.Write(cpc.route.cts.sid, LOG_ERROR,
-				"Failed to read from the client-side peer(%d,%d,%s,%s) - %s",
-				cpc.route.id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String(), err.Error())
+			if errors.Is(err, io.EOF) {
+				cpc.route.cts.cli.log.Write(cpc.route.cts.sid, LOG_INFO,
+					"Client-side peer(%d,%d,%s,%s) closed",
+					cpc.route.id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String())
+			} else {
+				cpc.route.cts.cli.log.Write(cpc.route.cts.sid, LOG_ERROR,
+					"Failed to read from client-side peer(%d,%d,%s,%s) - %s",
+					cpc.route.id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String(), err.Error())
+			}
 			break
 		}
 
