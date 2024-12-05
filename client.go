@@ -987,6 +987,7 @@ func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, tlscfg *t
 		c.ctl[i] = &http.Server{
 			Addr: ctl_addrs[i],
 			Handler: c.ctl_mux,
+			TLSConfig: tlscfg,
 			// TODO: more settings
 		}
 	}
@@ -1183,7 +1184,11 @@ func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 		l_wg.Add(1)
 		go func(i int, cs *http.Server) {
 			c.log.Write ("", LOG_INFO, "Control channel[%d] started on %s", i, c.ctl_addr[i])
-			err = cs.ListenAndServe()
+			if c.tlscfg == nil {
+				err = cs.ListenAndServe()
+			} else {
+				err = cs.ListenAndServeTLS("", "") // c.tlscfg must provide a certificate and a key
+			}
 			if errors.Is(err, http.ErrServerClosed) {
 				c.log.Write("", LOG_DEBUG, "Control channel[%d] ended", i)
 			} else {

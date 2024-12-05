@@ -852,6 +852,8 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	s.ctl_mux.Handle(s.ctl_prefix + "/ws/tty", new_server_ctl_ws_tty(&s))
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns", &server_ctl_server_conns{s: &s})
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}", &server_ctl_server_conns_id{s: &s})
+	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes", &server_ctl_server_conns_id_routes{s: &s})
+	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes/{route_id}", &server_ctl_server_conns_id_routes_id{s: &s})
 
 	s.ctl_addr = make([]string, len(ctl_addrs))
 	s.ctl = make([]*http.Server, len(ctl_addrs))
@@ -860,6 +862,7 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 		s.ctl[i] = &http.Server{
 			Addr: ctl_addrs[i],
 			Handler: s.ctl_mux,
+			TLSConfig: s.tlscfg,
 			// TODO: more settings
 		}
 	}
@@ -946,7 +949,11 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 		l_wg.Add(1)
 		go func(i int, cs *http.Server) {
 			s.log.Write ("", LOG_INFO, "Control channel[%d] started on %s", i, s.ctl_addr[i])
-			err = cs.ListenAndServe()
+			if s.tlscfg == nil {
+				err = cs.ListenAndServe()
+			} else {
+				err = cs.ListenAndServeTLS("", "") // c.tlscfg must provide a certificate and a key
+			}
 			if errors.Is(err, http.ErrServerClosed) {
 				s.log.Write("", LOG_DEBUG, "Control channel[%d] ended", i)
 			} else {

@@ -160,13 +160,41 @@ func server_main(ctl_addrs []string, svcaddrs []string) error {
 	var s *hodu.Server
 	var err error
 	var cert tls.Certificate
+	var cert_pool *x509.CertPool
+	var tlscfg *tls.Config
 
 	cert, err = tls.X509KeyPair([]byte(rootCert), []byte(rootKey))
 	if err != nil {
 		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
 	}
 
-	s, err = hodu.NewServer(context.Background(), ctl_addrs, svcaddrs, &AppLogger{id: "server", out: os.Stderr}, &tls.Config{Certificates: []tls.Certificate{cert}})
+	cert_pool = x509.NewCertPool()
+	ok := cert_pool.AppendCertsFromPEM([]byte(rootCert))
+	if !ok {
+		return fmt.Errorf("ERROR: failed to append root certificate\n")
+	}
+
+/*
+	// Don't use `Certificates` it doesn't work with some certificate files.
+	// See, `getClientCertificate` in ${GOSRC}/src/crypto/tls/handshake_client.go for details
+	tlsConfig.GetClientCertificate = func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		 return clientCert, nil
+	}
+*/
+
+	tlscfg = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth: tls.NoClientCert, // tls.RequestClientCert, tls.RequestAnyClientCert, VerifyClientCertIfGiven, RequireAndVerifyClientCert
+		ClientCAs: cert_pool, // trusted CA certs for client certificate verification
+		ServerName: "hodu",
+	}
+
+	s, err = hodu.NewServer(
+		context.Background(),
+		ctl_addrs,
+		svcaddrs,
+		&AppLogger{id: "server", out: os.Stderr},
+		tlscfg)
 	if err != nil {
 		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
 	}
@@ -181,25 +209,65 @@ func server_main(ctl_addrs []string, svcaddrs []string) error {
 
 // --------------------------------------------------------------------
 
-func client_main(ctl_addr []string, server_addr string, peer_addrs []string) error {
+func client_main(ctl_addrs []string, server_addr string, peer_addrs []string) error {
 	var c *hodu.Client
+	var cert tls.Certificate
 	var cert_pool *x509.CertPool
 	var tlscfg *tls.Config
 	var cc hodu.ClientConfig
+	var err error
 
+/*
 	cert_pool = x509.NewCertPool()
 	ok := cert_pool.AppendCertsFromPEM([]byte(rootCert))
 	if !ok {
 		fmt.Printf("failed to parse root certificate")
 	}
+
 	tlscfg = &tls.Config{
 		RootCAs: cert_pool,
-		ServerName: "localhost",
-		InsecureSkipVerify: true,
+		ClientAuth: 
+		ServerName: "hodu",
+		//InsecureSkipVerify: true,
 	}
 
-// TODO: support multiple ctl addrs
-	c = hodu.NewClient(context.Background(), ctl_addr, &AppLogger{id: "client", out: os.Stderr}, tlscfg)
+
+	tlscfg := &tls.Config{
+		MinVersion:               tls.VersionTLS12,
+		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
+		PreferServerCipherSuites: true,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		},
+	}
+*/
+
+	cert, err = tls.X509KeyPair([]byte(rootCert), []byte(rootKey))
+	if err != nil {
+		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
+	}
+
+	cert_pool = x509.NewCertPool()
+	ok := cert_pool.AppendCertsFromPEM([]byte(rootCert))
+	if !ok {
+		return fmt.Errorf("ERROR: failed to append root certificate\n")
+	}
+
+	tlscfg = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth: tls.NoClientCert, // tls.RequestClientCert, tls.RequestAnyClientCert, VerifyClientCertIfGiven, RequireAndVerifyClientCert
+		ClientCAs: cert_pool, // trusted CA certs for client certificate verification
+		ServerName: "hodu",
+	}
+
+	c = hodu.NewClient(
+		context.Background(),
+		ctl_addrs,
+		&AppLogger{id: "client", out: os.Stderr},
+		tlscfg)
 
 	cc.ServerAddr = server_addr
 	cc.PeerAddrs = peer_addrs
