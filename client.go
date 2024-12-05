@@ -234,15 +234,16 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	// most useful works are triggered by ReportEvent() and done by ConnectToPeer()
 	defer wg.Done()
 
-	r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
-		"Sending route_start for route(%d,%s,%v,%v) to %s",
-		r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
 	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_net))
 	if err != nil {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Failed to send route_start for route(%d,%s,%v,%v) to %s",
 			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
 		goto done
+	} else {
+		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
+			"Sent route_start for route(%d,%s,%v,%v) to %s",
+			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
 	}
 
 main_loop:
@@ -257,10 +258,16 @@ done:
 	r.ReqStop()
 	r.ptc_wg.Wait() // wait for all peer tasks are finished
 
-	r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
-		"Sending route_stop for route(%d,%s,%v,%v) to %s",
-		r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
-	r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_net))
+	err = r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_net))
+	if err != nil {
+		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
+			"Failed to route_stop for route(%d,%s,%v,%v) to %s - %s",
+			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr, err.Error())
+	} else {
+		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
+			"Sent route_stop for route(%d,%s,%v,%v) to %s",
+			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
+	}
 
 	r.cts.RemoveClientRoute(r)
 }
@@ -399,8 +406,18 @@ func (r *ClientRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_d
 			}
 
 		case PACKET_KIND_ROUTE_STOPPED:
-			// this is the service side notification agasint ROUTE_STOP send by client itself.
-			// so there is nothing to do for now
+			// NOTE:
+			//  this event can be sent by the server in response to failed ROUTE_START or successful ROUTE_STOP.
+			//  in case of the failed ROUTE_START, r.ReqStop() may trigger another ROUTE_STOP sent to the server.
+			//  but the server must be able to handle this case as invalid route.
+			var ok bool
+			_, ok = event_data.(*RouteDesc)
+			if !ok {
+				r.cts.cli.log.Write(r.cts.sid, LOG_ERROR, "Protocol error - invalid data in route_started event(%d)", r.id)
+				r.ReqStop()
+			} else {
+				r.ReqStop()
+			}
 
 		case PACKET_KIND_PEER_STARTED:
 			var ok bool

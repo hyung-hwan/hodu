@@ -287,20 +287,26 @@ func (cts *ServerConn) make_route_listener(id uint32, proto ROUTE_PROTO) (*net.T
 	var port int
 	var tries int = 0
 	var nw string
+	var ip string
 
 	switch proto {
 		case ROUTE_PROTO_TCP:
 			nw = "tcp"
+			ip = ""
 		case ROUTE_PROTO_TCP4:
 			nw = "tcp4"
+			ip = "0.0.0.0"
 		case ROUTE_PROTO_TCP6:
 			nw = "tcp6"
+			ip = "[::]"
+		default:
+			return nil, nil, fmt.Errorf("invalid protocol number %d", proto)
 	}
 
 	for {
-		port = rand.Intn(65535-32000+1) + 32000
+		port = rand.Intn(65535-32000+1) + 32000 // TODO: configurable port range
 
-		svcaddr, err = net.ResolveTCPAddr(nw, fmt.Sprintf(":%d", port))
+		svcaddr, err = net.ResolveTCPAddr(nw, fmt.Sprintf("%s:%d", ip, port))
 		if err == nil {
 			l, err = net.ListenTCP(nw, svcaddr) // make the binding address configurable. support multiple binding addresses???
 			if err == nil {
@@ -422,8 +428,21 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.ServiceProto, x.Route.TargetAddrStr, x.Route.ServiceNetStr)
 					if err != nil {
 						cts.svr.log.Write(cts.sid, LOG_ERROR,
-							"Failed to add route(%d,%s) for %s",
-							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr, )
+							"Failed to add route(%d,%s) for %s - %s",
+							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr, err.Error())
+
+						err = cts.pss.Send(MakeRouteStoppedPacket(x.Route.RouteId, x.Route.ServiceProto, x.Route.TargetAddrStr, x.Route.ServiceNetStr))
+						if err != nil {
+							cts.svr.log.Write(cts.sid, LOG_ERROR,
+								"Failed to send route_stopped event(%d,%s,%v,%s) to client %s - %s",
+								x.Route.RouteId, x.Route.TargetAddrStr,  x.Route.ServiceProto, x.Route.ServiceNetStr, cts.remote_addr, err.Error())
+							goto done
+						} else {
+							cts.svr.log.Write(cts.sid, LOG_DEBUG,
+								"Sent route_stopped event(%d,%s,%v,%s) to client %s",
+								x.Route.RouteId, x.Route.TargetAddrStr,  x.Route.ServiceProto, x.Route.ServiceNetStr, cts.remote_addr)
+						}
+
 					} else {
 						cts.svr.log.Write(cts.sid, LOG_INFO,
 							"Added route(%d,%s,%s,%v,%v) for client %s to cts(%d)",
@@ -432,8 +451,8 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						if err != nil {
 							r.ReqStop()
 							cts.svr.log.Write(cts.sid, LOG_ERROR,
-								"Failed to send route_started event(%d,%s,%s,%s%v,%v) to client %s",
-								r.id, r.ptc_addr, r.svc_addr.String(), r.svc_proto, r.svc_permitted_net, cts.remote_addr)
+								"Failed to send route_started event(%d,%s,%s,%s%v,%v) to client %s - %s",
+								r.id, r.ptc_addr, r.svc_addr.String(), r.svc_proto, r.svc_permitted_net, cts.remote_addr, err.Error())
 							goto done
 						}
 					}
@@ -452,8 +471,8 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 					r, err = cts.RemoveServerRouteById(x.Route.RouteId)
 					if err != nil {
 						cts.svr.log.Write(cts.sid, LOG_ERROR,
-							"Failed to delete route(%d,%s) for client %s",
-							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr)
+							"Failed to delete route(%d,%s) for client %s - %s",
+							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr, err.Error())
 					} else {
 						cts.svr.log.Write(cts.sid, LOG_ERROR,
 							"Deleted route(%d,%s,%s,%v,%v) for client %s",
@@ -462,8 +481,8 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						if err != nil {
 							r.ReqStop()
 							cts.svr.log.Write(cts.sid, LOG_ERROR,
-								"Failed to send route_stopped event(%d,%s,%s,%v.%v) to client %s",
-								r.id, r.ptc_addr, r.svc_addr.String(), r.svc_proto, r.svc_permitted_net.String(), cts.remote_addr)
+								"Failed to send route_stopped event(%d,%s,%s,%v.%v) to client %s - %s",
+								r.id, r.ptc_addr, r.svc_addr.String(), r.svc_proto, r.svc_permitted_net.String(), cts.remote_addr, err.Error())
 							goto done
 						}
 					}

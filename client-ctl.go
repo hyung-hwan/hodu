@@ -331,7 +331,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			var r *ClientRoute
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
-			if err != nil || jcr.ClientPeerAddr == "" {
+			if err != nil || jcr.ClientPeerAddr == "" || jcr.ServerPeerProto < 0 || jcr.ServerPeerProto > ROUTE_PROTO_TCP6 {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				goto done
 			}
