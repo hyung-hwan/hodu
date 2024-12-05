@@ -8,6 +8,7 @@ import "io"
 import "math/rand"
 import "net"
 import "net/http"
+import "net/netip"
 import "os"
 import "sync"
 import "sync/atomic"
@@ -79,6 +80,9 @@ type ServerRoute struct {
 	cts        *ServerConn
 	l          *net.TCPListener
 	svc_addr   *net.TCPAddr // listening address
+	svc_permitted_net netip.Prefix
+	svc_proto   ROUTE_PROTO
+
 	ptc_addr    string
 	id          uint32
 
@@ -119,21 +123,40 @@ func (g *GuardedPacketStreamServer) Context() context.Context {
 
 // ------------------------------------
 
-func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO, ptc_addr string) (*ServerRoute, error) {
+func NewServerRoute(cts *ServerConn, id uint32, proto ROUTE_PROTO, ptc_addr string, svc_permitted_net string) (*ServerRoute, error) {
 	var r ServerRoute
 	var l *net.TCPListener
 	var svcaddr *net.TCPAddr
+	var svcnet netip.Prefix
 	var err error
+
+	if svc_permitted_net != "" {
+		svcnet, err = netip.ParsePrefix(svc_permitted_net)
+		if err != nil {
+			return nil , err
+		}
+	}
 
 	l, svcaddr, err = cts.make_route_listener(id, proto)
 	if err != nil {
 		return nil, err
 	}
 
+	if svc_permitted_net == "" {
+		if svcaddr.IP.To4() != nil {
+			svcnet, _ = netip.ParsePrefix("0.0.0.0/0")
+		} else {
+			svcnet, _ = netip.ParsePrefix("::/0")
+		}
+	}
+
 	r.cts = cts
 	r.id = id
 	r.l = l
 	r.svc_addr = svcaddr
+	r.svc_permitted_net = svcnet
+	r.svc_proto = proto
+
 	r.ptc_addr = ptc_addr
 	r.pts_limit = PTS_LIMIT
 	r.pts_map = make(ServerPeerConnMap)
@@ -186,6 +209,8 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 	var err error
 	var conn *net.TCPConn
 	var pts *ServerPeerConn
+	var raddr *net.TCPAddr
+	var iaddr netip.Addr
 
 	defer wg.Done()
 
@@ -200,12 +225,20 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 			break
 		}
 
+		raddr = conn.RemoteAddr().(*net.TCPAddr)
+		iaddr, _ = netip.AddrFromSlice(raddr.IP)
+
+		if !r.svc_permitted_net.Contains(iaddr) {
+			r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "Rejected server-side peer %s to route(%d) - allowed range %v", raddr.String(), r.id, r.svc_permitted_net)
+			conn.Close()
+		}
+
 		pts, err = r.AddNewServerPeerConn(conn)
 		if err != nil {
-			r.cts.svr.log.Write(r.cts.sid, LOG_ERROR, "Failed to add new server-side peer %s to route(%d) - %s", r.id, conn.RemoteAddr().String(), r.id, err.Error())
+			r.cts.svr.log.Write(r.cts.sid, LOG_ERROR, "Failed to add server-side peer %s to route(%d) - %s", r.id, raddr.String(), r.id, err.Error())
 			conn.Close()
 		} else {
-			r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "Added new server-side peer %s to route(%d)", conn.RemoteAddr().String(), r.id)
+			r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "Added server-side peer %s to route(%d)", raddr.String(), r.id)
 			r.pts_wg.Add(1)
 			go pts.RunTask(&r.pts_wg)
 		}
@@ -239,7 +272,7 @@ func (r *ServerRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_d
 	spc, ok = r.pts_map[pts_id]
 	if !ok {
 		r.pts_mtx.Unlock()
-		return fmt.Errorf("non-existent peer id - %u", pts_id)
+		return fmt.Errorf("non-existent peer id - %d", pts_id)
 	}
 	r.pts_mtx.Unlock()
 
@@ -286,7 +319,7 @@ func (cts *ServerConn) make_route_listener(id uint32, proto ROUTE_PROTO) (*net.T
 	return nil, nil, err
 }
 
-func (cts *ServerConn) AddNewServerRoute(route_id uint32, proto ROUTE_PROTO, ptc_addr string) (*ServerRoute, error) {
+func (cts *ServerConn) AddNewServerRoute(route_id uint32, proto ROUTE_PROTO, ptc_addr string, svc_permitted_net string) (*ServerRoute, error) {
 	var r *ServerRoute
 	var err error
 
@@ -295,7 +328,7 @@ func (cts *ServerConn) AddNewServerRoute(route_id uint32, proto ROUTE_PROTO, ptc
 		cts.route_mtx.Unlock()
 		return nil, fmt.Errorf("existent route id - %d", route_id)
 	}
-	r, err = NewServerRoute(cts, route_id, proto, ptc_addr)
+	r, err = NewServerRoute(cts, route_id, proto, ptc_addr, svc_permitted_net)
 	if err != nil {
 		cts.route_mtx.Unlock()
 		return nil, err
@@ -386,15 +419,21 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				if ok {
 					var r *ServerRoute
 
-					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.Proto, x.Route.TargetAddrStr)
+					r, err = cts.AddNewServerRoute(x.Route.RouteId, x.Route.ServiceProto, x.Route.TargetAddrStr, x.Route.ServiceNetStr)
 					if err != nil {
-						cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to add route for client %s peer %s", cts.remote_addr, x.Route.TargetAddrStr)
+						cts.svr.log.Write(cts.sid, LOG_ERROR,
+							"Failed to add route(%d,%s) for %s",
+							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr, )
 					} else {
-						cts.svr.log.Write(cts.sid, LOG_INFO, "Added route(%d) for client %s peer %s to cts(%d)", r.id, cts.remote_addr, x.Route.TargetAddrStr, cts.id)
-						err = cts.pss.Send(MakeRouteStartedPacket(r.id, x.Route.Proto, r.svc_addr.String()))
+						cts.svr.log.Write(cts.sid, LOG_INFO,
+							"Added route(%d,%s,%s,%v,%v) for client %s to cts(%d)",
+							r.id, r.ptc_addr, r.svc_addr.String(), r.svc_proto, r.svc_permitted_net, cts.remote_addr, cts.id)
+						err = cts.pss.Send(MakeRouteStartedPacket(r.id, r.svc_proto, r.svc_addr.String(), r.svc_permitted_net.String()))
 						if err != nil {
 							r.ReqStop()
-							cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to inform client %s of route started for peer %s", cts.remote_addr, x.Route.TargetAddrStr)
+							cts.svr.log.Write(cts.sid, LOG_ERROR,
+								"Failed to send route_started event(%d,%s,%s,%s%v,%v) to client %s",
+								r.id, r.ptc_addr, r.svc_addr.String(), r.svc_proto, r.svc_permitted_net, cts.remote_addr)
 							goto done
 						}
 					}
@@ -412,13 +451,19 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 
 					r, err = cts.RemoveServerRouteById(x.Route.RouteId)
 					if err != nil {
-						cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to delete route(%d) for client %s peer %s", x.Route.RouteId, cts.remote_addr, x.Route.TargetAddrStr)
+						cts.svr.log.Write(cts.sid, LOG_ERROR,
+							"Failed to delete route(%d,%s) for client %s",
+							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr)
 					} else {
-						cts.svr.log.Write(cts.sid, LOG_ERROR, "Deleted route(%d) for client %s peer %s", x.Route.RouteId, cts.remote_addr, x.Route.TargetAddrStr)
-						err = cts.pss.Send(MakeRouteStoppedPacket(x.Route.RouteId, x.Route.Proto))
+						cts.svr.log.Write(cts.sid, LOG_ERROR,
+							"Deleted route(%d,%s,%s,%v,%v) for client %s",
+							r.id, r.ptc_addr, r.svc_addr.String(), r.svc_proto, r.svc_permitted_net.String(), cts.remote_addr)
+						err = cts.pss.Send(MakeRouteStoppedPacket(r.id, r.svc_proto, r.ptc_addr, r.svc_permitted_net.String()))
 						if err != nil {
 							r.ReqStop()
-							cts.svr.log.Write(cts.sid, LOG_ERROR, "Failed to inform client %s of route(%d) stopped for peer %s", cts.remote_addr, x.Route.RouteId, x.Route.TargetAddrStr)
+							cts.svr.log.Write(cts.sid, LOG_ERROR,
+								"Failed to send route_stopped event(%d,%s,%s,%v.%v) to client %s",
+								r.id, r.ptc_addr, r.svc_addr.String(), r.svc_proto, r.svc_permitted_net.String(), cts.remote_addr)
 							goto done
 						}
 					}

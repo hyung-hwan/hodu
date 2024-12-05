@@ -90,7 +90,8 @@ type ClientRoute struct {
 	id uint32
 	peer_addr string
 	server_peer_listen_addr *net.TCPAddr
-	proto ROUTE_PROTO
+	server_peer_net string
+	server_peer_proto ROUTE_PROTO
 
 	ptc_mtx        sync.Mutex
 	ptc_map        ClientPeerConnMap
@@ -138,15 +139,16 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 }*/
 
 // --------------------------------------------------------------------
-func NewClientRoute(cts *ClientConn, id uint32, addr string, proto ROUTE_PROTO) *ClientRoute {
+func NewClientRoute(cts *ClientConn, id uint32, client_peer_addr string, server_peer_net string, server_peer_proto ROUTE_PROTO) *ClientRoute {
 	var r ClientRoute
 
 	r.cts = cts
 	r.id = id
 	r.ptc_map = make(ClientPeerConnMap)
 	r.ptc_cancel_map = make(ClientPeerCancelFuncMap)
-	r.proto = proto
-	r.peer_addr = addr
+	r.peer_addr = client_peer_addr // client-side peer
+	r.server_peer_net = server_peer_net // permitted network for server-side peer
+	r.server_peer_proto = server_peer_proto
 	r.stop_req.Store(false)
 	r.stop_chan = make(chan bool, 8)
 
@@ -232,10 +234,14 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	// most useful works are triggered by ReportEvent() and done by ConnectToPeer()
 	defer wg.Done()
 
-	r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG, "Sending route_start for route(%d,%s) to %s", r.id, r.peer_addr, r.cts.remote_addr)
-	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.proto, r.peer_addr))
+	r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
+		"Sending route_start for route(%d,%s,%v,%v) to %s",
+		r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
+	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_net))
 	if err != nil {
-		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG, "Failed to send route_start for route(%d,%s) to %s", r.id, r.peer_addr, r.cts.remote_addr)
+		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
+			"Failed to send route_start for route(%d,%s,%v,%v) to %s",
+			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
 		goto done
 	}
 
@@ -251,8 +257,10 @@ done:
 	r.ReqStop()
 	r.ptc_wg.Wait() // wait for all peer tasks are finished
 
-	r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG, "Sending route_stop for route(%d,%s) to %s", r.id, r.peer_addr, r.cts.remote_addr)
-	r.cts.psc.Send(MakeRouteStopPacket(r.id, r.proto, r.peer_addr))
+	r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
+		"Sending route_stop for route(%d,%s,%v,%v) to %s",
+		r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
+	r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_net))
 
 	r.cts.RemoveClientRoute(r)
 }
@@ -386,6 +394,7 @@ func (r *ClientRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_d
 					r.ReqStop()
 				} else {
 					r.server_peer_listen_addr = addr
+					r.server_peer_net = rd.ServiceNetStr
 				}
 			}
 
@@ -520,7 +529,7 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 	return &cts
 }
 
-func (cts *ClientConn) AddNewClientRoute(addr string, proto ROUTE_PROTO) (*ClientRoute, error) {
+func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_net string, proto ROUTE_PROTO) (*ClientRoute, error) {
 	var r *ClientRoute
 	var id uint32
 	var ok bool
@@ -538,7 +547,7 @@ func (cts *ClientConn) AddNewClientRoute(addr string, proto ROUTE_PROTO) (*Clien
 	//	cts.route_mtx.Unlock()
 	//	return nil, fmt.Errorf("existent route id - %d", route_id)
 	//}
-	r = NewClientRoute(cts, id, addr, proto)
+	r = NewClientRoute(cts, id, addr, server_peer_net, proto)
 	cts.route_map[id] = r
 	cts.route_mtx.Unlock()
 
@@ -634,7 +643,7 @@ func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 	var err error
 
 	for _, v = range peer_addrs {
-		_, err = cts.AddNewClientRoute(v, ROUTE_PROTO_TCP)
+		_, err = cts.AddNewClientRoute(v, "", ROUTE_PROTO_TCP)
 		if err != nil {
 			return fmt.Errorf("unable to add client route for %s - %s", v, err.Error())
 		}

@@ -9,6 +9,8 @@ import "hodu"
 import "io"
 import "os"
 import "os/signal"
+import "path/filepath"
+import "runtime"
 import "strings"
 import "sync"
 import "syscall"
@@ -57,6 +59,9 @@ func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ..
 	var hdr string
 	var msg string
 	var lid string
+	var caller_file string
+	var caller_line int
+	var caller_ok bool
 
 // TODO: do something with level
 	now = time.Now()
@@ -70,6 +75,8 @@ func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ..
 	hdr = fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d %+03d%02d ",
 		now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), off_h, off_m)
 
+	_, caller_file, caller_line, caller_ok = runtime.Caller(1)
+
 // TODO: add pid?
 	msg = fmt.Sprintf(fmtstr, args...)
 	if id == "" {
@@ -80,6 +87,9 @@ func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ..
 
 	l.mtx.Lock()
 	l.out.Write([]byte(hdr))
+	if caller_ok {
+		l.out.Write([]byte(fmt.Sprintf("[%s:%d] ", filepath.Base(caller_file), caller_line)))
+	}
 	if lid != "" { l.out.Write([]byte(lid)) }
 	l.out.Write([]byte(msg))
 	if msg[len(msg) - 1] != '\n' { l.out.Write([]byte("\n")) }

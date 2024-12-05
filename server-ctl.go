@@ -16,6 +16,8 @@ type json_out_server_route struct {
 	Id uint32 `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
+	ServerPeerNet string `json:"server-peer-net"`
+	ServerPeerProto ROUTE_PROTO `json:"server-peer-proto"`
 }
 
 // ------------------------------------
@@ -57,6 +59,8 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						Id: r.id,
 						ClientPeerAddr: r.ptc_addr,
 						ServerPeerListenAddr: r.svc_addr.String(),
+						ServerPeerNet: r.svc_permitted_net.String(),
+						ServerPeerProto: r.svc_proto,
 					})
 				}
 				js = append(js, json_out_server_conn{
@@ -132,6 +136,8 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					Id: r.id,
 					ClientPeerAddr: r.ptc_addr,
 					ServerPeerListenAddr: r.svc_addr.String(),
+					ServerPeerNet: r.svc_permitted_net.String(),
+					ServerPeerProto: r.svc_proto,
 				})
 			}
 			js = &json_out_server_conn{

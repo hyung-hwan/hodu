@@ -1,27 +1,27 @@
 package hodu
 
-func MakeRouteStartPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {
+func MakeRouteStartPacket(route_id uint32, proto ROUTE_PROTO, addr string, svcnet string) *Packet {
 	return &Packet{
 		Kind: PACKET_KIND_ROUTE_START,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, TargetAddrStr: addr}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, ServiceProto: proto, TargetAddrStr: addr, ServiceNetStr: svcnet}}}
 }
 
-func MakeRouteStopPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {
+func MakeRouteStopPacket(route_id uint32, proto ROUTE_PROTO, addr string, svcnet string) *Packet {
 	return &Packet{
 		Kind: PACKET_KIND_ROUTE_STOP,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, TargetAddrStr: addr}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, ServiceProto: proto, TargetAddrStr: addr, ServiceNetStr: svcnet}}}
 }
 
-func MakeRouteStartedPacket(route_id uint32, proto ROUTE_PROTO, addr string) *Packet {
+func MakeRouteStartedPacket(route_id uint32, proto ROUTE_PROTO, addr string, svcnet string) *Packet {
 	// the connection from a peer to the server has been established
 	return &Packet{Kind: PACKET_KIND_ROUTE_STARTED,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto, TargetAddrStr: addr}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, ServiceProto: proto, TargetAddrStr: addr, ServiceNetStr: svcnet}}}
 }
 
-func MakeRouteStoppedPacket(route_id uint32, proto ROUTE_PROTO) *Packet {
+func MakeRouteStoppedPacket(route_id uint32, proto ROUTE_PROTO, addr string, svcnet string) *Packet {
 	// the connection from a peer to the server has been established
 	return &Packet{Kind: PACKET_KIND_ROUTE_STOPPED,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, Proto: proto}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: route_id, ServiceProto: proto, TargetAddrStr: addr, ServiceNetStr: svcnet}}}
 }
 
 func MakePeerStartedPacket(route_id uint32, peer_id uint32, remote_addr string, local_addr string) *Packet {

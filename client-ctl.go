@@ -30,6 +30,8 @@ type json_in_client_conn struct {
 
 type json_in_client_route struct {
 	ClientPeerAddr string `json:"client-peer-addr"`
+	ServerPeerNet string `json:"server-peer-net"` // allowed network in prefix notation
+	ServerPeerProto ROUTE_PROTO `json:"server-peer-proto"`
 }
 
 type json_out_client_conn_id struct {
@@ -52,6 +54,8 @@ type json_out_client_route struct {
 	Id uint32 `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
+	ServerPeerNet string `json:"server-peer-net"`
+	ServerPeerProto ROUTE_PROTO `json:"server-peer-proto"`
 }
 
 type json_out_client_peer struct {
@@ -123,6 +127,8 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						Id: r.id,
 						ClientPeerAddr: r.peer_addr,
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+						ServerPeerNet: r.server_peer_net,
+						ServerPeerProto: r.server_peer_proto,
 					})
 				}
 				js = append(js, json_out_client_conn{
@@ -233,6 +239,8 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					Id: r.id,
 					ClientPeerAddr: r.peer_addr,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+					ServerPeerNet: r.server_peer_net,
+					ServerPeerProto: r.server_peer_proto,
 				})
 			}
 			js = &json_out_client_conn{
@@ -309,6 +317,8 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					Id: r.id,
 					ClientPeerAddr: r.peer_addr,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+					ServerPeerNet: r.server_peer_net,
+					ServerPeerProto: r.server_peer_proto,
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -326,7 +336,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				goto done
 			}
 
-			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, ROUTE_PROTO_TCP) // TODO: configurable protocol
+			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, jcr.ServerPeerNet, jcr.ServerPeerProto)
 			if err != nil {
 				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
