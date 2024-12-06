@@ -242,9 +242,11 @@ func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error
 	var tlscfg *tls.Config
 	var err error
 
-	tlscfg, err = make_server_tls_config(&cfg.TLS)
-	if err != nil {
-		return err
+	if cfg != nil {
+		tlscfg, err = make_server_tls_config(&cfg.TLS)
+		if err != nil {
+			return err
+		}
 	}
 
 	s, err = hodu.NewServer(
@@ -273,9 +275,11 @@ func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cf
 	var cc hodu.ClientConfig
 	var err error
 
-	tlscfg, err = make_server_tls_config(&cfg.TLS)
-	if err != nil {
-		return err
+	if cfg != nil {
+		tlscfg, err = make_server_tls_config(&cfg.TLS)
+		if err != nil {
+			return err
+		}
 	}
 
 	c = hodu.NewClient(
