@@ -7,6 +7,7 @@ import "flag"
 import "fmt"
 import "hodu"
 import "io"
+import "io/ioutil"
 import "os"
 import "os/signal"
 import "path/filepath"
@@ -156,37 +157,94 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 	sh.svc.WriteLog(id, level, fmt, args...)
 }
 
-func server_main(ctl_addrs []string, svcaddrs []string) error {
-	var s *hodu.Server
-	var err error
-	var cert tls.Certificate
-	var cert_pool *x509.CertPool
+func tls_string_to_client_auth_type(str string) tls.ClientAuthType {
+	switch str {
+		case tls.NoClientCert.String():
+			return tls.NoClientCert
+		case tls.RequestClientCert.String():
+			return tls.RequestClientCert
+		case tls.RequireAnyClientCert.String():
+			return tls.RequireAnyClientCert
+		case tls.VerifyClientCertIfGiven.String():
+			return tls.VerifyClientCertIfGiven
+		case tls.RequireAndVerifyClientCert.String():
+			return tls.RequireAndVerifyClientCert
+		default:
+			return tls.NoClientCert
+	}
+}
+
+// --------------------------------------------------------------------
+
+func make_server_tls_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 	var tlscfg *tls.Config
 
-	cert, err = tls.X509KeyPair([]byte(rootCert), []byte(rootKey))
+	if cfg.Enabled {
+		var cert tls.Certificate
+		var cert_pool *x509.CertPool
+		var err error
+
+		if cfg.CertText != "" && cfg.KeyText != "" {
+			cert, err = tls.X509KeyPair([]byte(cfg.CertText), []byte(cfg.KeyText))
+		} else if cfg.CertFile != "" && cfg.KeyFile != "" {
+			cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		} else {
+			// use the embedded certificate
+			cert, err = tls.X509KeyPair([]byte(rootCert), []byte(rootKey))
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to load key pair - %s", err)
+		}
+
+		if cfg.ClientCACertText != "" || cfg.ClientCACertFile != ""{
+			var ok bool
+
+			cert_pool = x509.NewCertPool()
+
+			if cfg.ClientCACertText != "" {
+				ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ClientCACertText))
+				if !ok {
+					return nil, fmt.Errorf("failed to append certificate to pool")
+				}
+			} else if cfg.ClientCACertFile != "" {
+				var text []byte
+				text, err = ioutil.ReadFile(cfg.ClientCACertFile)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load client ca certficate file %s - %s", cfg.ClientCACertFile, err.Error())
+				}
+				ok = cert_pool.AppendCertsFromPEM(text)
+				if !ok {
+					return nil, fmt.Errorf("failed to append certificate to pool")
+				}
+			}
+		}
+
+	/*
+		// Don't use `Certificates` it doesn't work with some certificate files.
+		// See, `getClientCertificate` in ${GOSRC}/src/crypto/tls/handshake_client.go for details
+		tlsConfig.GetClientCertificate = func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			 return cert, nil
+		}
+	*/
+		tlscfg = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth: tls_string_to_client_auth_type(cfg.ClientAuthType),
+			ClientCAs: cert_pool, // trusted CA certs for client certificate verification
+			//ServerName: "hodu",
+		}
+	}
+
+	return tlscfg, nil
+}
+
+func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error {
+	var s *hodu.Server
+	var tlscfg *tls.Config
+	var err error
+
+	tlscfg, err = make_server_tls_config(&cfg.TLS)
 	if err != nil {
-		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
-	}
-
-	cert_pool = x509.NewCertPool()
-	ok := cert_pool.AppendCertsFromPEM([]byte(rootCert))
-	if !ok {
-		return fmt.Errorf("ERROR: failed to append root certificate\n")
-	}
-
-/*
-	// Don't use `Certificates` it doesn't work with some certificate files.
-	// See, `getClientCertificate` in ${GOSRC}/src/crypto/tls/handshake_client.go for details
-	tlsConfig.GetClientCertificate = func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		 return clientCert, nil
-	}
-*/
-
-	tlscfg = &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth: tls.NoClientCert, // tls.RequestClientCert, tls.RequestAnyClientCert, VerifyClientCertIfGiven, RequireAndVerifyClientCert
-		ClientCAs: cert_pool, // trusted CA certs for client certificate verification
-		ServerName: "hodu",
+		return err
 	}
 
 	s, err = hodu.NewServer(
@@ -196,7 +254,7 @@ func server_main(ctl_addrs []string, svcaddrs []string) error {
 		&AppLogger{id: "server", out: os.Stderr},
 		tlscfg)
 	if err != nil {
-		return fmt.Errorf("ERROR: failed to create new server - %s", err.Error())
+		return fmt.Errorf("failed to create new server - %s", err.Error())
 	}
 
 	s.StartService(nil)
@@ -209,58 +267,15 @@ func server_main(ctl_addrs []string, svcaddrs []string) error {
 
 // --------------------------------------------------------------------
 
-func client_main(ctl_addrs []string, server_addr string, peer_addrs []string) error {
+func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cfg *ClientConfig) error {
 	var c *hodu.Client
-	var cert tls.Certificate
-	var cert_pool *x509.CertPool
 	var tlscfg *tls.Config
 	var cc hodu.ClientConfig
 	var err error
 
-/*
-	cert_pool = x509.NewCertPool()
-	ok := cert_pool.AppendCertsFromPEM([]byte(rootCert))
-	if !ok {
-		fmt.Printf("failed to parse root certificate")
-	}
-
-	tlscfg = &tls.Config{
-		RootCAs: cert_pool,
-		ClientAuth: 
-		ServerName: "hodu",
-		//InsecureSkipVerify: true,
-	}
-
-
-	tlscfg := &tls.Config{
-		MinVersion:               tls.VersionTLS12,
-		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
-		PreferServerCipherSuites: true,
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-		},
-	}
-*/
-
-	cert, err = tls.X509KeyPair([]byte(rootCert), []byte(rootKey))
+	tlscfg, err = make_server_tls_config(&cfg.TLS)
 	if err != nil {
-		return fmt.Errorf("ERROR: failed to load key pair - %s\n", err)
-	}
-
-	cert_pool = x509.NewCertPool()
-	ok := cert_pool.AppendCertsFromPEM([]byte(rootCert))
-	if !ok {
-		return fmt.Errorf("ERROR: failed to append root certificate\n")
-	}
-
-	tlscfg = &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth: tls.NoClientCert, // tls.RequestClientCert, tls.RequestAnyClientCert, VerifyClientCertIfGiven, RequireAndVerifyClientCert
-		ClientCAs: cert_pool, // trusted CA certs for client certificate verification
-		ServerName: "hodu",
+		return err
 	}
 
 	c = hodu.NewClient(
@@ -290,6 +305,8 @@ func main() {
 	if strings.EqualFold(os.Args[1], "server") {
 		var rpc_addrs[] string
 		var ctl_addrs[] string
+		var cfgfile string
+		var cfg *ServerConfig
 
 		ctl_addrs = make([]string, 0)
 		rpc_addrs = make([]string, 0)
@@ -303,6 +320,10 @@ func main() {
 			rpc_addrs = append(rpc_addrs, v)
 			return nil
 		})
+		flgs.Func("config-file", "specify a configuration file path", func(v string) error {
+			cfgfile = v
+			return nil
+		})
 		flgs.SetOutput(io.Discard) // prevent usage output
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
@@ -314,7 +335,15 @@ func main() {
 			goto wrong_usage
 		}
 
-		err = server_main(ctl_addrs, rpc_addrs)
+		if (cfgfile != "") {
+			cfg, err = LoadServerConfig(cfgfile)
+			if err != nil {
+				fmt.Printf ("ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
+				goto oops
+			}
+		}
+
+		err = server_main(ctl_addrs, rpc_addrs, cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops
@@ -322,6 +351,8 @@ func main() {
 	} else if strings.EqualFold(os.Args[1], "client") {
 		var rpc_addrs []string
 		var ctl_addrs []string
+		var cfgfile string
+		var cfg *ClientConfig
 
 		ctl_addrs = make([]string, 0)
 		rpc_addrs = make([]string, 0)
@@ -335,6 +366,10 @@ func main() {
 			rpc_addrs = append(rpc_addrs, v)
 			return nil
 		})
+		flgs.Func("config-file", "specify a configuration file path", func(v string) error {
+			cfgfile = v
+			return nil
+		})
 		flgs.SetOutput(io.Discard)
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
@@ -345,7 +380,16 @@ func main() {
 		if len(rpc_addrs) < 1 {
 			goto wrong_usage
 		}
-		err = client_main(ctl_addrs, rpc_addrs[0], flgs.Args())
+
+		if (cfgfile != "") {
+			cfg, err = LoadClientConfig(cfgfile)
+			if err != nil {
+				fmt.Printf ("ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
+				goto oops
+			}
+		}
+
+		err = client_main(ctl_addrs, rpc_addrs[0], flgs.Args(), cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: client error - %s\n", err.Error())
 			goto oops

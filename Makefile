@@ -10,13 +10,16 @@ SRCS=\
 	server.go \
 	server-ctl.go \
 	server-peer.go \
-	server-ws.go \
+	server-ws.go
+
+CMD_SRCS=\
+	cmd/config.go \
 	cmd/main.go
 
 all: hodu
 
-hodu: $(SRCS)
-	CGO_ENABLED=0 go build -x -o $@ cmd/main.go
+hodu: $(SRCS) $(CMD_SRCS)
+	CGO_ENABLED=0 go build -x -o $@ $(CMD_SRCS)
 
 clean:
 	go clean -x -i
