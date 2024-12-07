@@ -25,13 +25,14 @@ type ServerTLSConfig struct {
 }
 
 type ClientTLSConfig struct {
-	Enabled          bool    `yaml:"enabled"`
-	CertFile         string  `yaml:"cert-file"`
-	KeyFile          string  `yaml:"key-file"`
-	CertText         string  `yaml:"cert-text"`
-	KeyText          string  `yaml:"key-text"`
-	ServerCACertFile string  `yaml:"server-ca-cert-file"`
-	ServerCACertText string  `yaml:"server-ca-cert-text"`
+	Enabled            bool    `yaml:"enabled"`
+	CertFile           string  `yaml:"cert-file"`
+	KeyFile            string  `yaml:"key-file"`
+	CertText           string  `yaml:"cert-text"`
+	KeyText            string  `yaml:"key-text"`
+	ServerCACertFile   string  `yaml:"server-ca-cert-file"`
+	ServerCACertText   string  `yaml:"server-ca-cert-text"`
+	InsecureSkipVerify bool    `yaml:"skip-verify"`
 }
 
 type ServerConfig struct {

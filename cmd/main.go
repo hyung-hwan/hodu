@@ -3,6 +3,7 @@ package main
 import "context"
 import "crypto/tls"
 import "crypto/x509"
+import _ "embed"
 import "flag"
 import "fmt"
 import "hodu"
@@ -17,33 +18,11 @@ import "sync"
 import "syscall"
 import "time"
 
+//go:embed tls.crt
+var hodu_tls_cert_text []byte
+//go:embed tls.key
+var hodul_tls_key_text []byte
 
-// --------------------------------------------------------------------
-
-const rootKey = `-----BEGIN EC PARAMETERS-----
-BggqhkjOPQMBBw==
------END EC PARAMETERS-----
------BEGIN EC PRIVATE KEY-----
-MHcCAQEEIHg+g2unjA5BkDtXSN9ShN7kbPlbCcqcYdDu+QeV8XWuoAoGCCqGSM49
-AwEHoUQDQgAEcZpodWh3SEs5Hh3rrEiu1LZOYSaNIWO34MgRxvqwz1FMpLxNlx0G
-cSqrxhPubawptX5MSr02ft32kfOlYbaF5Q==
------END EC PRIVATE KEY-----
-`
-
-const rootCert = `-----BEGIN CERTIFICATE-----
-MIIB+TCCAZ+gAwIBAgIJAL05LKXo6PrrMAoGCCqGSM49BAMCMFkxCzAJBgNVBAYT
-AkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBXaWRn
-aXRzIFB0eSBMdGQxEjAQBgNVBAMMCWxvY2FsaG9zdDAeFw0xNTEyMDgxNDAxMTNa
-Fw0yNTEyMDUxNDAxMTNaMFkxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0
-YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQxEjAQBgNVBAMM
-CWxvY2FsaG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABHGaaHVod0hLOR4d
-66xIrtS2TmEmjSFjt+DIEcb6sM9RTKS8TZcdBnEqq8YT7m2sKbV+TEq9Nn7d9pHz
-pWG2heWjUDBOMB0GA1UdDgQWBBR0fqrecDJ44D/fiYJiOeBzfoqEijAfBgNVHSME
-GDAWgBR0fqrecDJ44D/fiYJiOeBzfoqEijAMBgNVHRMEBTADAQH/MAoGCCqGSM49
-BAMCA0gAMEUCIEKzVMF3JqjQjuM2rX7Rx8hancI5KJhwfeKu1xbyR7XaAiEA2UT7
-1xOP035EcraRmWPe7tO0LpXgMxlh2VItpc2uc2w=
------END CERTIFICATE-----
-`
 // --------------------------------------------------------------------
 
 type AppLogger struct {
@@ -176,7 +155,7 @@ func tls_string_to_client_auth_type(str string) tls.ClientAuthType {
 
 // --------------------------------------------------------------------
 
-func make_server_tls_config(cfg *ServerTLSConfig) (*tls.Config, error) {
+func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 	var tlscfg *tls.Config
 
 	if cfg.Enabled {
@@ -190,7 +169,7 @@ func make_server_tls_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 			cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		} else {
 			// use the embedded certificate
-			cert, err = tls.X509KeyPair([]byte(rootCert), []byte(rootKey))
+			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodul_tls_key_text)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to load key pair - %s", err)
@@ -230,7 +209,6 @@ func make_server_tls_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 			Certificates: []tls.Certificate{cert},
 			ClientAuth: tls_string_to_client_auth_type(cfg.ClientAuthType),
 			ClientCAs: cert_pool, // trusted CA certs for client certificate verification
-			//ServerName: "hodu",
 		}
 	}
 
@@ -243,7 +221,7 @@ func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error
 	var err error
 
 	if cfg != nil {
-		tlscfg, err = make_server_tls_config(&cfg.TLS)
+		tlscfg, err = make_tls_server_config(&cfg.TLS)
 		if err != nil {
 			return err
 		}
@@ -276,7 +254,7 @@ func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cf
 	var err error
 
 	if cfg != nil {
-		tlscfg, err = make_server_tls_config(&cfg.TLS)
+		tlscfg, err = make_tls_server_config(&cfg.TLS)
 		if err != nil {
 			return err
 		}
@@ -405,8 +383,8 @@ func main() {
 	os.Exit(0)
 
 wrong_usage:
-	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port \n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-server=addr:port --ctl-on=addr:port  [peer-addr:peer-port ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-server=addr:port --ctl-on=addr:port [peer-addr:peer-port ...]\n", os.Args[0])
 	os.Exit(1)
 
 oops:
