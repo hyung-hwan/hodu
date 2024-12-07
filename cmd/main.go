@@ -219,9 +219,8 @@ func main() {
 	var err error
 	var flgs *flag.FlagSet
 
-	if len(os.Args) < 2 {
-		goto wrong_usage
-	}
+	if len(os.Args) < 2 { goto wrong_usage }
+
 	if strings.EqualFold(os.Args[1], "server") {
 		var rpc_addrs[] string
 		var ctl_addrs[] string
@@ -251,9 +250,7 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(rpc_addrs) <= 0 || flgs.NArg() > 0 {
-			goto wrong_usage
-		}
+		if len(rpc_addrs) <= 0 || flgs.NArg() > 0 { goto wrong_usage }
 
 		if (cfgfile != "") {
 			cfg, err = load_server_config(cfgfile)
@@ -299,9 +296,7 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(rpc_addrs) <= 0 {
-			goto wrong_usage
-		}
+		if len(rpc_addrs) <= 0 { goto wrong_usage }
 
 		if (cfgfile != "") {
 			cfg, err = load_client_config(cfgfile)
@@ -319,6 +314,7 @@ func main() {
 			goto oops
 		}
 	} else if strings.EqualFold(os.Args[1], "version") {
+		if len(os.Args) != 2 { goto wrong_usage }
 		fmt.Printf("%s %s\n", HODU_NAME, HODU_VERSION)
 	} else {
 		goto wrong_usage
