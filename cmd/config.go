@@ -33,15 +33,26 @@ type ClientTLSConfig struct {
 	ServerCACertFile   string  `yaml:"server-ca-cert-file"`
 	ServerCACertText   string  `yaml:"server-ca-cert-text"`
 	InsecureSkipVerify bool    `yaml:"skip-verify"`
+	ServerName         string  `yaml:"server-name"`
 }
 
 type ServerConfig struct {
-	TLS ServerTLSConfig `yaml:"tls"`
-	
+	CTL struct {
+		TLS ServerTLSConfig `yaml:"tls"`
+	} `yaml:"ctl"`
+
+	RPC struct {
+		TLS ServerTLSConfig `yaml:"tls"`
+	} `yaml:"rpc"`
 }
 
 type ClientConfig struct {
-	TLS ServerTLSConfig `yaml:"tls"`
+	CTL struct {
+		TLS ServerTLSConfig `yaml:"tls"`
+	} `yaml:"ctl"`
+	RPC struct {
+		TLS ClientTLSConfig `yaml:"tls"`
+	} `yaml:"rpc"`
 }
 
 

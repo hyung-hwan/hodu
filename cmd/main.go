@@ -189,7 +189,7 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 				var text []byte
 				text, err = ioutil.ReadFile(cfg.ClientCACertFile)
 				if err != nil {
-					return nil, fmt.Errorf("failed to load client ca certficate file %s - %s", cfg.ClientCACertFile, err.Error())
+					return nil, fmt.Errorf("failed to load ca certficate file %s - %s", cfg.ClientCACertFile, err.Error())
 				}
 				ok = cert_pool.AppendCertsFromPEM(text)
 				if !ok {
@@ -198,15 +198,10 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 			}
 		}
 
-	/*
-		// Don't use `Certificates` it doesn't work with some certificate files.
-		// See, `getClientCertificate` in ${GOSRC}/src/crypto/tls/handshake_client.go for details
-		tlsConfig.GetClientCertificate = func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			 return cert, nil
-		}
-	*/
 		tlscfg = &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			// If multiple certificates are configured, we may have to implement GetCertificate
+			// GetCertificate: func (chi *tls.ClientHelloInfo) (*Certificate, error) { return cert, nil }
 			ClientAuth: tls_string_to_client_auth_type(cfg.ClientAuthType),
 			ClientCAs: cert_pool, // trusted CA certs for client certificate verification
 		}
@@ -215,13 +210,78 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 	return tlscfg, nil
 }
 
+// --------------------------------------------------------------------
+
+func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
+	var tlscfg *tls.Config
+
+	if cfg.Enabled {
+		var cert tls.Certificate
+		var cert_pool *x509.CertPool
+		var err error
+
+
+		if cfg.CertText != "" && cfg.KeyText != "" {
+			cert, err = tls.X509KeyPair([]byte(cfg.CertText), []byte(cfg.KeyText))
+		} else if cfg.CertFile != "" && cfg.KeyFile != "" {
+			cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		} else {
+			// use the embedded certificate
+			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodul_tls_key_text)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to load key pair - %s", err)
+		}
+
+		if cfg.ServerCACertText != "" || cfg.ServerCACertFile != ""{
+			var ok bool
+
+			cert_pool = x509.NewCertPool()
+
+			if cfg.ServerCACertText != "" {
+				ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ServerCACertText))
+				if !ok {
+					return nil, fmt.Errorf("failed to append certificate to pool")
+				}
+			} else if cfg.ServerCACertFile != "" {
+				var text []byte
+				text, err = ioutil.ReadFile(cfg.ServerCACertFile)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load ca certficate file %s - %s", cfg.ServerCACertFile, err.Error())
+				}
+				ok = cert_pool.AppendCertsFromPEM(text)
+				if !ok {
+					return nil, fmt.Errorf("failed to append certificate to pool")
+				}
+			}
+		}
+
+		tlscfg = &tls.Config{
+			//Certificates: []tls.Certificate{cert},
+			GetClientCertificate: func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) { return &cert, nil },
+			RootCAs: cert_pool,
+			InsecureSkipVerify: cfg.InsecureSkipVerify,
+			ServerName: cfg.ServerName,
+		}
+	}
+
+	return tlscfg, nil
+}
+
+// --------------------------------------------------------------------
+
 func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error {
 	var s *hodu.Server
-	var tlscfg *tls.Config
+	var ctltlscfg *tls.Config
+	var rpctlscfg *tls.Config
 	var err error
 
 	if cfg != nil {
-		tlscfg, err = make_tls_server_config(&cfg.TLS)
+		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
+		if err != nil {
+			return err
+		}
+		rpctlscfg, err = make_tls_server_config(&cfg.RPC.TLS)
 		if err != nil {
 			return err
 		}
@@ -232,7 +292,8 @@ func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error
 		ctl_addrs,
 		svcaddrs,
 		&AppLogger{id: "server", out: os.Stderr},
-		tlscfg)
+		ctltlscfg,
+		rpctlscfg)
 	if err != nil {
 		return fmt.Errorf("failed to create new server - %s", err.Error())
 	}
@@ -249,12 +310,17 @@ func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error
 
 func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cfg *ClientConfig) error {
 	var c *hodu.Client
-	var tlscfg *tls.Config
+	var ctltlscfg *tls.Config
+	var rpctlscfg *tls.Config
 	var cc hodu.ClientConfig
 	var err error
 
 	if cfg != nil {
-		tlscfg, err = make_tls_server_config(&cfg.TLS)
+		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
+		if err != nil {
+			return err
+		}
+		rpctlscfg, err = make_tls_client_config(&cfg.RPC.TLS)
 		if err != nil {
 			return err
 		}
@@ -264,7 +330,8 @@ func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cf
 		context.Background(),
 		ctl_addrs,
 		&AppLogger{id: "client", out: os.Stderr},
-		tlscfg)
+		ctltlscfg,
+		rpctlscfg)
 
 	cc.ServerAddr = server_addr
 	cc.PeerAddrs = peer_addrs

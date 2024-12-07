@@ -13,6 +13,7 @@ import "time"
 
 import "google.golang.org/grpc"
 import "google.golang.org/grpc/codes"
+import "google.golang.org/grpc/credentials"
 import "google.golang.org/grpc/credentials/insecure"
 import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/status"
@@ -39,7 +40,8 @@ type ClientConfigActive struct {
 type Client struct {
 	ctx         context.Context
 	ctx_cancel  context.CancelFunc
-	tlscfg     *tls.Config
+	ctltlscfg  *tls.Config
+	rpctlscfg  *tls.Config
 
 
 	ext_mtx     sync.Mutex
@@ -709,7 +711,15 @@ func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 
 start_over:
 	cts.cli.log.Write(cts.sid, LOG_INFO, "Connecting to server %s", cts.cfg.ServerAddr)
-	cts.conn, err = grpc.NewClient(cts.cfg.ServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if cts.cli.rpctlscfg == nil {
+		cts.conn, err = grpc.NewClient(
+			cts.cfg.ServerAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		cts.conn, err = grpc.NewClient(
+			cts.cfg.ServerAddr,
+			grpc.WithTransportCredentials(credentials.NewTLS(cts.cli.rpctlscfg)))
+	}
 	if err != nil {
 		cts.cli.log.Write(cts.sid, LOG_ERROR, "Failed to make client to server %s - %s", cts.cfg.ServerAddr, err.Error())
 		goto reconnect_to_server
@@ -958,12 +968,13 @@ func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 
 // --------------------------------------------------------------------
 
-func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, tlscfg *tls.Config) *Client {
+func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctltlscfg *tls.Config, rpctlscfg *tls.Config) *Client {
 	var c Client
 	var i int
 
 	c.ctx, c.ctx_cancel = context.WithCancel(ctx)
-	c.tlscfg = tlscfg
+	c.ctltlscfg = ctltlscfg
+	c.rpctlscfg = rpctlscfg
 	c.ext_svcs = make([]Service, 0, 1)
 	c.cts_map_by_addr = make(ClientConnMapByAddr)
 	c.cts_map = make(ClientConnMap)
@@ -987,7 +998,7 @@ func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, tlscfg *t
 		c.ctl[i] = &http.Server{
 			Addr: ctl_addrs[i],
 			Handler: c.ctl_mux,
-			TLSConfig: tlscfg,
+			TLSConfig: c.ctltlscfg,
 			// TODO: more settings
 		}
 	}
@@ -1184,7 +1195,7 @@ func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 		l_wg.Add(1)
 		go func(i int, cs *http.Server) {
 			c.log.Write ("", LOG_INFO, "Control channel[%d] started on %s", i, c.ctl_addr[i])
-			if c.tlscfg == nil {
+			if c.ctltlscfg == nil {
 				err = cs.ListenAndServe()
 			} else {
 				err = cs.ListenAndServeTLS("", "") // c.tlscfg must provide a certificate and a key
