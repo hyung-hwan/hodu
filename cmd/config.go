@@ -128,6 +128,7 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 	if cfg.Enabled {
 		var cert tls.Certificate
 		var cert_pool *x509.CertPool
+		var ok bool
 		var err error
 
 		if cfg.CertText != "" && cfg.KeyText != "" {
@@ -142,26 +143,26 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 			return nil, fmt.Errorf("failed to load key pair - %s", err)
 		}
 
-		if cfg.ClientCACertText != "" || cfg.ClientCACertFile != ""{
-			var ok bool
-
-			cert_pool = x509.NewCertPool()
-
-			if cfg.ClientCACertText != "" {
-				ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ClientCACertText))
-				if !ok {
-					return nil, fmt.Errorf("failed to append certificate to pool")
-				}
-			} else if cfg.ClientCACertFile != "" {
-				var text []byte
-				text, err = ioutil.ReadFile(cfg.ClientCACertFile)
-				if err != nil {
-					return nil, fmt.Errorf("failed to load ca certficate file %s - %s", cfg.ClientCACertFile, err.Error())
-				}
-				ok = cert_pool.AppendCertsFromPEM(text)
-				if !ok {
-					return nil, fmt.Errorf("failed to append certificate to pool")
-				}
+		cert_pool = x509.NewCertPool()
+		if cfg.ClientCACertText != "" {
+			ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ClientCACertText))
+			if !ok {
+				return nil, fmt.Errorf("failed to append certificate to pool")
+			}
+		} else if cfg.ClientCACertFile != "" {
+			var text []byte
+			text, err = ioutil.ReadFile(cfg.ClientCACertFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load ca certficate file %s - %s", cfg.ClientCACertFile, err.Error())
+			}
+			ok = cert_pool.AppendCertsFromPEM(text)
+			if !ok {
+				return nil, fmt.Errorf("failed to append certificate to pool")
+			}
+		} else {
+			ok = cert_pool.AppendCertsFromPEM(hodu_tls_cert_text)
+			if !ok {
+				return nil, fmt.Errorf("failed to append certificate to pool")
 			}
 		}
 
@@ -201,7 +202,6 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 		}
 
 		cert_pool = x509.NewCertPool()
-
 		if cfg.ServerCACertText != "" {
 			ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ServerCACertText))
 			if !ok {

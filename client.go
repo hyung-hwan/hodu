@@ -519,7 +519,9 @@ func (r *ClientRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_d
 				} else {
 					_, err = ptc.conn.Write(data)
 					if err != nil {
-						r.cts.cli.log.Write(r.cts.sid, LOG_ERROR, "Failed to write to peer(%d,%d,%s,%s) - %s", r.id, pts_id, ptc.conn.RemoteAddr().String(), ptc.conn.LocalAddr().String(), err.Error())
+						r.cts.cli.log.Write(r.cts.sid, LOG_ERROR,
+							"Failed to write to peer(%d,%d,%s,%s) - %s",
+							r.id, pts_id, ptc.conn.RemoteAddr().String(), ptc.conn.LocalAddr().String(), err.Error())
 						ptc.ReqStop()
 					}
 				}
