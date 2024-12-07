@@ -651,7 +651,7 @@ func (s *Server) GetSeed(ctx context.Context, c_seed *Seed) (*Seed, error) {
 	// seed exchange is for furture expansion of the protocol
 	// there is nothing to do much about it for now.
 
-	s_seed.Version = HODU_VERSION
+	s_seed.Version = HODU_RPC_VERSION
 	s_seed.Flags = 0
 
 	// we create no ServerConn structure associated with the connection

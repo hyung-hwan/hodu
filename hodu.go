@@ -2,7 +2,7 @@ package hodu
 
 import "sync"
 
-const HODU_VERSION uint32 = 0x010000
+const HODU_RPC_VERSION uint32 = 0x010000
 
 type LogLevel int
 

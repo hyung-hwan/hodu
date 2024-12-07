@@ -1,3 +1,6 @@
+NAME=hodu
+VERSION=1.0.0
+
 SRCS=\
 	client.go \
 	client-ctl.go \
@@ -20,14 +23,14 @@ CMD_SRCS=\
 	cmd/config.go \
 	cmd/main.go \
 
-all: hodu
+all: $(NAME)
 
-hodu: $(SRCS) $(CMD_DATA) $(CMD_SRCS)
-	CGO_ENABLED=0 go build -x -o $@ $(CMD_SRCS)
+$(NAME): $(SRCS) $(CMD_DATA) $(CMD_SRCS)
+	CGO_ENABLED=0 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)'" -o $@ $(CMD_SRCS)
 
 clean:
 	go clean -x -i
-	rm -f hodu
+	rm -f $(NAME)
 
 hodu.pb.go: hodu.proto
 	protoc --go_out=. --go_opt=paths=source_relative \
@@ -40,9 +43,9 @@ hodu_grpc.pb.go: hodu.proto
 		hodu.proto
 
 cmd/tls.crt:
-	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=hodu"
+	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=$(NAME)" --addext "subjectAltName=DNS:$(NAME),IP:10.0.0.1,IP:::1"
 
 cmd/tls.key:
-	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=hodu"
+	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=$(NAME)" --addext "subjectAltName=DNS:$(NAME),IP:10.0.0.1,IP:::1"
 
-.PHONY: clean
+.PHONY: clean certfiles

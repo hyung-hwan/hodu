@@ -731,7 +731,7 @@ start_over:
 
 	// seed exchange is for furture expansion of the protocol
 	// there is nothing to do much about it for now.
-	c_seed.Version = HODU_VERSION
+	c_seed.Version = HODU_RPC_VERSION
 	c_seed.Flags = 0
 	s_seed, err = cts.hdc.GetSeed(cts.cli.ctx, &c_seed)
 	if err != nil {

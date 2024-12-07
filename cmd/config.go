@@ -1,7 +1,11 @@
 package main
 
+import "crypto/tls"
+import "crypto/x509"
 import "errors"
+import "fmt"
 import "io"
+import "io/ioutil"
 import "os"
 
 import "gopkg.in/yaml.v3"
@@ -56,7 +60,7 @@ type ClientConfig struct {
 }
 
 
-func LoadServerConfig(cfgfile string) (*ServerConfig, error) {
+func load_server_config(cfgfile string) (*ServerConfig, error) {
 	var cfg ServerConfig
 	var f *os.File
 	var yd *yaml.Decoder
@@ -77,7 +81,7 @@ func LoadServerConfig(cfgfile string) (*ServerConfig, error) {
 	return &cfg, nil
 }
 
-func LoadClientConfig(cfgfile string) (*ClientConfig, error) {
+func load_client_config(cfgfile string) (*ClientConfig, error) {
 	var cfg ClientConfig
 	var f *os.File
 	var yd *yaml.Decoder
@@ -96,4 +100,140 @@ func LoadClientConfig(cfgfile string) (*ClientConfig, error) {
 	}
 
 	return &cfg, nil
+}
+
+
+func tls_string_to_client_auth_type(str string) tls.ClientAuthType {
+	switch str {
+		case tls.NoClientCert.String():
+			return tls.NoClientCert
+		case tls.RequestClientCert.String():
+			return tls.RequestClientCert
+		case tls.RequireAnyClientCert.String():
+			return tls.RequireAnyClientCert
+		case tls.VerifyClientCertIfGiven.String():
+			return tls.VerifyClientCertIfGiven
+		case tls.RequireAndVerifyClientCert.String():
+			return tls.RequireAndVerifyClientCert
+		default:
+			return tls.NoClientCert
+	}
+}
+
+// --------------------------------------------------------------------
+
+func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
+	var tlscfg *tls.Config
+
+	if cfg.Enabled {
+		var cert tls.Certificate
+		var cert_pool *x509.CertPool
+		var err error
+
+		if cfg.CertText != "" && cfg.KeyText != "" {
+			cert, err = tls.X509KeyPair([]byte(cfg.CertText), []byte(cfg.KeyText))
+		} else if cfg.CertFile != "" && cfg.KeyFile != "" {
+			cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		} else {
+			// use the embedded certificate
+			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodul_tls_key_text)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to load key pair - %s", err)
+		}
+
+		if cfg.ClientCACertText != "" || cfg.ClientCACertFile != ""{
+			var ok bool
+
+			cert_pool = x509.NewCertPool()
+
+			if cfg.ClientCACertText != "" {
+				ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ClientCACertText))
+				if !ok {
+					return nil, fmt.Errorf("failed to append certificate to pool")
+				}
+			} else if cfg.ClientCACertFile != "" {
+				var text []byte
+				text, err = ioutil.ReadFile(cfg.ClientCACertFile)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load ca certficate file %s - %s", cfg.ClientCACertFile, err.Error())
+				}
+				ok = cert_pool.AppendCertsFromPEM(text)
+				if !ok {
+					return nil, fmt.Errorf("failed to append certificate to pool")
+				}
+			}
+		}
+
+		tlscfg = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			// If multiple certificates are configured, we may have to implement GetCertificate
+			// GetCertificate: func (chi *tls.ClientHelloInfo) (*Certificate, error) { return cert, nil }
+			ClientAuth: tls_string_to_client_auth_type(cfg.ClientAuthType),
+			ClientCAs: cert_pool, // trusted CA certs for client certificate verification
+		}
+	}
+
+	return tlscfg, nil
+}
+
+// --------------------------------------------------------------------
+
+func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
+	var tlscfg *tls.Config
+
+	if cfg.Enabled {
+		var cert tls.Certificate
+		var cert_pool *x509.CertPool
+		var ok bool
+		var err error
+
+		if cfg.CertText != "" && cfg.KeyText != "" {
+			cert, err = tls.X509KeyPair([]byte(cfg.CertText), []byte(cfg.KeyText))
+		} else if cfg.CertFile != "" && cfg.KeyFile != "" {
+			cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		} else {
+			// use the embedded certificate
+			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodul_tls_key_text)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to load key pair - %s", err)
+		}
+
+		cert_pool = x509.NewCertPool()
+
+		if cfg.ServerCACertText != "" {
+			ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ServerCACertText))
+			if !ok {
+				return nil, fmt.Errorf("failed to append certificate to pool")
+			}
+		} else if cfg.ServerCACertFile != "" {
+			var text []byte
+			text, err = ioutil.ReadFile(cfg.ServerCACertFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load ca certficate file %s - %s", cfg.ServerCACertFile, err.Error())
+			}
+			ok = cert_pool.AppendCertsFromPEM(text)
+			if !ok {
+				return nil, fmt.Errorf("failed to append certificate to pool")
+			}
+		} else {
+			// trust the embedded certificate if not explicitly specified
+			ok = cert_pool.AppendCertsFromPEM(hodu_tls_cert_text)
+			if !ok {
+				return nil, fmt.Errorf("failed to append certificate to pool")
+			}
+		}
+
+		if cfg.ServerName == "" { cfg.ServerName = HODU_NAME }
+		tlscfg = &tls.Config{
+			//Certificates: []tls.Certificate{cert},
+			GetClientCertificate: func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) { return &cert, nil },
+			RootCAs: cert_pool,
+			InsecureSkipVerify: cfg.InsecureSkipVerify,
+			ServerName: cfg.ServerName,
+		}
+	}
+
+	return tlscfg, nil
 }
