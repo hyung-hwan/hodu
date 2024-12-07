@@ -2,8 +2,8 @@ package hodu
 
 import "encoding/json"
 import "net/http"
+import "runtime"
 import "strconv"
-
 
 type json_out_server_conn struct {
 	Id uint32 `json:"id"`
@@ -18,6 +18,11 @@ type json_out_server_route struct {
 	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
 	ServerPeerNet string `json:"server-peer-net"`
 	ServerPeerProto ROUTE_PROTO `json:"server-peer-proto"`
+}
+
+type json_out_stats struct {
+	NumCPUs int `json:"num-cpus"`
+	NumGoroutines int `json:"num-goroutines"`
 }
 
 // ------------------------------------
@@ -38,6 +43,10 @@ type server_ctl_server_conns_id_routes_id struct {
 	s *Server
 }
 
+type server_ctl_server_stats struct {
+	s *Server
+}
+
 // ------------------------------------
 
 func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -45,6 +54,16 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 	var status_code int
 	var err error
 	var je *json.Encoder
+
+	// this deferred function is to overcome the recovering implemenation
+	// from panic done in go's http server. in that implemenation, panic
+	// is isolated to a single gorountine. however, i want this program
+	// to exit immediately once a panic condition is caught. (e.g. nil
+	// pointer dererence)
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
+	}()
 
 	s = ctl.s
 	je = json.NewEncoder(w)
@@ -111,6 +130,11 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	var conn_id string
 	var conn_nid uint64
 	var cts *ServerConn
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
+	}()
 
 	s = ctl.s
 	je = json.NewEncoder(w)
@@ -180,10 +204,48 @@ oops:
 // ------------------------------------
 
 func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-
+	// TODO
 }
 
 // ------------------------------------
 
 func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// TODO
+}
+
+// ------------------------------------
+
+func (ctl *server_ctl_server_stats) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var s *Server
+	var status_code int
+	var err error
+	var je *json.Encoder
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
+	}()
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var stats json_out_stats
+			stats.NumCPUs = runtime.NumCPU()
+			stats.NumGoroutines = runtime.NumGoroutine()
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			if err = je.Encode(stats); err != nil { goto oops }
+
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+
+//done:
+	s.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	return
+
+oops:
+	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+	return
 }

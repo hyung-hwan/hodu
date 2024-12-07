@@ -99,6 +99,11 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 	var err error
 	var je *json.Encoder
 
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.c.log, req, err) }
+	}()
+
 	c = ctl.c
 	je = json.NewEncoder(w)
 
@@ -207,6 +212,11 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	var je *json.Encoder
 	var cts *ClientConn
 
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.c.log, req, err) }
+	}()
+
 	c = ctl.c
 	je = json.NewEncoder(w)
 
@@ -285,6 +295,11 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	var conn_nid uint64
 	var je *json.Encoder
 	var cts *ClientConn
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.c.log, req, err) }
+	}()
 
 	c = ctl.c
 	je = json.NewEncoder(w)
@@ -378,6 +393,11 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	var je *json.Encoder
 	var cts *ClientConn
 
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.c.log, req, err) }
+	}()
+
 	c = ctl.c
 	je = json.NewEncoder(w)
 
@@ -450,6 +470,11 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 	var route_nid uint64
 	var je *json.Encoder
 	var r *ClientRoute
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.c.log, req, err) }
+	}()
 
 	c = ctl.c
 	je = json.NewEncoder(w)
@@ -528,6 +553,11 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 	var peer_nid uint64
 	var je *json.Encoder
 	var p *ClientPeerConn
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.c.log, req, err) }
+	}()
 
 	c = ctl.c
 	je = json.NewEncoder(w)

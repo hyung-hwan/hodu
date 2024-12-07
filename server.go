@@ -881,6 +881,7 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}", &server_ctl_server_conns_id{s: &s})
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes", &server_ctl_server_conns_id_routes{s: &s})
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes/{route_id}", &server_ctl_server_conns_id_routes_id{s: &s})
+	s.ctl_mux.Handle(s.ctl_prefix + "/stats", &server_ctl_server_stats{s: &s})
 
 	s.ctl_addr = make([]string, len(ctl_addrs))
 	s.ctl = make([]*http.Server, len(ctl_addrs))
