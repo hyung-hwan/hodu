@@ -25,3 +25,17 @@ type Service interface {
 	WriteLog(id string, level LogLevel, fmtstr string, args ...interface{})
 }
 
+func tcp_addr_str_class(addr string) string {
+	if len(addr) > 0 {
+		switch addr[0] {
+			case '[':
+				return "tcp6"
+			case ':':
+				return "tcp"
+			default:
+				return "tcp4"
+		}
+	}
+
+	return "tcp"
+}

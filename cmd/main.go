@@ -17,7 +17,7 @@ import "syscall"
 import "time"
 
 
-// Don't change these items to 'const' as they can be overridden with a linker option
+// Don't change these items to 'const' as they can be overridden externally with a linker option
 var HODU_NAME string = "hodu"
 var HODU_VERSION string = "0.0.0"
 

@@ -978,11 +978,21 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 	for idx, ctl = range s.ctl {
 		l_wg.Add(1)
 		go func(i int, cs *http.Server) {
+			var l net.Listener
+
 			s.log.Write ("", LOG_INFO, "Control channel[%d] started on %s", i, s.ctl_addr[i])
-			if s.ctltlscfg == nil {
-				err = cs.ListenAndServe()
-			} else {
-				err = cs.ListenAndServeTLS("", "") // c.ctltlscfg must provide a certificate and a key
+
+			// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
+			//  err = cs.ListenAndServe()
+			//  err = cs.ListenAndServeTLS("", "")
+			l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
+			if err == nil {
+				if s.ctltlscfg == nil {
+					err = cs.Serve(l)
+				} else {
+					err = cs.ServeTLS(l, "", "") // s.ctltlscfg must provide a certificate and a key
+				}
+				l.Close()
 			}
 			if errors.Is(err, http.ErrServerClosed) {
 				s.log.Write("", LOG_DEBUG, "Control channel[%d] ended", i)
