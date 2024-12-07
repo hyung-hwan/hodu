@@ -4,6 +4,7 @@ import "context"
 import "crypto/tls"
 import "errors"
 import "fmt"
+import "log"
 import "math/rand"
 import "net"
 import "net/http"
@@ -970,9 +971,21 @@ func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 
 // --------------------------------------------------------------------
 
+type client_ctl_log_writer struct {
+	cli *Client
+}
+
+func (hlw *client_ctl_log_writer) Write(p []byte) (n int, err error) {
+	// the standard http.Server always requires *log.Logger
+	// use this iowriter to create a logger to pass it to the http server.
+	hlw.cli.log.Write("", LOG_INFO, string(p))
+	return len(p), nil
+}
+
 func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctltlscfg *tls.Config, rpctlscfg *tls.Config) *Client {
 	var c Client
 	var i int
+	var hs_log *log.Logger
 
 	c.ctx, c.ctx_cancel = context.WithCancel(ctx)
 	c.ctltlscfg = ctltlscfg
@@ -996,11 +1009,15 @@ func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctltlscfg
 	c.ctl_addr = make([]string, len(ctl_addrs))
 	c.ctl = make([]*http.Server, len(ctl_addrs))
 	copy(c.ctl_addr, ctl_addrs)
+
+	hs_log = log.New(&client_ctl_log_writer{cli: &c}, "", 0);
+
 	for i = 0; i < len(ctl_addrs); i++ {
 		c.ctl[i] = &http.Server{
 			Addr: ctl_addrs[i],
 			Handler: c.ctl_mux,
 			TLSConfig: c.ctltlscfg,
+			ErrorLog: hs_log,
 			// TODO: more settings
 		}
 	}

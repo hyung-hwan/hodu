@@ -24,3 +24,4 @@ type Service interface {
 	WaitForTermination() // blocking. must wait until all services are stopped
 	WriteLog(id string, level LogLevel, fmtstr string, args ...interface{})
 }
+

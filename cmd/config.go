@@ -42,20 +42,23 @@ type ClientTLSConfig struct {
 
 type ServerConfig struct {
 	CTL struct {
-		TLS ServerTLSConfig `yaml:"tls"`
+		TLS ServerTLSConfig     `yaml:"tls"`
+		ServiceAddrs []string   `yaml:"service-addrs"`
 	} `yaml:"ctl"`
 
 	RPC struct {
-		TLS ServerTLSConfig `yaml:"tls"`
+		TLS ServerTLSConfig     `yaml:"tls"`
+		ServiceAddrs []string   `yaml:"service-addrs"`
 	} `yaml:"rpc"`
 }
 
 type ClientConfig struct {
 	CTL struct {
-		TLS ServerTLSConfig `yaml:"tls"`
+		TLS ServerTLSConfig     `yaml:"tls"`
+		ServiceAddrs []string   `yaml:"service-addrs"`
 	} `yaml:"ctl"`
 	RPC struct {
-		TLS ClientTLSConfig `yaml:"tls"`
+		TLS ClientTLSConfig     `yaml:"tls"`
 	} `yaml:"rpc"`
 }
 

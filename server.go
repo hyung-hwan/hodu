@@ -5,6 +5,7 @@ import "crypto/tls"
 import "errors"
 import "fmt"
 import "io"
+import "log"
 import "math/rand"
 import "net"
 import "net/http"
@@ -794,6 +795,18 @@ func unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServ
 	return v, err
 }
 
+
+type server_ctl_log_writer struct {
+	svr *Server
+}
+
+func (hlw *server_ctl_log_writer) Write(p []byte) (n int, err error) {
+	// the standard http.Server always requires *log.Logger
+	// use this iowriter to create a logger to pass it to the http server.
+	hlw.svr.log.Write("", LOG_INFO, string(p))
+	return len(p), nil
+}
+
 func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logger Logger, ctltlscfg *tls.Config, rpctlscfg *tls.Config) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
@@ -803,6 +816,7 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	var gl *net.TCPListener
 	var i int
 	var cwd string
+	var hs_log *log.Logger
 
 	if len(rpc_addrs) <= 0 {
 		return nil, fmt.Errorf("no server addresses provided")
@@ -871,11 +885,14 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	s.ctl_addr = make([]string, len(ctl_addrs))
 	s.ctl = make([]*http.Server, len(ctl_addrs))
 	copy(s.ctl_addr, ctl_addrs)
+	hs_log = log.New(&server_ctl_log_writer{svr: &s}, "", 0);
+
 	for i = 0; i < len(ctl_addrs); i++ {
 		s.ctl[i] = &http.Server{
 			Addr: ctl_addrs[i],
 			Handler: s.ctl_mux,
 			TLSConfig: s.ctltlscfg,
+			ErrorLog: hs_log,
 			// TODO: more settings
 		}
 	}

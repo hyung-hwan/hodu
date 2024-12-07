@@ -251,7 +251,7 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(rpc_addrs) < 1 || flgs.NArg() > 0 {
+		if len(rpc_addrs) <= 0 || flgs.NArg() > 0 {
 			goto wrong_usage
 		}
 
@@ -262,6 +262,8 @@ func main() {
 				goto oops
 			}
 		}
+
+		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.ServiceAddrs }
 
 		err = server_main(ctl_addrs, rpc_addrs, cfg)
 		if err != nil {
@@ -297,7 +299,7 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(rpc_addrs) < 1 {
+		if len(rpc_addrs) <= 0 {
 			goto wrong_usage
 		}
 
@@ -308,6 +310,8 @@ func main() {
 				goto oops
 			}
 		}
+
+		if len(ctl_addrs) < 1 { ctl_addrs = cfg.CTL.ServiceAddrs }
 
 		err = client_main(ctl_addrs, rpc_addrs[0], flgs.Args(), cfg)
 		if err != nil {
