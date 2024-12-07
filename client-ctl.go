@@ -3,6 +3,7 @@ package hodu
 import "encoding/json"
 import "net/http"
 import "net/url"
+import "runtime"
 import "strconv"
 
 /*
@@ -65,6 +66,11 @@ type json_out_client_peer struct {
 	ServerPeerAddr string `json:"server-peer-addr"`
 	ServerLocalAddr string `json:"server-local-addr"`
 }
+
+type json_out_client_stats struct {
+	NumCPUs int `json:"num-cpus"`
+	NumGoroutines int `json:"num-goroutines"`
+}
 // ------------------------------------
 
 type client_ctl_client_conns struct {
@@ -91,6 +97,9 @@ type client_ctl_client_conns_id_routes_id_peers_id struct {
 	c *Client
 }
 
+type client_ctl_stats struct {
+	c *Client
+}
 // ------------------------------------
 
 func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -615,6 +624,43 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 	}
 done:
+	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	return
+
+oops:
+	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+	return
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var c *Client
+	var status_code int
+	var err error
+	var je *json.Encoder
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.c.log, req, err) }
+	}()
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var stats json_out_client_stats
+			stats.NumCPUs = runtime.NumCPU()
+			stats.NumGoroutines = runtime.NumGoroutine()
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			if err = je.Encode(stats); err != nil { goto oops }
+
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+
+//done:
 	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
 	return
 

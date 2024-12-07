@@ -1005,6 +1005,7 @@ func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctltlscfg
 	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}", &client_ctl_client_conns_id_routes_id{c: &c})
 	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers", &client_ctl_client_conns_id_routes_id_peers{c: &c})
 	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}", &client_ctl_client_conns_id_routes_id_peers_id{c: &c})
+	c.ctl_mux.Handle(c.ctl_prefix + "/stats", &client_ctl_stats{c: &c})
 
 	c.ctl_addr = make([]string, len(ctl_addrs))
 	c.ctl = make([]*http.Server, len(ctl_addrs))

@@ -20,7 +20,7 @@ type json_out_server_route struct {
 	ServerPeerProto ROUTE_PROTO `json:"server-peer-proto"`
 }
 
-type json_out_stats struct {
+type json_out_server_stats struct {
 	NumCPUs int `json:"num-cpus"`
 	NumGoroutines int `json:"num-goroutines"`
 }
@@ -43,7 +43,7 @@ type server_ctl_server_conns_id_routes_id struct {
 	s *Server
 }
 
-type server_ctl_server_stats struct {
+type server_ctl_stats struct {
 	s *Server
 }
 
@@ -215,7 +215,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 // ------------------------------------
 
-func (ctl *server_ctl_server_stats) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var s *Server
 	var status_code int
 	var err error
@@ -231,7 +231,7 @@ func (ctl *server_ctl_server_stats) ServeHTTP(w http.ResponseWriter, req *http.R
 
 	switch req.Method {
 		case http.MethodGet:
-			var stats json_out_stats
+			var stats json_out_server_stats
 			stats.NumCPUs = runtime.NumCPU()
 			stats.NumGoroutines = runtime.NumGoroutine()
 			status_code = http.StatusOK; w.WriteHeader(status_code)
