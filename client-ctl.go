@@ -26,7 +26,7 @@ type json_errmsg struct {
 }
 
 type json_in_client_conn struct {
-	ServerAddr string `json:"server-addr"`
+	ServerAddrs []string `json:"server-addrs"`
 }
 
 type json_in_client_route struct {
@@ -41,7 +41,8 @@ type json_out_client_conn_id struct {
 
 type json_out_client_conn struct {
 	Id uint32 `json:"id"`
-	ReqServerAddr string `json:"req-server-addr"` // server address requested. may be a domain name
+	ReqServerAddrs []string `json:"req-server-addrs"` // server addresses requested. may include a domain name
+	CurrentServerIndex int `json:"current-server-index"`
 	ServerAddr string `json:"server-addr"` // actual server address
 	ClientAddr string `json:"client-addr"`
 	Routes []json_out_client_route `json:"routes"`
@@ -150,7 +151,8 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				}
 				js = append(js, json_out_client_conn{
 					Id: cts.id,
-					ReqServerAddr: cts.cfg.ServerAddr,
+					ReqServerAddrs: cts.cfg.ServerAddrs,
+					CurrentServerIndex: cts.cfg.Index,
 					ServerAddr: cts.remote_addr,
 					ClientAddr: cts.local_addr,
 					Routes: jsp,
@@ -174,12 +176,12 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			var cts *ClientConn
 
 			err = json.NewDecoder(req.Body).Decode(&s)
-			if err != nil || s.ServerAddr == "" {
+			if err != nil || len(s.ServerAddrs) <= 0 {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				goto done
 			}
 
-			cc.ServerAddr = s.ServerAddr
+			cc.ServerAddrs = s.ServerAddrs
 			//cc.PeerAddrs = s.PeerAddrs
 			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
 			if err != nil {
@@ -267,7 +269,8 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			}
 			js = &json_out_client_conn{
 				Id: cts.id,
-				ReqServerAddr: cts.cfg.ServerAddr,
+				ReqServerAddrs: cts.cfg.ServerAddrs,
+				CurrentServerIndex: cts.cfg.Index,
 				ServerAddr: cts.local_addr,
 				ClientAddr: cts.remote_addr,
 				Routes: jsp,

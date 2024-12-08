@@ -214,10 +214,6 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 
 	if len(rpc_addrs) <= 0 {
 		return fmt.Errorf("no rpc server address specified")
-	} else if len(rpc_addrs) > 1 {
-		// TODO: instead of returning an error here,
-		//       support multiple endpoint addresses. round-robin or something to a working server?
-		return fmt.Errorf("too many rpc server addresses specified")
 	}
 
 	c = hodu.NewClient(
@@ -228,7 +224,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 		ctltlscfg,
 		rpctlscfg)
 
-	cc.ServerAddr = rpc_addrs[0]
+	cc.ServerAddrs = rpc_addrs
 	cc.PeerAddrs = peer_addrs
 
 	c.StartService(&cc)
