@@ -375,7 +375,7 @@ peer_aborted:
 	}
 }
 
-func (r *ClientRoute) DisconnectFromPeer(ptc* ClientPeerConn) error {
+func (r *ClientRoute) DisconnectFromPeer(ptc *ClientPeerConn) error {
 	var p *ClientPeerConn
 	var cancel context.CancelFunc
 	var ok bool
@@ -722,14 +722,14 @@ func timed_interceptor(tmout_sec int) grpc.UnaryClientInterceptor {
 	// The client calls GetSeed() as the first call to the server.
 	// To simulate a kind of connect timeout to the server and find out an unresponsive server,
 	// Place a unary intercepter that places a new context with a timeout on the GetSeed() call.
-    return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		var cancel context.CancelFunc
 		if tmout_sec > 0 && method == Hodu_GetSeed_FullMethodName {
 			ctx, cancel = context.WithTimeout(ctx, time.Duration(tmout_sec) * time.Second)
 			defer cancel()
 		}
 		return invoker(ctx, method, req, reply, cc, opts...)
-    }
+	}
 }
 
 func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
@@ -995,7 +995,7 @@ reconnect_to_server:
 	goto start_over // and reconnect
 }
 
-func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data interface{}) error {
+func (cts *ClientConn) ReportEvent(route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data interface{}) error {
 	var r *ClientRoute
 	var ok bool
 
@@ -1003,7 +1003,7 @@ func (cts *ClientConn) ReportEvent (route_id uint32, pts_id uint32, event_type P
 	r, ok = cts.route_map[route_id]
 	if !ok {
 		cts.route_mtx.Unlock()
-		return fmt.Errorf ("non-existent route id - %d", route_id)
+		return fmt.Errorf("non-existent route id - %d", route_id)
 	}
 	cts.route_mtx.Unlock()
 
@@ -1093,11 +1093,11 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 	c.stats.conns.Add(1)
 	c.cts_mtx.Unlock()
 
-	c.log.Write ("", LOG_INFO, "Added client connection(%d) to %v", cts.id, cfg.ServerAddrs)
+	c.log.Write("", LOG_INFO, "Added client connection(%d) to %v", cts.id, cfg.ServerAddrs)
 	return cts, nil
 }
 
-func (c* Client) ReqStopAllClientConns() {
+func (c *Client) ReqStopAllClientConns() {
 	var cts *ClientConn
 
 	c.cts_mtx.Lock()
@@ -1144,7 +1144,7 @@ func (c *Client) RemoveClientConn(cts *ClientConn) error {
 	c.stats.conns.Store(int64(len(c.cts_map)))
 	c.cts_mtx.Unlock()
 
-	c.log.Write ("", LOG_INFO, "Removed client connection(%d) to %v", cts.id, cts.cfg.ServerAddrs)
+	c.log.Write("", LOG_INFO, "Removed client connection(%d) to %v", cts.id, cts.cfg.ServerAddrs)
 
 	cts.ReqStop()
 	return nil
@@ -1168,7 +1168,7 @@ func (c *Client) RemoveClientConnById(conn_id uint32) error {
 	c.stats.conns.Store(int64(len(c.cts_map)))
 	c.cts_mtx.Unlock()
 
-	c.log.Write ("", LOG_INFO, "Removed client connection(%d) to %v", cts.id, cts.cfg.ServerAddrs)
+	c.log.Write("", LOG_INFO, "Removed client connection(%d) to %v", cts.id, cts.cfg.ServerAddrs)
 	cts.ReqStop()
 	return nil
 }
@@ -1205,7 +1205,7 @@ func (c *Client) FindClientRouteById(conn_id uint32, route_id uint32) *ClientRou
 
 func (c *Client) FindClientPeerConnById(conn_id uint32, route_id uint32, peer_id uint32) *ClientPeerConn {
 	var cts *ClientConn
-	var r* ClientRoute
+	var r *ClientRoute
 	var ok bool
 
 	c.cts_mtx.Lock()
@@ -1258,7 +1258,7 @@ func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 		go func(i int, cs *http.Server) {
 			var l net.Listener
 
-			c.log.Write ("", LOG_INFO, "Control channel[%d] started on %s", i, c.ctl_addr[i])
+			c.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, c.ctl_addr[i])
 
 			// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
 			// by creating the listener explicitly.
