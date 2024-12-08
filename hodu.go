@@ -8,12 +8,13 @@ import "sync"
 const HODU_RPC_VERSION uint32 = 0x010000
 
 type LogLevel int
+type LogMask int
 
 const (
-	LOG_DEBUG LogLevel = iota + 1
-	LOG_ERROR
-	LOG_WARN
+	LOG_DEBUG LogLevel = 1 << iota
 	LOG_INFO
+	LOG_WARN
+	LOG_ERROR
 )
 
 type Logger interface {

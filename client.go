@@ -1274,7 +1274,7 @@ func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 				l.Close()
 			}
 			if errors.Is(err, http.ErrServerClosed) {
-				c.log.Write("", LOG_DEBUG, "Control channel[%d] ended", i)
+				c.log.Write("", LOG_INFO, "Control channel[%d] ended", i)
 			} else {
 				c.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())
 			}

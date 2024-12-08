@@ -32,6 +32,7 @@ type AppLogger struct {
 	id string
 	out io.Writer
 	mtx sync.Mutex
+	mask hodu.LogMask
 }
 
 func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ...interface{}) {
@@ -46,7 +47,8 @@ func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ..
 	var caller_line int
 	var caller_ok bool
 
-// TODO: do something with level
+	if l.mask & hodu.LogMask(level) == 0 { return }
+
 	now = time.Now()
 
 	_, off_s = now.Zone()
@@ -146,6 +148,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
 	var ctl_prefix string
+	var logger *AppLogger
 	var err error
 
 	if cfg != nil {
@@ -173,11 +176,13 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 		return fmt.Errorf("no rpc service addresses specified")
 	}
 
+	// TODO: Change out field depending on cfg.APP.LogFile
+	logger = &AppLogger{id: "server", out: os.Stderr, mask: log_strings_to_mask(cfg.APP.LogMask)}
 	s, err = hodu.NewServer(
 		context.Background(),
 		ctl_addrs,
 		rpc_addrs,
-		&AppLogger{id: "server", out: os.Stderr},
+		logger,
 		ctl_prefix,
 		ctltlscfg,
 		rpctlscfg)
@@ -201,6 +206,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	var rpctlscfg *tls.Config
 	var ctl_prefix string
 	var cc hodu.ClientConfig
+	var logger *AppLogger
 	var err error
 
 	if cfg != nil {
@@ -228,10 +234,12 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	cc.ServerAddrs = rpc_addrs
 	cc.PeerAddrs = peer_addrs
 
+	// TODO: Change out field depending on cfg.APP.LogFile
+	logger = &AppLogger{id: "client", out: os.Stderr, mask: log_strings_to_mask(cfg.APP.LogMask)}
 	c = hodu.NewClient(
 		context.Background(),
 		ctl_addrs,
-		&AppLogger{id: "client", out: os.Stderr},
+		logger,
 		ctl_prefix,
 		ctltlscfg,
 		rpctlscfg)

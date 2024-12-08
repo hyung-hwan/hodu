@@ -4,6 +4,7 @@ import "crypto/tls"
 import "crypto/x509"
 import "errors"
 import "fmt"
+import "hodu"
 import "io"
 import "io/ioutil"
 import "os"
@@ -56,7 +57,14 @@ type RPCEndpointConfig struct { // rpc client-side configuration
 	SeedTimeout int      `yaml:"seed-timeout"`
 }
 
+type AppConfig  struct {
+	LogMask    []string  `yaml:"log-mask"`
+	LogFile    string    `yaml:"log-file"`
+}
+
 type ServerConfig struct {
+	APP AppConfig                   `yaml:"app"`
+
 	CTL struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
@@ -69,6 +77,8 @@ type ServerConfig struct {
 }
 
 type ClientConfig struct {
+	APP AppConfig                   `yaml:"app"`
+
 	CTL struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
@@ -137,6 +147,44 @@ func tls_string_to_client_auth_type(str string) tls.ClientAuthType {
 		default:
 			return tls.NoClientCert
 	}
+}
+
+func log_strings_to_mask(str []string) hodu.LogMask {
+
+	var mask hodu.LogMask
+	var all hodu.LogMask
+
+	all = hodu.LogMask(hodu.LOG_DEBUG | hodu.LOG_INFO | hodu.LOG_WARN | hodu.LOG_ERROR)
+
+	if len(str) > 0 {
+		var name string
+
+		mask = hodu.LogMask(0)
+		for _, name = range str {
+
+			switch name {
+				case "all":
+					mask = all
+
+				case "none":
+					mask = hodu.LogMask(0)
+
+				case "debug":
+					mask |= hodu.LogMask(hodu.LOG_DEBUG)
+				case "info":
+					mask |= hodu.LogMask(hodu.LOG_INFO)
+				case "warn":
+					mask |= hodu.LogMask(hodu.LOG_WARN)
+				case "error":
+					mask |= hodu.LogMask(hodu.LOG_ERROR)
+			}
+		}
+	} else {
+		// if not specified, log messages of all levels
+		mask = all
+	}
+
+	return mask
 }
 
 // --------------------------------------------------------------------

@@ -958,11 +958,11 @@ func (s *Server) run_grpc_server(idx int, wg *sync.WaitGroup) error {
 
 	l = s.rpc[idx]
 	// it seems to be safe to call a single grpc server on differnt listening sockets multiple times
-	s.log.Write("", LOG_ERROR, "Starting RPC server on %s", l.Addr().String())
+	s.log.Write("", LOG_INFO, "Starting RPC server on %s", l.Addr().String())
 	err = s.rpc_svr.Serve(l)
 	if err != nil {
 		if errors.Is(err, net.ErrClosed) {
-			s.log.Write("", LOG_ERROR, "RPC server on %s closed", l.Addr().String())
+			s.log.Write("", LOG_INFO, "RPC server on %s closed", l.Addr().String())
 		} else {
 			s.log.Write("", LOG_ERROR, "Error from RPC server on %s - %s", l.Addr().String(), err.Error())
 		}
@@ -1033,7 +1033,7 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 				l.Close()
 			}
 			if errors.Is(err, http.ErrServerClosed) {
-				s.log.Write("", LOG_DEBUG, "Control channel[%d] ended", i)
+				s.log.Write("", LOG_INFO, "Control channel[%d] ended", i)
 			} else {
 				s.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())
 			}
