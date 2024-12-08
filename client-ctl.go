@@ -68,8 +68,11 @@ type json_out_client_peer struct {
 }
 
 type json_out_client_stats struct {
-	NumCPUs int `json:"num-cpus"`
-	NumGoroutines int `json:"num-goroutines"`
+	CPUs int `json:"cpus"`
+	Goroutines int `json:"goroutines"`
+	ClientConns int64 `json:"client-conns"`
+	ClientRoutes int64 `json:"client-routes"`
+	ClientPeers int64 `json:"client-peers"`
 }
 // ------------------------------------
 
@@ -651,8 +654,11 @@ func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	switch req.Method {
 		case http.MethodGet:
 			var stats json_out_client_stats
-			stats.NumCPUs = runtime.NumCPU()
-			stats.NumGoroutines = runtime.NumGoroutine()
+			stats.CPUs = runtime.NumCPU()
+			stats.Goroutines = runtime.NumGoroutine()
+			stats.ClientConns = c.stats.conns.Load()
+			stats.ClientRoutes = c.stats.routes.Load()
+			stats.ClientPeers = c.stats.peers.Load()
 			status_code = http.StatusOK; w.WriteHeader(status_code)
 			if err = je.Encode(stats); err != nil { goto oops }
 

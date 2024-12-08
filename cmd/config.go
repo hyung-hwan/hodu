@@ -40,28 +40,32 @@ type ClientTLSConfig struct {
 	ServerName         string  `yaml:"server-name"`
 }
 
+type ServiceConfig struct {
+	Prefix string   `yaml:"prefix"`
+	Addrs  []string `yaml:"addresses"`
+}
+
 type ServerConfig struct {
 	CTL struct {
-		TLS ServerTLSConfig     `yaml:"tls"`
-		ServiceAddrs []string   `yaml:"service-addrs"`
+		Service ServiceConfig       `yaml:"service"`
+		TLS ServerTLSConfig         `yaml:"tls"`
 	} `yaml:"ctl"`
 
 	RPC struct {
-		TLS ServerTLSConfig     `yaml:"tls"`
-		ServiceAddrs []string   `yaml:"service-addrs"`
+		TLS ServerTLSConfig         `yaml:"tls"`
+		ServiceAddrs []string       `yaml:"service-addrs"`
 	} `yaml:"rpc"`
 }
 
 type ClientConfig struct {
 	CTL struct {
-		TLS ServerTLSConfig     `yaml:"tls"`
-		ServiceAddrs []string   `yaml:"service-addrs"`
+		Service ServiceConfig       `yaml:"endpoint"`
+		TLS ServerTLSConfig         `yaml:"tls"`
 	} `yaml:"ctl"`
 	RPC struct {
-		TLS ClientTLSConfig     `yaml:"tls"`
+		TLS ClientTLSConfig         `yaml:"tls"`
 	} `yaml:"rpc"`
 }
-
 
 func load_server_config(cfgfile string) (*ServerConfig, error) {
 	var cfg ServerConfig

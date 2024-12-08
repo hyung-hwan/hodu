@@ -62,6 +62,12 @@ type Client struct {
 	stop_chan   chan bool
 
 	log         Logger
+
+	stats struct {
+		conns atomic.Int64
+		routes atomic.Int64
+		peers atomic.Int64
+	}
 }
 
 // client connection to server
@@ -164,6 +170,7 @@ func (r *ClientRoute) AddNewClientPeerConn(c *net.TCPConn, pts_id uint32, pts_ra
 	r.ptc_mtx.Lock()
 	ptc = NewClientPeerConn(r, c, pts_id, pts_raddr, pts_laddr)
 	r.ptc_map[ptc.conn_id] = ptc
+	r.cts.cli.stats.peers.Add(1)
 	r.ptc_mtx.Unlock()
 
 	r.cts.cli.log.Write(r.cts.sid, LOG_INFO, "Added client-side peer(%d,%d,%s,%s)", r.id, ptc.conn_id, ptc.conn.RemoteAddr().String(), ptc.conn.LocalAddr().String())
@@ -185,6 +192,7 @@ func (r *ClientRoute) RemoveClientPeerConn(ptc *ClientPeerConn) error {
 		return fmt.Errorf("conflicting peer id - %d", ptc.conn_id)
 	}
 	delete(r.ptc_map, ptc.conn_id)
+	r.cts.cli.stats.peers.Add(-1)
 	r.ptc_mtx.Unlock()
 
 	r.cts.cli.log.Write(r.cts.sid, LOG_INFO, "Removed client-side peer(%d,%d,%s,%s)", r.id, ptc.conn_id, ptc.conn.RemoteAddr().String(), ptc.conn.LocalAddr().String())
@@ -192,7 +200,7 @@ func (r *ClientRoute) RemoveClientPeerConn(ptc *ClientPeerConn) error {
 	return nil
 }
 
-func (r *ClientRoute) RemoveAllClientPeerConns() {
+/*func (r *ClientRoute) RemoveAllClientPeerConns() {
 	var c *ClientPeerConn
 
 	r.ptc_mtx.Lock()
@@ -200,9 +208,10 @@ func (r *ClientRoute) RemoveAllClientPeerConns() {
 
 	for _, c = range r.ptc_map {
 		delete(r.ptc_map, c.conn_id)
+		r.cts.cli.stats.peers.Add(-1)
 		c.ReqStop()
 	}
-}
+}*/
 
 func (r *ClientRoute) ReqStopAllClientPeerConns() {
 	var c *ClientPeerConn
@@ -571,6 +580,7 @@ func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_net string, pr
 	//}
 	r = NewClientRoute(cts, id, addr, server_peer_net, proto)
 	cts.route_map[id] = r
+	cts.cli.stats.routes.Add(1)
 	cts.route_mtx.Unlock()
 
 	cts.cli.log.Write(cts.sid, LOG_INFO, "Added route(%d,%s)", id, addr)
@@ -591,6 +601,7 @@ func (cts *ClientConn) ReqStopAllClientRoutes() {
 	}
 }
 
+/*
 func (cts *ClientConn) RemoveAllClientRoutes() {
 	var r *ClientRoute
 
@@ -599,9 +610,10 @@ func (cts *ClientConn) RemoveAllClientRoutes() {
 
 	for _, r = range cts.route_map {
 		delete(cts.route_map, r.id)
+		cts.cli.stats.routes.Add(-1)
 		r.ReqStop()
 	}
-}
+}*/
 
 func (cts *ClientConn) RemoveClientRoute(route *ClientRoute) error {
 	var r *ClientRoute
@@ -618,6 +630,7 @@ func (cts *ClientConn) RemoveClientRoute(route *ClientRoute) error {
 		return fmt.Errorf("conflicting route id - %d", route.id)
 	}
 	delete(cts.route_map, route.id)
+	cts.cli.stats.routes.Add(-1)
 	cts.route_mtx.Unlock()
 
 	cts.cli.log.Write(cts.sid, LOG_INFO, "Removed route(%d,%s)", route.id, route.peer_addr)
@@ -637,6 +650,7 @@ func (cts *ClientConn) RemoveClientRouteById(route_id uint32) error {
 		return fmt.Errorf("non-existent route id - %d", route_id)
 	}
 	delete(cts.route_map, route_id)
+	cts.cli.stats.routes.Add(-1)
 	cts.route_mtx.Unlock()
 
 	cts.cli.log.Write(cts.sid, LOG_INFO, "Removed route(%d,%s)", r.id, r.peer_addr)
@@ -982,7 +996,7 @@ func (hlw *client_ctl_log_writer) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctltlscfg *tls.Config, rpctlscfg *tls.Config) *Client {
+func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config) *Client {
 	var c Client
 	var i int
 	var hs_log *log.Logger
@@ -996,7 +1010,7 @@ func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctltlscfg
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
 	c.log = logger
-	c.ctl_prefix = "" // TODO:
+	c.ctl_prefix = ctl_prefix
 
 	c.ctl_mux = http.NewServeMux()
 	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns", &client_ctl_client_conns{c: &c})
@@ -1022,6 +1036,10 @@ func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctltlscfg
 			// TODO: more settings
 		}
 	}
+
+	c.stats.conns.Store(0)
+	c.stats.routes.Store(0)
+	c.stats.peers.Store(0)
 
 	return &c
 }
@@ -1052,6 +1070,7 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 
 	c.cts_map_by_addr[cfg.ServerAddr] = cts
 	c.cts_map[id] = cts
+	c.stats.conns.Add(1)
 	c.cts_mtx.Unlock()
 
 	c.log.Write ("", LOG_INFO, "Added client connection(%d) to %s", cts.id, cfg.ServerAddr)
@@ -1069,6 +1088,7 @@ func (c* Client) ReqStopAllClientConns() {
 	}
 }
 
+/*
 func (c *Client) RemoveAllClientConns() {
 	var cts *ClientConn
 
@@ -1078,9 +1098,11 @@ func (c *Client) RemoveAllClientConns() {
 	for _, cts = range c.cts_map {
 		delete(c.cts_map_by_addr, cts.cfg.ServerAddr)
 		delete(c.cts_map, cts.id)
+		c.stats.conns.Store(int64(len(c.cts_map)))
 		cts.ReqStop()
 	}
 }
+*/
 
 func (c *Client) RemoveClientConn(cts *ClientConn) error {
 	var conn *ClientConn
@@ -1100,6 +1122,7 @@ func (c *Client) RemoveClientConn(cts *ClientConn) error {
 
 	delete(c.cts_map_by_addr, cts.cfg.ServerAddr)
 	delete(c.cts_map, cts.id)
+	c.stats.conns.Store(int64(len(c.cts_map)))
 	c.cts_mtx.Unlock()
 
 	c.log.Write ("", LOG_INFO, "Removed client connection(%d) to %s", cts.id, cts.cfg.ServerAddr)
@@ -1124,6 +1147,7 @@ func (c *Client) RemoveClientConnById(conn_id uint32) error {
 
 	delete(c.cts_map_by_addr, cts.cfg.ServerAddr)
 	delete(c.cts_map, cts.id)
+	c.stats.conns.Store(int64(len(c.cts_map)))
 	c.cts_mtx.Unlock()
 
 	c.log.Write ("", LOG_INFO, "Removed client connection(%d) to %s", cts.id, cts.cfg.ServerAddr)

@@ -21,8 +21,11 @@ type json_out_server_route struct {
 }
 
 type json_out_server_stats struct {
-	NumCPUs int `json:"num-cpus"`
-	NumGoroutines int `json:"num-goroutines"`
+	CPUs int `json:"cpus"`
+	Goroutines int `json:"goroutines"`
+	ServerConns int64 `json:"server-conns"`
+	ServerRoutes int64 `json:"server-routes"`
+	ServerPeers int64 `json:"server-peers"`
 }
 
 // ------------------------------------
@@ -232,8 +235,11 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	switch req.Method {
 		case http.MethodGet:
 			var stats json_out_server_stats
-			stats.NumCPUs = runtime.NumCPU()
-			stats.NumGoroutines = runtime.NumGoroutine()
+			stats.CPUs = runtime.NumCPU()
+			stats.Goroutines = runtime.NumGoroutine()
+			stats.ServerConns = s.stats.conns.Load()
+			stats.ServerRoutes = s.stats.routes.Load()
+			stats.ServerPeers = s.stats.peers.Load()
 			status_code = http.StatusOK; w.WriteHeader(status_code)
 			if err = je.Encode(stats); err != nil { goto oops }
 

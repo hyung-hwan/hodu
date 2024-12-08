@@ -20,7 +20,7 @@ import "google.golang.org/grpc/credentials"
 import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/stats"
 
-const PTS_LIMIT = 8192
+const PTS_LIMIT int = 16384
 
 type ServerConnMapByAddr = map[net.Addr]*ServerConn
 type ServerConnMap = map[uint32]*ServerConn
@@ -55,6 +55,12 @@ type Server struct {
 	cts_wg          sync.WaitGroup
 
 	log             Logger
+
+	stats struct {
+		conns atomic.Int64
+		routes atomic.Int64
+		peers atomic.Int64
+	}
 
 	UnimplementedHoduServer
 }
@@ -197,6 +203,7 @@ func (r *ServerRoute) AddNewServerPeerConn(c *net.TCPConn) (*ServerPeerConn, err
 	pts = NewServerPeerConn(r, c, r.pts_last_id)
 	r.pts_map[pts.conn_id] = pts
 	r.pts_last_id++
+	r.cts.svr.stats.peers.Add(1)
 
 	return pts, nil
 }
@@ -204,6 +211,7 @@ func (r *ServerRoute) AddNewServerPeerConn(c *net.TCPConn) (*ServerPeerConn, err
 func (r *ServerRoute) RemoveServerPeerConn(pts *ServerPeerConn) {
 	r.pts_mtx.Lock()
 	delete(r.pts_map, pts.conn_id)
+	r.cts.svr.stats.peers.Add(-1)
 	r.pts_mtx.Unlock()
 	r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "Removed server-side peer connection %s from route(%d)", pts.conn.RemoteAddr().String(), r.id)
 }
@@ -343,6 +351,7 @@ func (cts *ServerConn) AddNewServerRoute(route_id uint32, proto ROUTE_PROTO, ptc
 		return nil, err
 	}
 	cts.route_map[route_id] = r
+	cts.svr.stats.routes.Add(1)
 	cts.route_mtx.Unlock()
 
 	cts.route_wg.Add(1)
@@ -365,6 +374,7 @@ func (cts *ServerConn) RemoveServerRoute(route *ServerRoute) error {
 		return fmt.Errorf("non-existent route - %d", route.id)
 	}
 	delete(cts.route_map, route.id)
+	cts.svr.stats.routes.Add(-1)
 	cts.route_mtx.Unlock()
 
 	r.ReqStop()
@@ -382,6 +392,7 @@ func (cts *ServerConn) RemoveServerRouteById(route_id uint32) (*ServerRoute, err
 		return nil, fmt.Errorf("non-existent route id - %d", route_id)
 	}
 	delete(cts.route_map, route_id)
+	cts.svr.stats.routes.Add(-1)
 	cts.route_mtx.Unlock()
 
 	r.ReqStop()
@@ -807,7 +818,7 @@ func (hlw *server_ctl_log_writer) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logger Logger, ctltlscfg *tls.Config, rpctlscfg *tls.Config) (*Server, error) {
+func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logger Logger, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
 	var rpcaddr *net.TCPAddr
@@ -871,7 +882,7 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	}
 	RegisterHoduServer(s.rpc_svr, &s)
 
-	s.ctl_prefix = "" // TODO:
+	s.ctl_prefix = ctl_prefix
 
 	s.ctl_mux = http.NewServeMux()
 	cwd, _ = os.Getwd()
@@ -897,6 +908,10 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 			// TODO: more settings
 		}
 	}
+
+	s.stats.conns.Store(0)
+	s.stats.routes.Store(0)
+	s.stats.peers.Store(0)
 
 	return &s, nil
 
@@ -1065,6 +1080,7 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 	}
 	s.cts_map_by_addr[cts.remote_addr] = &cts
 	s.cts_map[id] = &cts;
+	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.log.Write("", LOG_DEBUG, "Added client connection from %s", cts.remote_addr.String())
 	return &cts, nil
 }
@@ -1098,6 +1114,7 @@ func (s *Server) RemoveServerConn(cts *ServerConn) error {
 
 	delete(s.cts_map, cts.id)
 	delete(s.cts_map_by_addr, cts.remote_addr)
+	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.cts_mtx.Unlock()
 
 	cts.ReqStop()
@@ -1117,6 +1134,7 @@ func (s *Server) RemoveServerConnByAddr(addr net.Addr) error {
 	}
 	delete(s.cts_map, cts.id)
 	delete(s.cts_map_by_addr, cts.remote_addr)
+	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.cts_mtx.Unlock()
 
 	cts.ReqStop()

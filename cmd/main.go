@@ -163,6 +163,7 @@ func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error
 		ctl_addrs,
 		svcaddrs,
 		&AppLogger{id: "server", out: os.Stderr},
+		cfg.CTL.Service.Prefix,
 		ctltlscfg,
 		rpctlscfg)
 	if err != nil {
@@ -201,6 +202,7 @@ func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cf
 		context.Background(),
 		ctl_addrs,
 		&AppLogger{id: "client", out: os.Stderr},
+		cfg.CTL.Service.Prefix,
 		ctltlscfg,
 		rpctlscfg)
 
@@ -260,7 +262,7 @@ func main() {
 			}
 		}
 
-		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.ServiceAddrs }
+		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
 
 		err = server_main(ctl_addrs, rpc_addrs, cfg)
 		if err != nil {
@@ -306,7 +308,7 @@ func main() {
 			}
 		}
 
-		if len(ctl_addrs) < 1 { ctl_addrs = cfg.CTL.ServiceAddrs }
+		if len(ctl_addrs) < 1 { ctl_addrs = cfg.CTL.Service.Addrs }
 
 		err = client_main(ctl_addrs, rpc_addrs[0], flgs.Args(), cfg)
 		if err != nil {
