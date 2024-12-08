@@ -288,7 +288,6 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 	}
-	return
 
 done:
 	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
@@ -629,6 +628,7 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 	}
+
 done:
 	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
 	return
