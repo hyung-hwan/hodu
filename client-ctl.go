@@ -71,6 +71,12 @@ type json_out_client_peer struct {
 type json_out_client_stats struct {
 	CPUs int `json:"cpus"`
 	Goroutines int `json:"goroutines"`
+
+	NumGCs uint32 `json:"num-gcs"`
+	HeapAllocBytes uint64 `json:"memory-alloc-bytes"`
+	MemAllocs uint64 `json:"memory-num-allocs"`
+	MemFrees uint64 `json:"memory-num-frees"`
+
 	ClientConns int64 `json:"client-conns"`
 	ClientRoutes int64 `json:"client-routes"`
 	ClientPeers int64 `json:"client-peers"`
@@ -657,8 +663,14 @@ func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	switch req.Method {
 		case http.MethodGet:
 			var stats json_out_client_stats
+			var mstat runtime.MemStats
+			runtime.ReadMemStats(&mstat)
 			stats.CPUs = runtime.NumCPU()
 			stats.Goroutines = runtime.NumGoroutine()
+			stats.NumGCs = mstat.NumGC
+			stats.HeapAllocBytes = mstat.HeapAlloc
+			stats.MemAllocs = mstat.Mallocs
+			stats.MemFrees = mstat.Frees
 			stats.ClientConns = c.stats.conns.Load()
 			stats.ClientRoutes = c.stats.routes.Load()
 			stats.ClientPeers = c.stats.peers.Load()
