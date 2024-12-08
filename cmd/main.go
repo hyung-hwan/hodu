@@ -141,7 +141,7 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 
 // --------------------------------------------------------------------
 
-func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error {
+func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) error {
 	var s *hodu.Server
 	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
@@ -158,10 +158,21 @@ func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error
 		}
 	}
 
+	if len(ctl_addrs) <= 0 {
+		ctl_addrs = cfg.CTL.Service.Addrs
+	}
+
+	if (len(rpc_addrs) <= 0) {
+		rpc_addrs = cfg.RPC.Service.Addrs
+	}
+	if (len(rpc_addrs) <= 0) {
+		return fmt.Errorf("no rpc service addresses specified")
+	}
+
 	s, err = hodu.NewServer(
 		context.Background(),
 		ctl_addrs,
-		svcaddrs,
+		rpc_addrs,
 		&AppLogger{id: "server", out: os.Stderr},
 		cfg.CTL.Service.Prefix,
 		ctltlscfg,
@@ -180,7 +191,7 @@ func server_main(ctl_addrs []string, svcaddrs []string, cfg *ServerConfig) error
 
 // --------------------------------------------------------------------
 
-func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cfg *ClientConfig) error {
+func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cfg *ClientConfig) error {
 	var c *hodu.Client
 	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
@@ -198,6 +209,17 @@ func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cf
 		}
 	}
 
+	if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
+	if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
+
+	if len(rpc_addrs) <= 0 {
+		return fmt.Errorf("no rpc server address specified")
+	} else if len(rpc_addrs) > 1 {
+		// TODO: instead of returning an error here,
+		//       support multiple endpoint addresses. round-robin or something to a working server?
+		return fmt.Errorf("too many rpc server addresses specified")
+	}
+
 	c = hodu.NewClient(
 		context.Background(),
 		ctl_addrs,
@@ -206,7 +228,7 @@ func client_main(ctl_addrs []string, server_addr string, peer_addrs []string, cf
 		ctltlscfg,
 		rpctlscfg)
 
-	cc.ServerAddr = server_addr
+	cc.ServerAddr = rpc_addrs[0]
 	cc.PeerAddrs = peer_addrs
 
 	c.StartService(&cc)
@@ -252,7 +274,7 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(rpc_addrs) <= 0 || flgs.NArg() > 0 { goto wrong_usage }
+		if flgs.NArg() > 0 { goto wrong_usage }
 
 		if (cfgfile != "") {
 			cfg, err = load_server_config(cfgfile)
@@ -261,8 +283,6 @@ func main() {
 				goto oops
 			}
 		}
-
-		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
 
 		err = server_main(ctl_addrs, rpc_addrs, cfg)
 		if err != nil {
@@ -298,8 +318,6 @@ func main() {
 			goto wrong_usage
 		}
 
-		if len(rpc_addrs) <= 0 { goto wrong_usage }
-
 		if (cfgfile != "") {
 			cfg, err = load_client_config(cfgfile)
 			if err != nil {
@@ -308,9 +326,7 @@ func main() {
 			}
 		}
 
-		if len(ctl_addrs) < 1 { ctl_addrs = cfg.CTL.Service.Addrs }
-
-		err = client_main(ctl_addrs, rpc_addrs[0], flgs.Args(), cfg)
+		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: client error - %s\n", err.Error())
 			goto oops

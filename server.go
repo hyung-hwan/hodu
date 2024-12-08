@@ -828,6 +828,7 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	var i int
 	var cwd string
 	var hs_log *log.Logger
+	var opts []grpc.ServerOption
 
 	if len(rpc_addrs) <= 0 {
 		return nil, fmt.Errorf("no server addresses provided")
@@ -866,20 +867,12 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	}
 	gs = grpc.NewServer(grpc.Creds(creds))
 */
-	if s.rpctlscfg == nil {
-		s.rpc_svr = grpc.NewServer(
-			//grpc.UnaryInterceptor(unaryInterceptor),
-			//grpc.StreamInterceptor(streamInterceptor),
-			grpc.StatsHandler(&ConnCatcher{server: &s}),
-		)
-	} else {
-		s.rpc_svr = grpc.NewServer(
-			grpc.Creds(credentials.NewTLS(s.rpctlscfg)),
-			//grpc.UnaryInterceptor(unaryInterceptor),
-			//grpc.StreamInterceptor(streamInterceptor),
-			grpc.StatsHandler(&ConnCatcher{server: &s}),
-		)
-	}
+
+	opts = append(opts, grpc.StatsHandler(&ConnCatcher{server: &s}))
+	if s.rpctlscfg != nil { opts = append(opts, grpc.Creds(credentials.NewTLS(s.rpctlscfg))) }
+	//opts = append(opts, grpc.UnaryInterceptor(unaryInterceptor))
+	//opts = append(opts, grpc.StreamInterceptor(streamInterceptor))
+	s.rpc_svr = grpc.NewServer(opts...)
 	RegisterHoduServer(s.rpc_svr, &s)
 
 	s.ctl_prefix = ctl_prefix

@@ -40,29 +40,40 @@ type ClientTLSConfig struct {
 	ServerName         string  `yaml:"server-name"`
 }
 
-type ServiceConfig struct {
-	Prefix string   `yaml:"prefix"`
+type CTLServiceConfig struct {
+	Prefix string   `yaml:"prefix"`  // url prefix for control channel endpoints
 	Addrs  []string `yaml:"addresses"`
+}
+
+type RPCServiceConfig struct { // rpc server-side configuration
+	Addrs     []string  `yaml:"addresses"`
+	MaxConns  int       `yaml:"max-connections"` // TODO: implement this item
+}
+
+type RPCEndpointConfig struct { // rpc client-side configuration
+	Authority string   `yaml:"authority"`
+	Addrs     []string `yaml:"addresses"`
 }
 
 type ServerConfig struct {
 	CTL struct {
-		Service ServiceConfig       `yaml:"service"`
+		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
 	} `yaml:"ctl"`
 
 	RPC struct {
+		Service RPCServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
-		ServiceAddrs []string       `yaml:"service-addrs"`
 	} `yaml:"rpc"`
 }
 
 type ClientConfig struct {
 	CTL struct {
-		Service ServiceConfig       `yaml:"endpoint"`
+		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
 	} `yaml:"ctl"`
 	RPC struct {
+		Endpoint RPCEndpointConfig  `yaml:"endpoint"`
 		TLS ClientTLSConfig         `yaml:"tls"`
 	} `yaml:"rpc"`
 }

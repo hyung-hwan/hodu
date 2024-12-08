@@ -723,20 +723,24 @@ func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	var p *peer.Peer
 	var ok bool
 	var err error
+	var opts []grpc.DialOption
 
 	defer wg.Done() // arrange to call at the end of this function
 
 start_over:
 	cts.cli.log.Write(cts.sid, LOG_INFO, "Connecting to server %s", cts.cfg.ServerAddr)
 	if cts.cli.rpctlscfg == nil {
-		cts.conn, err = grpc.NewClient(
-			cts.cfg.ServerAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()))
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		// TODO: can we have other authority for non-tls?
+		// if normal configuration has authority, use it (non-tls side)
+		// if notmal configuration doesn't have authori, tls has server name, use tls server name (tls side)
 	} else {
-		cts.conn, err = grpc.NewClient(
-			cts.cfg.ServerAddr,
-			grpc.WithTransportCredentials(credentials.NewTLS(cts.cli.rpctlscfg)))
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(cts.cli.rpctlscfg)))
+
+		// set the http2 :authority header with tls server name defined.
+		if cts.cli.rpctlscfg.ServerName != "" { opts = append(opts, grpc.WithAuthority(cts.cli.rpctlscfg.ServerName)) }
 	}
+	cts.conn, err = grpc.NewClient(cts.cfg.ServerAddr, opts...)
 	if err != nil {
 		cts.cli.log.Write(cts.sid, LOG_ERROR, "Failed to make client to server %s - %s", cts.cfg.ServerAddr, err.Error())
 		goto reconnect_to_server
