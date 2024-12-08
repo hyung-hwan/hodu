@@ -145,6 +145,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 	var s *hodu.Server
 	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
+	var ctl_prefix string
 	var err error
 
 	if cfg != nil {
@@ -156,16 +157,19 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 		if err != nil {
 			return err
 		}
+
+		if len(ctl_addrs) <= 0 {
+			ctl_addrs = cfg.CTL.Service.Addrs
+		}
+
+		if len(rpc_addrs) <= 0 {
+			rpc_addrs = cfg.RPC.Service.Addrs
+		}
+
+		ctl_prefix = cfg.CTL.Service.Prefix
 	}
 
-	if len(ctl_addrs) <= 0 {
-		ctl_addrs = cfg.CTL.Service.Addrs
-	}
-
-	if (len(rpc_addrs) <= 0) {
-		rpc_addrs = cfg.RPC.Service.Addrs
-	}
-	if (len(rpc_addrs) <= 0) {
+	if len(rpc_addrs) <= 0 {
 		return fmt.Errorf("no rpc service addresses specified")
 	}
 
@@ -174,7 +178,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 		ctl_addrs,
 		rpc_addrs,
 		&AppLogger{id: "server", out: os.Stderr},
-		cfg.CTL.Service.Prefix,
+		ctl_prefix,
 		ctltlscfg,
 		rpctlscfg)
 	if err != nil {
@@ -195,6 +199,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	var c *hodu.Client
 	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
+	var ctl_prefix string
 	var cc hodu.ClientConfig
 	var err error
 
@@ -207,27 +212,29 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 		if err != nil {
 			return err
 		}
-	}
 
-	if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
-	if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
+		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
+		if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
+		ctl_prefix = cfg.CTL.Service.Prefix
+
+		cc.ServerSeedTimeout = cfg.RPC.Endpoint.SeedTimeout
+		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
+	}
 
 	if len(rpc_addrs) <= 0 {
 		return fmt.Errorf("no rpc server address specified")
 	}
 
+	cc.ServerAddrs = rpc_addrs
+	cc.PeerAddrs = peer_addrs
+
 	c = hodu.NewClient(
 		context.Background(),
 		ctl_addrs,
 		&AppLogger{id: "client", out: os.Stderr},
-		cfg.CTL.Service.Prefix,
+		ctl_prefix,
 		ctltlscfg,
 		rpctlscfg)
-
-	cc.ServerAddrs = rpc_addrs
-	cc.PeerAddrs = peer_addrs
-	cc.ServerSeedTimeout = cfg.RPC.Endpoint.SeedTimeout
-	cc.ServerAuthority = cfg.RPC.Endpoint.Authority
 
 	c.StartService(&cc)
 	c.StartCtlService() // control channel
