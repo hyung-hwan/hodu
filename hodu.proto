@@ -2,7 +2,11 @@ syntax = "proto3";
 
 option go_package = "./hodu";
 
-//package hodu; // no idea if it's still important...
+// this one affects the full name of the the actual calls.
+//   /<package-name>.<service-name>/<call-name>
+// i want to keep the package line commented out such that
+// the full name is /<service-name>/<call-name> (e.g. /Hodu/GetSeed)
+//package hodu;
 
 service Hodu {
 	rpc GetSeed (Seed) returns (Seed) {}

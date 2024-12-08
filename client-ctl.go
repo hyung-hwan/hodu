@@ -397,7 +397,6 @@ done:
 oops:
 	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
 	return
-
 }
 
 // ------------------------------------
@@ -412,6 +411,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	var route_nid uint64
 	var je *json.Encoder
 	var cts *ClientConn
+	var r *ClientRoute
 
 	defer func() {
 		var err interface{} = recover()
@@ -444,24 +444,27 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		goto done
 	}
 
+	r = cts.FindClientRouteById(uint32(route_nid))
+	if r == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
 	switch req.Method {
 		case http.MethodGet:
-			var r *ClientRoute
-			r = cts.FindClientRouteById(uint32(route_nid))
-			if r == nil {
-				status_code = http.StatusNotFound; w.WriteHeader(status_code)
-				if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
-				goto done
-			}
+			status_code = http.StatusOK; w.WriteHeader(status_code)
 			err = je.Encode(json_out_client_route{
 				Id: r.id,
 				ClientPeerAddr: r.peer_addr,
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+				ServerPeerNet: r.server_peer_net,
+				ServerPeerProto: r.server_peer_proto,
 			})
 			if err != nil { goto oops }
 
 		case http.MethodDelete:
-			cts.ReqStop()
+			r.ReqStop()
 			status_code = http.StatusNoContent; w.WriteHeader(status_code)
 
 		default:

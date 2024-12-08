@@ -202,7 +202,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	}
 
 done:
-	s.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	s.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
 	return
 
 oops:
@@ -213,13 +213,157 @@ oops:
 // ------------------------------------
 
 func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// TODO
+	var s *Server
+	var status_code int
+	var err error
+	var conn_id string
+	var conn_nid uint64
+	var je *json.Encoder
+	var cts *ServerConn
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
+	}()
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	cts = s.FindServerConnById(uint32(conn_nid))
+	if cts == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			var r *ServerRoute
+			var jsp []json_out_server_route
+
+			jsp = make([]json_out_server_route, 0)
+			cts.route_mtx.Lock()
+			for _, r = range cts.route_map {
+				jsp = append(jsp, json_out_server_route{
+					Id: r.id,
+					ClientPeerAddr: r.ptc_addr,
+					ServerPeerListenAddr: r.svc_addr.String(),
+					ServerPeerNet: r.svc_permitted_net.String(),
+					ServerPeerProto: r.svc_proto,
+				})
+			}
+			cts.route_mtx.Unlock()
+
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			if err = je.Encode(jsp); err != nil { goto oops }
+
+		case http.MethodDelete:
+			//cts.RemoveAllServerRoutes()
+			cts.ReqStopAllServerRoutes()
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+
+done:
+	s.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	return
+
+oops:
+	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+	return
 }
 
 // ------------------------------------
 
 func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// TODO
+	var s *Server
+	var status_code int
+	var err error
+	var conn_id string
+	var conn_nid uint64
+	var route_id string
+	var route_nid uint64
+	var je *json.Encoder
+	var cts *ServerConn
+	var r *ServerRoute
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
+	}()
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	route_id = req.PathValue("route_id")
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+	route_nid, err = strconv.ParseUint(route_id, 10, 32)
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
+		goto done
+	}
+
+	cts = s.FindServerConnById(uint32(conn_nid))
+	if cts == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	r = cts.FindServerRouteById(uint32(route_nid))
+	if r == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			err = je.Encode(json_out_client_route{
+				Id: r.id,
+				ClientPeerAddr: r.ptc_addr,
+				ServerPeerListenAddr: r.svc_addr.String(),
+				ServerPeerNet: r.svc_permitted_net.String(),
+				ServerPeerProto: r.svc_proto,
+			})
+			if err != nil { goto oops }
+
+		case http.MethodDelete:
+			r.ReqStop()
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+
+done:
+	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
+	s.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
+	return
+
+oops:
+	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+	return
 }
 
 // ------------------------------------

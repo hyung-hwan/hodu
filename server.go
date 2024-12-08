@@ -401,6 +401,32 @@ func (cts *ServerConn) RemoveServerRouteById(route_id uint32) (*ServerRoute, err
 	return r, nil
 }
 
+func (cts *ServerConn) FindServerRouteById(route_id uint32) *ServerRoute {
+	var r *ServerRoute
+	var ok bool
+
+	cts.route_mtx.Lock()
+	r, ok = cts.route_map[route_id]
+	if !ok {
+		cts.route_mtx.Unlock()
+		return nil
+	}
+	cts.route_mtx.Unlock()
+
+	return r
+}
+
+func (cts *ServerConn) ReqStopAllServerRoutes() {
+	var r *ServerRoute
+
+	cts.route_mtx.Lock()
+	defer cts.route_mtx.Unlock()
+
+	for _, r = range cts.route_map {
+		r.ReqStop()
+	}
+}
+
 func (cts *ServerConn) ReportEvent(route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data interface{}) error {
 	var r *ServerRoute
 	var ok bool
@@ -992,7 +1018,7 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 		go func(i int, cs *http.Server) {
 			var l net.Listener
 
-			s.log.Write ("", LOG_INFO, "Control channel[%d] started on %s", i, s.ctl_addr[i])
+			s.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, s.ctl_addr[i])
 
 			// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
 			//  err = cs.ListenAndServe()
@@ -1141,7 +1167,7 @@ func (s *Server) RemoveServerConnByAddr(addr net.Addr) error {
 	return nil
 }
 
-func (s* Server) FindServerConnById(id uint32) *ServerConn {
+func (s *Server) FindServerConnById(id uint32) *ServerConn {
 	var cts *ServerConn
 	var ok bool
 
