@@ -226,6 +226,8 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 
 	cc.ServerAddrs = rpc_addrs
 	cc.PeerAddrs = peer_addrs
+	cc.ServerSeedTimeout = cfg.RPC.Endpoint.SeedTimeout
+	cc.ServerAuthority = cfg.RPC.Endpoint.Authority
 
 	c.StartService(&cc)
 	c.StartCtlService() // control channel

@@ -51,8 +51,9 @@ type RPCServiceConfig struct { // rpc server-side configuration
 }
 
 type RPCEndpointConfig struct { // rpc client-side configuration
-	Authority string   `yaml:"authority"`
-	Addrs     []string `yaml:"addresses"`
+	Authority   string   `yaml:"authority"`
+	Addrs       []string `yaml:"addresses"`
+	SeedTimeout int      `yaml:"seed-timeout"`
 }
 
 type ServerConfig struct {
