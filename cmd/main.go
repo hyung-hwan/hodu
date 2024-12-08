@@ -149,7 +149,10 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 	var rpctlscfg *tls.Config
 	var ctl_prefix string
 	var logger *AppLogger
+	var log_mask hodu.LogMask
 	var err error
+
+	log_mask = hodu.LOG_ALL
 
 	if cfg != nil {
 		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
@@ -170,6 +173,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 		}
 
 		ctl_prefix = cfg.CTL.Service.Prefix
+		log_mask = log_strings_to_mask(cfg.APP.LogMask)
 	}
 
 	if len(rpc_addrs) <= 0 {
@@ -177,7 +181,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 	}
 
 	// TODO: Change out field depending on cfg.APP.LogFile
-	logger = &AppLogger{id: "server", out: os.Stderr, mask: log_strings_to_mask(cfg.APP.LogMask)}
+	logger = &AppLogger{id: "server", out: os.Stderr, mask: log_mask}
 	s, err = hodu.NewServer(
 		context.Background(),
 		ctl_addrs,
@@ -207,8 +211,10 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	var ctl_prefix string
 	var cc hodu.ClientConfig
 	var logger *AppLogger
+	var log_mask hodu.LogMask
 	var err error
 
+	log_mask = hodu.LOG_ALL
 	if cfg != nil {
 		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
 		if err != nil {
@@ -225,6 +231,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 
 		cc.ServerSeedTimeout = cfg.RPC.Endpoint.SeedTimeout
 		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
+		log_mask = log_strings_to_mask(cfg.APP.LogMask)
 	}
 
 	if len(rpc_addrs) <= 0 {
@@ -235,7 +242,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	cc.PeerAddrs = peer_addrs
 
 	// TODO: Change out field depending on cfg.APP.LogFile
-	logger = &AppLogger{id: "client", out: os.Stderr, mask: log_strings_to_mask(cfg.APP.LogMask)}
+	logger = &AppLogger{id: "client", out: os.Stderr, mask: log_mask}
 	c = hodu.NewClient(
 		context.Background(),
 		ctl_addrs,
@@ -280,6 +287,7 @@ func main() {
 			cfgfile = v
 			return nil
 		})
+		// TODO: add a command line option to specify log file and mask.
 		flgs.SetOutput(io.Discard) // prevent usage output
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
@@ -324,6 +332,7 @@ func main() {
 			cfgfile = v
 			return nil
 		})
+		// TODO: add a command line option to specify log file and mask.
 		flgs.SetOutput(io.Discard)
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {

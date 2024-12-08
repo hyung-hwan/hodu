@@ -152,9 +152,6 @@ func tls_string_to_client_auth_type(str string) tls.ClientAuthType {
 func log_strings_to_mask(str []string) hodu.LogMask {
 
 	var mask hodu.LogMask
-	var all hodu.LogMask
-
-	all = hodu.LogMask(hodu.LOG_DEBUG | hodu.LOG_INFO | hodu.LOG_WARN | hodu.LOG_ERROR)
 
 	if len(str) > 0 {
 		var name string
@@ -164,10 +161,10 @@ func log_strings_to_mask(str []string) hodu.LogMask {
 
 			switch name {
 				case "all":
-					mask = all
+					mask = hodu.LOG_ALL
 
 				case "none":
-					mask = hodu.LogMask(0)
+					mask = hodu.LOG_NONE
 
 				case "debug":
 					mask |= hodu.LogMask(hodu.LOG_DEBUG)
@@ -181,7 +178,7 @@ func log_strings_to_mask(str []string) hodu.LogMask {
 		}
 	} else {
 		// if not specified, log messages of all levels
-		mask = all
+		mask = hodu.LOG_ALL
 	}
 
 	return mask

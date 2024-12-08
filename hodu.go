@@ -17,6 +17,9 @@ const (
 	LOG_ERROR
 )
 
+const LOG_ALL LogMask = LogMask(LOG_DEBUG | LOG_INFO | LOG_WARN | LOG_ERROR)
+const LOG_NONE LogMask = LogMask(0)
+
 type Logger interface {
 	Write(id string, level LogLevel, fmtstr string, args ...interface{})
 }
