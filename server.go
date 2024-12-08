@@ -21,6 +21,7 @@ import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/stats"
 
 const PTS_LIMIT int = 16384
+const CTS_LIMIT int = 16384
 
 type ServerConnMapByAddr = map[net.Addr]*ServerConn
 type ServerConnMap = map[uint32]*ServerConn
@@ -49,6 +50,7 @@ type Server struct {
 	rpc_wg          sync.WaitGroup
 	rpc_svr         *grpc.Server
 
+	cts_limit       int
 	cts_mtx         sync.Mutex
 	cts_map         ServerConnMap
 	cts_map_by_addr ServerConnMapByAddr
@@ -855,6 +857,7 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	s.ctltlscfg = ctltlscfg
 	s.rpctlscfg = rpctlscfg
 	s.ext_svcs = make([]Service, 0, 1)
+	s.cts_limit = CTS_LIMIT // TODO: accept this from configuration
 	s.cts_map = make(ServerConnMap)
 	s.cts_map_by_addr = make(ServerConnMapByAddr)
 	s.stop_chan = make(chan bool, 8)
@@ -1057,6 +1060,10 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 
 	s.cts_mtx.Lock()
 	defer s.cts_mtx.Unlock()
+
+	if len(s.cts_map) > s.cts_limit {
+		return nil, fmt.Errorf("too many connections - %d", s.cts_limit)
+	}
 
 	id = rand.Uint32()
 	for {
