@@ -1020,17 +1020,26 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 
 			s.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, s.ctl_addr[i])
 
-			// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
-			//  err = cs.ListenAndServe()
-			//  err = cs.ListenAndServeTLS("", "")
-			l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
-			if err == nil {
-				if s.ctltlscfg == nil {
-					err = cs.Serve(l)
-				} else {
-					err = cs.ServeTLS(l, "", "") // s.ctltlscfg must provide a certificate and a key
+
+			if s.stop_req.Load() == false {
+				// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
+				//  err = cs.ListenAndServe()
+				//  err = cs.ListenAndServeTLS("", "")
+				l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
+				if err == nil {
+					if s.stop_req.Load() == false {
+						if s.ctltlscfg == nil {
+							err = cs.Serve(l)
+						} else {
+							err = cs.ServeTLS(l, "", "") // s.ctltlscfg must provide a certificate and a key
+						}
+					} else {
+						err = fmt.Errorf("stop requested")
+					}
+					l.Close()
 				}
-				l.Close()
+			} else {
+				err = fmt.Errorf("stop requested")
 			}
 			if errors.Is(err, http.ErrServerClosed) {
 				s.log.Write("", LOG_INFO, "Control channel[%d] ended", i)

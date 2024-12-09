@@ -1268,20 +1268,38 @@ func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 			// by creating the listener explicitly.
 			//   err = cs.ListenAndServe()
 			//   err = cs.ListenAndServeTLS("", "") // c.tlscfg must provide a certificate and a key
-			l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
-			if err == nil {
-				if c.ctltlscfg == nil {
-					err = cs.Serve(l)
-				} else {
-					err = cs.ServeTLS(l, "", "") // c.ctltlscfg must provide a certificate and a key
+
+			//cs.shuttingDown(), as the name indicates, is not expoosed by the net/http
+			//so I have to use my own indicator to check if it's been shutdown..
+			//
+			if c.stop_req.Load() == false {
+				// this guard has a flaw in that the stop request can be made
+				// between the check above and net.Listen() below.
+				l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
+				if err == nil {
+					if c.stop_req.Load() == false {
+						// check it again to make the guard slightly more stable
+						// although it's still possible that the stop request is made
+						// after Listen()
+						if c.ctltlscfg == nil {
+							err = cs.Serve(l)
+						} else {
+							err = cs.ServeTLS(l, "", "") // c.ctltlscfg must provide a certificate and a key
+						}
+					} else {
+						err = fmt.Errorf("stop requested")
+					}
+					l.Close()
 				}
-				l.Close()
+			} else {
+				err = fmt.Errorf("stop requested")
 			}
 			if errors.Is(err, http.ErrServerClosed) {
 				c.log.Write("", LOG_INFO, "Control channel[%d] ended", i)
 			} else {
 				c.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())
 			}
+
 			l_wg.Done()
 		}(idx, ctl)
 	}
