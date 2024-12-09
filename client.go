@@ -1075,6 +1075,10 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 	var ok bool
 	var id uint32
 
+	if len(cfg.ServerAddrs) <= 0 {
+		return nil, fmt.Errorf("no server rpc address specified")
+	}
+
 	cts = NewClientConn(c, cfg)
 
 	c.cts_mtx.Lock()
@@ -1295,17 +1299,9 @@ func (c *Client) RunTask(wg *sync.WaitGroup) {
 	// so no call to wg.Done()
 }
 
-func (c *Client) start_service(data interface{}) (*ClientConn, error) {
+func (c *Client) start_service(cfg *ClientConfig) (*ClientConn, error) {
 	var cts *ClientConn
 	var err error
-	var cfg *ClientConfig
-	var ok bool
-
-	cfg, ok = data.(*ClientConfig)
-	if !ok {
-		err = fmt.Errorf("invalid configuration given")
-		return nil, err
-	}
 
 	cts, err = c.AddNewClientConn(cfg)
 	if err != nil {
@@ -1320,14 +1316,24 @@ func (c *Client) start_service(data interface{}) (*ClientConn, error) {
 }
 
 func (c *Client) StartService(data interface{}) {
-	var cts *ClientConn
-	var err error
+	var cfg *ClientConfig
+	var ok bool
 
-	cts, err = c.start_service(data)
-	if err != nil {
-		c.log.Write("", LOG_ERROR, "Failed to start service - %s", err.Error())
+	cfg, ok = data.(*ClientConfig)
+	if !ok {
+		c.log.Write("", LOG_ERROR, "Failed to start service - invalid configuration - %v", data)
 	} else {
-		c.log.Write("", LOG_INFO, "Started service for %v [%d]", cts.cfg.ServerAddrs, cts.cfg.Id)
+		var cts *ClientConn
+		var err error
+
+		if len(cfg.ServerAddrs) > 0 {
+			cts, err = c.start_service(cfg)
+			if err != nil {
+				c.log.Write("", LOG_ERROR, "Failed to start service - %s", err.Error())
+			} else {
+				c.log.Write("", LOG_INFO, "Started service for %v [%d]", cts.cfg.ServerAddrs, cts.cfg.Id)
+			}
+		}
 	}
 }
 

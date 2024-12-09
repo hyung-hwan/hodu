@@ -234,14 +234,11 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 		log_mask = log_strings_to_mask(cfg.APP.LogMask)
 	}
 
-	if len(rpc_addrs) <= 0 {
-		return fmt.Errorf("no rpc server address specified")
-	}
-
+	// unlke the server, we allow the client to start with no rpc address.
+	// no check if len(rpc_addrs) <= 0 is mdde here.
 	cc.ServerAddrs = rpc_addrs
 	cc.PeerAddrs = peer_addrs
 
-	// TODO: Change out field depending on cfg.APP.LogFile
 	logger = &AppLogger{id: "client", out: os.Stderr, mask: log_mask}
 	c = hodu.NewClient(
 		context.Background(),
