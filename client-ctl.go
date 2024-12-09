@@ -36,11 +36,11 @@ type json_in_client_route struct {
 }
 
 type json_out_client_conn_id struct {
-	Id uint32 `json:"id"`
+	Id ConnId `json:"id"`
 }
 
 type json_out_client_conn struct {
-	Id uint32 `json:"id"`
+	Id ConnId `json:"id"`
 	ReqServerAddrs []string `json:"req-server-addrs"` // server addresses requested. may include a domain name
 	CurrentServerIndex int `json:"current-server-index"`
 	ServerAddr string `json:"server-addr"` // actual server address
@@ -49,11 +49,11 @@ type json_out_client_conn struct {
 }
 
 type json_out_client_route_id struct {
-	Id uint32 `json:"id"`
+	Id RouteId `json:"id"`
 }
 
 type json_out_client_route struct {
-	Id uint32 `json:"id"`
+	Id RouteId `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
 	ServerPeerNet string `json:"server-peer-net"`
@@ -61,7 +61,7 @@ type json_out_client_route struct {
 }
 
 type json_out_client_peer struct {
-	Id uint32 `json:"id"`
+	Id PeerId `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientLocalAddr string `json:"client-local-addr"`
 	ServerPeerAddr string `json:"server-peer-addr"`
@@ -249,7 +249,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 		goto done
 	}
 
-	cts = c.FindClientConnById(uint32(conn_nid))
+	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
@@ -333,7 +333,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 		goto done
 	}
 
-	cts = c.FindClientConnById(uint32(conn_nid))
+	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
@@ -437,14 +437,14 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		goto done
 	}
 
-	cts = c.FindClientConnById(uint32(conn_nid))
+	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
-	r = cts.FindClientRouteById(uint32(route_nid))
+	r = cts.FindClientRouteById(RouteId(route_nid))
 	if r == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
@@ -518,7 +518,7 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 		goto done
 	}
 
-	r = c.FindClientRouteById(uint32(conn_nid), uint32(route_nid))
+	r = c.FindClientRouteById(ConnId(conn_nid), RouteId(route_nid))
 	if r == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection/route id - " + conn_id + "/" + route_id}); err != nil { goto oops }
@@ -608,7 +608,7 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 		goto done
 	}
 
-	p = c.FindClientPeerConnById(uint32(conn_nid), uint32(route_nid), uint32(peer_nid))
+	p = c.FindClientPeerConnById(ConnId(conn_nid), RouteId(route_nid), PeerId(peer_nid))
 	if p == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection/route/peer id - " + conn_id + "/" + route_id + "/" + peer_id}); err != nil { goto oops }

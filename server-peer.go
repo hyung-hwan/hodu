@@ -9,7 +9,7 @@ import "time"
 
 type ServerPeerConn struct {
 	route     *ServerRoute
-	conn_id   uint32
+	conn_id   PeerId
 	cts       *ClientConn
 	conn      *net.TCPConn
 
@@ -22,7 +22,7 @@ type ServerPeerConn struct {
 	client_peer_eof atomic.Bool
 }
 
-func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id uint32) *ServerPeerConn {
+func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id PeerId) *ServerPeerConn {
 	var spc ServerPeerConn
 
 	spc.route = r

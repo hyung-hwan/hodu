@@ -5,7 +5,7 @@ import "io"
 import "net"
 import "sync"
 
-func NewClientPeerConn(r *ClientRoute, c *net.TCPConn, id uint32, pts_raddr string, pts_laddr string) *ClientPeerConn {
+func NewClientPeerConn(r *ClientRoute, c *net.TCPConn, id PeerId, pts_raddr string, pts_laddr string) *ClientPeerConn {
 	var cpc ClientPeerConn
 
 	cpc.route = r

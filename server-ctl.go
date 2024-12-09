@@ -6,14 +6,14 @@ import "runtime"
 import "strconv"
 
 type json_out_server_conn struct {
-	Id uint32 `json:"id"`
+	Id ConnId `json:"id"`
 	ServerAddr string `json:"server-addr"`
 	ClientAddr string `json:"client-addr"`
 	Routes []json_out_server_route `json:"routes"`
 }
 
 type json_out_server_route struct {
-	Id uint32 `json:"id"`
+	Id RouteId `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
 	ServerPeerNet string `json:"server-peer-net"`
@@ -157,7 +157,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 		goto done
 	}
 
-	cts = s.FindServerConnById(uint32(conn_nid))
+	cts = s.FindServerConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
@@ -238,7 +238,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 		goto done
 	}
 
-	cts = s.FindServerConnById(uint32(conn_nid))
+	cts = s.FindServerConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
@@ -322,14 +322,14 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		goto done
 	}
 
-	cts = s.FindServerConnById(uint32(conn_nid))
+	cts = s.FindServerConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
-	r = cts.FindServerRouteById(uint32(route_nid))
+	r = cts.FindServerRouteById(RouteId(route_nid))
 	if r == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
@@ -339,7 +339,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	switch req.Method {
 		case http.MethodGet:
 			status_code = http.StatusOK; w.WriteHeader(status_code)
-			err = je.Encode(json_out_client_route{
+			err = je.Encode(json_out_server_route{
 				Id: r.id,
 				ClientPeerAddr: r.ptc_addr,
 				ServerPeerListenAddr: r.svc_addr.String(),

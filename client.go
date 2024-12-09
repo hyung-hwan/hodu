@@ -21,10 +21,10 @@ import "google.golang.org/grpc/status"
 
 type PacketStreamClient grpc.BidiStreamingClient[Packet, Packet]
 
-type ClientConnMap = map[uint32]*ClientConn
-type ClientPeerConnMap = map[uint32]*ClientPeerConn
-type ClientRouteMap = map[uint32]*ClientRoute
-type ClientPeerCancelFuncMap = map[uint32]context.CancelFunc
+type ClientConnMap = map[ConnId]*ClientConn
+type ClientRouteMap = map[RouteId]*ClientRoute
+type ClientPeerConnMap = map[PeerId]*ClientPeerConn
+type ClientPeerCancelFuncMap = map[PeerId]context.CancelFunc
 
 // --------------------------------------------------------------------
 type ClientConfig struct {
@@ -35,7 +35,7 @@ type ClientConfig struct {
 }
 
 type ClientConfigActive struct {
-	Id uint32
+	Id ConnId
 	Index int
 	ClientConfig
 }
@@ -74,7 +74,7 @@ type Client struct {
 type ClientConn struct {
 	cli        *Client
 	cfg         ClientConfigActive
-	id          uint32
+	id          ConnId
 	sid         string // id rendered in string
 
 	local_addr  string
@@ -96,7 +96,7 @@ type ClientConn struct {
 
 type ClientRoute struct {
 	cts *ClientConn
-	id uint32
+	id RouteId
 	peer_addr string
 	server_peer_listen_addr *net.TCPAddr
 	server_peer_net string
@@ -113,7 +113,7 @@ type ClientRoute struct {
 
 type ClientPeerConn struct {
 	route *ClientRoute
-	conn_id uint32
+	conn_id PeerId
 	conn *net.TCPConn
 
 	pts_laddr string // server-local addreess of the server-side peer
@@ -148,7 +148,7 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 }*/
 
 // --------------------------------------------------------------------
-func NewClientRoute(cts *ClientConn, id uint32, client_peer_addr string, server_peer_net string, server_peer_proto ROUTE_PROTO) *ClientRoute {
+func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server_peer_net string, server_peer_proto ROUTE_PROTO) *ClientRoute {
 	var r ClientRoute
 
 	r.cts = cts
@@ -164,7 +164,7 @@ func NewClientRoute(cts *ClientConn, id uint32, client_peer_addr string, server_
 	return &r
 }
 
-func (r *ClientRoute) AddNewClientPeerConn(c *net.TCPConn, pts_id uint32, pts_raddr string, pts_laddr string) (*ClientPeerConn, error) {
+func (r *ClientRoute) AddNewClientPeerConn(c *net.TCPConn, pts_id PeerId, pts_raddr string, pts_laddr string) (*ClientPeerConn, error) {
 	var ptc *ClientPeerConn
 
 	r.ptc_mtx.Lock()
@@ -224,7 +224,7 @@ func (r *ClientRoute) ReqStopAllClientPeerConns() {
 	}
 }
 
-func (r *ClientRoute) FindClientPeerConnById(conn_id uint32) *ClientPeerConn {
+func (r *ClientRoute) FindClientPeerConnById(conn_id PeerId) *ClientPeerConn {
 	var c *ClientPeerConn
 	var ok bool
 
@@ -294,7 +294,7 @@ func (r *ClientRoute) ReqStop() {
 	}
 }
 
-func (r *ClientRoute) ConnectToPeer(pts_id uint32, pts_raddr string, pts_laddr string, wg *sync.WaitGroup) {
+func (r *ClientRoute) ConnectToPeer(pts_id PeerId, pts_raddr string, pts_laddr string, wg *sync.WaitGroup) {
 	var err error
 	var conn net.Conn
 	var real_conn *net.TCPConn
@@ -394,7 +394,7 @@ func (r *ClientRoute) DisconnectFromPeer(ptc *ClientPeerConn) error {
 	return nil
 }
 
-func (r *ClientRoute) ReportEvent(pts_id uint32, event_type PACKET_KIND, event_data interface{}) error {
+func (r *ClientRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_data interface{}) error {
 	var err error
 
 	switch event_type {
@@ -562,12 +562,12 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 
 func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_net string, proto ROUTE_PROTO) (*ClientRoute, error) {
 	var r *ClientRoute
-	var id uint32
+	var id RouteId
 	var ok bool
 
 	cts.route_mtx.Lock()
 
-	id = rand.Uint32()
+	id = RouteId(rand.Uint32())
 	for {
 		_, ok = cts.route_map[id]
 		if !ok { break }
@@ -639,7 +639,7 @@ func (cts *ClientConn) RemoveClientRoute(route *ClientRoute) error {
 	return nil
 }
 
-func (cts *ClientConn) RemoveClientRouteById(route_id uint32) error {
+func (cts *ClientConn) RemoveClientRouteById(route_id RouteId) error {
 	var r *ClientRoute
 	var ok bool
 
@@ -659,7 +659,7 @@ func (cts *ClientConn) RemoveClientRouteById(route_id uint32) error {
 	return nil
 }
 
-func (cts *ClientConn) FindClientRouteById(route_id uint32) *ClientRoute {
+func (cts *ClientConn) FindClientRouteById(route_id RouteId) *ClientRoute {
 	var r *ClientRoute
 	var ok bool
 
@@ -846,7 +846,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Route)
 				if ok {
-					err = cts.ReportEvent(x.Route.RouteId, 0, pkt.Kind, x.Route)
+					err = cts.ReportEvent(RouteId(x.Route.RouteId), 0, pkt.Kind, x.Route)
 					if err != nil {
 						cts.cli.log.Write(cts.sid, LOG_ERROR,
 							"Failed to handle route_started event(%d,%s) from %s - %s",
@@ -865,7 +865,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Route)
 				if ok {
-					err = cts.ReportEvent(x.Route.RouteId, 0, pkt.Kind, x.Route)
+					err = cts.ReportEvent(RouteId(x.Route.RouteId), 0, pkt.Kind, x.Route)
 					if err != nil {
 						cts.cli.log.Write(cts.sid, LOG_ERROR,
 							"Failed to handle route_stopped event(%d,%s) from %s - %s",
@@ -885,7 +885,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_STARTED, x.Peer)
+					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STARTED, x.Peer)
 					if err != nil {
 						cts.cli.log.Write(cts.sid, LOG_ERROR,
 							"Failed to handle peer_started event from %s for peer(%d,%d,%s,%s) - %s",
@@ -908,7 +908,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_STOPPED, x.Peer)
+					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STOPPED, x.Peer)
 					if err != nil {
 						cts.cli.log.Write(cts.sid, LOG_ERROR,
 							"Failed to handle peer_stopped event from %s for peer(%d,%d,%s,%s) - %s",
@@ -927,7 +927,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(x.Peer.RouteId, x.Peer.PeerId, PACKET_KIND_PEER_EOF, x.Peer)
+					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_EOF, x.Peer)
 					if err != nil {
 						cts.cli.log.Write(cts.sid, LOG_ERROR,
 							"Failed to handle peer_eof event from %s for peer(%d,%d,%s,%s) - %s",
@@ -947,7 +947,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Data)
 				if ok {
-					err = cts.ReportEvent(x.Data.RouteId, x.Data.PeerId, PACKET_KIND_PEER_DATA, x.Data.Data)
+					err = cts.ReportEvent(RouteId(x.Data.RouteId), PeerId(x.Data.PeerId), PACKET_KIND_PEER_DATA, x.Data.Data)
 					if err != nil {
 						cts.cli.log.Write(cts.sid, LOG_ERROR,
 							"Failed to handle peer_data event from %s for peer(%d,%d) - %s",
@@ -995,7 +995,7 @@ reconnect_to_server:
 	goto start_over // and reconnect
 }
 
-func (cts *ClientConn) ReportEvent(route_id uint32, pts_id uint32, event_type PACKET_KIND, event_data interface{}) error {
+func (cts *ClientConn) ReportEvent(route_id RouteId, pts_id PeerId, event_type PACKET_KIND, event_data interface{}) error {
 	var r *ClientRoute
 	var ok bool
 
@@ -1073,7 +1073,7 @@ func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctl_prefi
 func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 	var cts *ClientConn
 	var ok bool
-	var id uint32
+	var id ConnId
 
 	if len(cfg.ServerAddrs) <= 0 {
 		return nil, fmt.Errorf("no server rpc address specified")
@@ -1083,7 +1083,8 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 
 	c.cts_mtx.Lock()
 
-	id = rand.Uint32()
+	//id = rand.Uint32()
+	id = ConnId(monotonic_time() / 1000)
 	for {
 		_, ok = c.cts_map[id]
 		if !ok { break }
@@ -1154,7 +1155,7 @@ func (c *Client) RemoveClientConn(cts *ClientConn) error {
 	return nil
 }
 
-func (c *Client) RemoveClientConnById(conn_id uint32) error {
+func (c *Client) RemoveClientConnById(conn_id ConnId) error {
 	var cts *ClientConn
 	var ok bool
 
@@ -1177,7 +1178,7 @@ func (c *Client) RemoveClientConnById(conn_id uint32) error {
 	return nil
 }
 
-func (c *Client) FindClientConnById(id uint32) *ClientConn {
+func (c *Client) FindClientConnById(id ConnId) *ClientConn {
 	var cts *ClientConn
 	var ok bool
 
@@ -1192,7 +1193,7 @@ func (c *Client) FindClientConnById(id uint32) *ClientConn {
 	return cts
 }
 
-func (c *Client) FindClientRouteById(conn_id uint32, route_id uint32) *ClientRoute {
+func (c *Client) FindClientRouteById(conn_id ConnId, route_id RouteId) *ClientRoute {
 	var cts *ClientConn
 	var ok bool
 
@@ -1207,7 +1208,7 @@ func (c *Client) FindClientRouteById(conn_id uint32, route_id uint32) *ClientRou
 	return cts.FindClientRouteById(route_id)
 }
 
-func (c *Client) FindClientPeerConnById(conn_id uint32, route_id uint32, peer_id uint32) *ClientPeerConn {
+func (c *Client) FindClientPeerConnById(conn_id ConnId, route_id RouteId, peer_id PeerId) *ClientPeerConn {
 	var cts *ClientConn
 	var r *ClientRoute
 	var ok bool
