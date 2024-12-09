@@ -1100,7 +1100,8 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 		return nil, fmt.Errorf("too many connections - %d", s.cts_limit)
 	}
 
-	id = rand.Uint32()
+	id = uint32(monotonic_time())
+	//id = rand.Uint32()
 	for {
 		_, ok = s.cts_map[id]
 		if !ok { break }
