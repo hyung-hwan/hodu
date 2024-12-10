@@ -14,8 +14,7 @@ SRCS=\
 	server-ctl.go \
 	server-peer.go \
 	server-ws.go \
-	system-freebsd.go \
-	system-linux.go
+	system.go
 
 CMD_DATA=\
 	cmd/tls.crt \

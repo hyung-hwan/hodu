@@ -65,6 +65,8 @@ type AppConfig  struct {
 type ServerConfig struct {
 	APP AppConfig                   `yaml:"app"`
 
+// TODO: add some limits
+//       max number of clients, max nubmer of peers
 	CTL struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
@@ -79,6 +81,8 @@ type ServerConfig struct {
 type ClientConfig struct {
 	APP AppConfig                   `yaml:"app"`
 
+// TODO: add some limits
+//       max nubmer of peers
 	CTL struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`

@@ -345,6 +345,10 @@ func (cts *ServerConn) AddNewServerRoute(route_id RouteId, proto ROUTE_PROTO, pt
 
 	cts.route_mtx.Lock()
 	if cts.route_map[route_id] != nil {
+		// If this happens, something must be wrong between the server and the client
+		// most likely, it must be a logic error. the state must not go out of sync
+		// as the route_id and the peer_id are supposed to be the same between the client
+		// and the server.
 		cts.route_mtx.Unlock()
 		return nil, fmt.Errorf("existent route id - %d", route_id)
 	}
