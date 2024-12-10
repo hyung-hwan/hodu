@@ -184,12 +184,14 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 	logger = &AppLogger{id: "server", out: os.Stderr, mask: log_mask}
 	s, err = hodu.NewServer(
 		context.Background(),
+		logger,
 		ctl_addrs,
 		rpc_addrs,
-		logger,
 		ctl_prefix,
 		ctltlscfg,
-		rpctlscfg)
+		rpctlscfg,
+		cfg.APP.MaxRpcConns,
+		cfg.APP.MaxPeers)
 	if err != nil {
 		return fmt.Errorf("failed to create new server - %s", err.Error())
 	}
@@ -229,7 +231,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 		if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
 		ctl_prefix = cfg.CTL.Service.Prefix
 
-		cc.ServerSeedTimeout = cfg.RPC.Endpoint.SeedTimeout
+		cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
 		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
 		log_mask = log_strings_to_mask(cfg.APP.LogMask)
 	}
@@ -242,11 +244,14 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	logger = &AppLogger{id: "client", out: os.Stderr, mask: log_mask}
 	c = hodu.NewClient(
 		context.Background(),
-		ctl_addrs,
 		logger,
+		ctl_addrs,
 		ctl_prefix,
 		ctltlscfg,
-		rpctlscfg)
+		rpctlscfg,
+		cfg.APP.MaxRpcConns,
+		cfg.APP.MaxPeers,
+		cfg.APP.PeerConnTmout)
 
 	c.StartService(&cc)
 	c.StartCtlService() // control channel

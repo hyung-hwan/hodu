@@ -30,7 +30,7 @@ type ClientPeerCancelFuncMap = map[PeerId]context.CancelFunc
 type ClientConfig struct {
 	ServerAddrs []string
 	PeerAddrs []string
-	ServerSeedTimeout int
+	ServerSeedTmout time.Duration
 	ServerAuthority string // http2 :authority header
 }
 
@@ -54,6 +54,9 @@ type Client struct {
 	ctl_mux    *http.ServeMux
 	ctl        []*http.Server // control server
 
+	ptc_tmout   time.Duration // timeout seconds to connect to peer
+	ptc_limit   int // global maximum number of peers
+	cts_limit   int
 	cts_mtx     sync.Mutex
 	cts_map     ClientConnMap
 
@@ -304,13 +307,14 @@ func (r *ClientRoute) ConnectToPeer(pts_id PeerId, pts_raddr string, pts_laddr s
 	var d net.Dialer
 	var ctx context.Context
 	var cancel context.CancelFunc
+	var tmout time.Duration
 	var ok bool
 
 	defer wg.Done()
 
-// TODO: make timeout value configurable
-// TODO: fire the cancellation function upon stop request???
-	ctx, cancel = context.WithTimeout(r.cts.cli.ctx, 10 * time.Second)
+	tmout = time.Duration(r.cts.cli.ptc_tmout)
+	if tmout < 0 { tmout = 10 * time.Second}
+	ctx, cancel = context.WithTimeout(r.cts.cli.ctx, tmout)
 	r.ptc_mtx.Lock()
 	r.ptc_cancel_map[pts_id] = cancel
 	r.ptc_mtx.Unlock()
@@ -441,8 +445,21 @@ func (r *ClientRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_d
 					"Protocol error - invalid data in peer_started event(%d,%d)", r.id, pts_id)
 				r.ReqStop()
 			} else {
-				r.ptc_wg.Add(1)
-				go r.ConnectToPeer(pts_id, pd.RemoteAddrStr, pd.LocalAddrStr, &r.ptc_wg)
+				if r.cts.cli.ptc_limit > 0 && int(r.cts.cli.stats.peers.Load()) >= r.cts.cli.ptc_limit {
+					r.cts.cli.log.Write(r.cts.sid, LOG_ERROR,
+						"Rejecting to connect to peer(%s)for route(%d,%d) - allowed max %d",
+						r.peer_addr, r.id, pts_id, r.cts.cli.ptc_limit)
+
+					err = r.cts.psc.Send(MakePeerAbortedPacket(r.id, pts_id, "", ""))
+					if err != nil {
+						r.cts.cli.log.Write(r.cts.sid, LOG_ERROR,
+							"Failed to send peer_aborted(%d,%d) for route(%d,%d,%s,%s) - %s",
+							r.id, pts_id, r.id, pts_id, "", "", err.Error())
+					}
+				} else {
+					r.ptc_wg.Add(1)
+					go r.ConnectToPeer(pts_id, pd.RemoteAddrStr, pd.LocalAddrStr, &r.ptc_wg)
+				}
 			}
 
 		case PACKET_KIND_PEER_ABORTED:
@@ -563,15 +580,23 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_net string, proto ROUTE_PROTO) (*ClientRoute, error) {
 	var r *ClientRoute
 	var id RouteId
-	var ok bool
+	var nattempts RouteId
+
+	nattempts = 0
+	id = RouteId(rand.Uint32())
 
 	cts.route_mtx.Lock()
-
-	id = RouteId(rand.Uint32())
 	for {
+		var ok bool
+
 		_, ok = cts.route_map[id]
 		if !ok { break }
 		id++
+		nattempts++
+		if nattempts == ^RouteId(0) {
+			cts.route_mtx.Unlock()
+			return nil, fmt.Errorf("route map full")
+		}
 	}
 
 	//if cts.route_map[route_id] != nil {
@@ -718,14 +743,14 @@ func (cts *ClientConn) ReqStop() {
 	}
 }
 
-func timed_interceptor(tmout_sec int) grpc.UnaryClientInterceptor {
+func timed_interceptor(tmout time.Duration) grpc.UnaryClientInterceptor {
 	// The client calls GetSeed() as the first call to the server.
 	// To simulate a kind of connect timeout to the server and find out an unresponsive server,
 	// Place a unary intercepter that places a new context with a timeout on the GetSeed() call.
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		var cancel context.CancelFunc
-		if tmout_sec > 0 && method == Hodu_GetSeed_FullMethodName {
-			ctx, cancel = context.WithTimeout(ctx, time.Duration(tmout_sec) * time.Second)
+		if tmout > 0 && method == Hodu_GetSeed_FullMethodName {
+			ctx, cancel = context.WithTimeout(ctx, tmout)
 			defer cancel()
 		}
 		return invoker(ctx, method, req, reply, cc, opts...)
@@ -759,8 +784,8 @@ start_over:
 			opts = append(opts, grpc.WithAuthority(cts.cli.rpctlscfg.ServerName))
 		}
 	}
-	if cts.cfg.ServerSeedTimeout > 0 {
-		opts = append(opts, grpc.WithUnaryInterceptor(timed_interceptor(cts.cfg.ServerSeedTimeout)))
+	if cts.cfg.ServerSeedTmout > 0 {
+		opts = append(opts, grpc.WithUnaryInterceptor(timed_interceptor(cts.cfg.ServerSeedTmout)))
 	}
 
 	cts.conn, err = grpc.NewClient(cts.cfg.ServerAddrs[cts.cfg.Index], opts...)
@@ -769,9 +794,6 @@ start_over:
 		goto reconnect_to_server
 	}
 	cts.hdc = NewHoduClient(cts.conn)
-
-// TODO: HANDLE connection timeout.. may have to run GetSeed or PacketStream in anther goroutnine
-//	ctx, _/*cancel*/ := context.WithTimeout(context.Background(), time.Second)
 
 	// seed exchange is for furture expansion of the protocol
 	// there is nothing to do much about it for now.
@@ -1023,7 +1045,7 @@ func (hlw *client_ctl_log_writer) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config) *Client {
+func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, rpc_max int, peer_max int, peer_conn_tmout time.Duration) *Client {
 	var c Client
 	var i int
 	var hs_log *log.Logger
@@ -1032,6 +1054,9 @@ func NewClient(ctx context.Context, ctl_addrs []string, logger Logger, ctl_prefi
 	c.ctltlscfg = ctltlscfg
 	c.rpctlscfg = rpctlscfg
 	c.ext_svcs = make([]Service, 0, 1)
+	c.ptc_tmout = peer_conn_tmout
+	c.ptc_limit = peer_max
+	c.cts_limit = rpc_max
 	c.cts_map = make(ClientConnMap)
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
@@ -1082,6 +1107,11 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 	cts = NewClientConn(c, cfg)
 
 	c.cts_mtx.Lock()
+
+	if c.cts_limit > 0 && len(c.cts_map) >= c.cts_limit {
+		c.cts_mtx.Unlock()
+		return nil, fmt.Errorf("too many connections - %d", c.cts_limit)
+	}
 
 	//id = rand.Uint32()
 	id = ConnId(monotonic_time() / 1000)

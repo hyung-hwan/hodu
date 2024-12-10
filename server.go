@@ -51,6 +51,7 @@ type Server struct {
 	rpc_wg          sync.WaitGroup
 	rpc_svr         *grpc.Server
 
+	pts_limit       int // global pts limit
 	cts_limit       int
 	cts_mtx         sync.Mutex
 	cts_map         ServerConnMap
@@ -244,6 +245,11 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 
 		if !r.svc_permitted_net.Contains(iaddr) {
 			r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "Rejected server-side peer %s to route(%d) - allowed range %v", raddr.String(), r.id, r.svc_permitted_net)
+			conn.Close()
+		}
+
+		if r.cts.svr.pts_limit > 0 && int(r.cts.svr.stats.peers.Load()) >= r.cts.svr.pts_limit {
+			r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "Rejected server-side peer %s to route(%d) - allowed max %d", raddr.String(), r.id, r.cts.svr.pts_limit)
 			conn.Close()
 		}
 
@@ -851,7 +857,7 @@ func (hlw *server_ctl_log_writer) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logger Logger, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config) (*Server, error) {
+func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, rpc_max int, peer_max int) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
 	var rpcaddr *net.TCPAddr
@@ -888,7 +894,8 @@ func NewServer(ctx context.Context, ctl_addrs []string, rpc_addrs []string, logg
 	s.ctltlscfg = ctltlscfg
 	s.rpctlscfg = rpctlscfg
 	s.ext_svcs = make([]Service, 0, 1)
-	s.cts_limit = CTS_LIMIT // TODO: accept this from configuration
+	s.pts_limit = peer_max
+	s.cts_limit = rpc_max
 	s.cts_map = make(ServerConnMap)
 	s.cts_map_by_addr = make(ServerConnMapByAddr)
 	s.stop_chan = make(chan bool, 8)
@@ -1099,14 +1106,14 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 	cts.stop_chan = make(chan bool, 8)
 
 	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
 
-	if len(s.cts_map) > s.cts_limit {
+	if s.cts_limit > 0 && len(s.cts_map) >= s.cts_limit {
+		s.cts_mtx.Unlock()
 		return nil, fmt.Errorf("too many connections - %d", s.cts_limit)
 	}
 
 	//id = rand.Uint32()
-	id = ConnId(monotonic_time()/ 1000)
+	id = ConnId(monotonic_time() / 1000)
 	for {
 		_, ok = s.cts_map[id]
 		if !ok { break }
@@ -1117,11 +1124,14 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 
 	_, ok = s.cts_map_by_addr[cts.remote_addr]
 	if ok {
+		s.cts_mtx.Unlock()
 		return nil, fmt.Errorf("existing client - %s", cts.remote_addr.String())
 	}
 	s.cts_map_by_addr[cts.remote_addr] = &cts
 	s.cts_map[id] = &cts;
 	s.stats.conns.Store(int64(len(s.cts_map)))
+	s.cts_mtx.Unlock()
+
 	s.log.Write("", LOG_DEBUG, "Added client connection from %s", cts.remote_addr.String())
 	return &cts, nil
 }

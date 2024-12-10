@@ -8,6 +8,7 @@ import "hodu"
 import "io"
 import "io/ioutil"
 import "os"
+import "time"
 
 import "gopkg.in/yaml.v3"
 
@@ -48,25 +49,32 @@ type CTLServiceConfig struct {
 
 type RPCServiceConfig struct { // rpc server-side configuration
 	Addrs     []string  `yaml:"addresses"`
-	MaxConns  int       `yaml:"max-connections"` // TODO: implement this item
 }
 
 type RPCEndpointConfig struct { // rpc client-side configuration
-	Authority   string   `yaml:"authority"`
-	Addrs       []string `yaml:"addresses"`
-	SeedTimeout int      `yaml:"seed-timeout"`
+	Authority   string        `yaml:"authority"`
+	Addrs       []string      `yaml:"addresses"`
+	SeedTmout   time.Duration `yaml:"seed-timeout"`
 }
 
-type AppConfig  struct {
-	LogMask    []string  `yaml:"log-mask"`
-	LogFile    string    `yaml:"log-file"`
+type ServerAppConfig  struct {
+	LogMask     []string  `yaml:"log-mask"`
+	LogFile     string    `yaml:"log-file"`
+	MaxPeers    int       `yaml:"max-peer-conns"` // maximum number of connections from peers
+	MaxRpcConns int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
+}
+
+type ClientAppConfig  struct {
+	LogMask       []string      `yaml:"log-mask"`
+	LogFile       string        `yaml:"log-file"`
+	MaxPeers      int           `yaml:"max-peer-conns"` // maximum number of connections from peers
+	MaxRpcConns   int           `yaml:"max-rpc-conns"` // maximum number of rpc connections
+	PeerConnTmout time.Duration `yaml:"peer-conn-timeout"`
 }
 
 type ServerConfig struct {
-	APP AppConfig                   `yaml:"app"`
+	APP ServerAppConfig             `yaml:"app"`
 
-// TODO: add some limits
-//       max number of clients, max nubmer of peers
 	CTL struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
@@ -79,10 +87,8 @@ type ServerConfig struct {
 }
 
 type ClientConfig struct {
-	APP AppConfig                   `yaml:"app"`
+	APP ClientAppConfig             `yaml:"app"`
 
-// TODO: add some limits
-//       max nubmer of peers
 	CTL struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
