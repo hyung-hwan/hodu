@@ -102,12 +102,12 @@ type ClientRoute struct {
 	cts *ClientConn
 	id RouteId
 	peer_addr string
-	peer_proto RouteOption
+	peer_option RouteOption
 
 	server_peer_listen_addr *net.TCPAddr // actual service-side service address
 	server_peer_addr string // desired server-side service address
 	server_peer_net string
-	server_peer_proto RouteOption
+	server_peer_option RouteOption
 
 	ptc_mtx        sync.Mutex
 	ptc_map        ClientPeerConnMap
@@ -155,7 +155,7 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 }*/
 
 // --------------------------------------------------------------------
-func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server_peer_svc_addr string, server_peer_svc_net string, server_peer_proto RouteOption) *ClientRoute {
+func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server_peer_svc_addr string, server_peer_svc_net string, server_peer_option RouteOption) *ClientRoute {
 	var r ClientRoute
 
 	r.cts = cts
@@ -164,11 +164,11 @@ func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server
 	r.ptc_cancel_map = make(ClientPeerCancelFuncMap)
 	r.peer_addr = client_peer_addr // client-side peer
 	// if the client_peer_addr is a domain name, it can't tell between tcp4 and tcp6
-	r.peer_proto = string_to_route_proto(tcp_addr_str_class(client_peer_addr))
+	r.peer_option = string_to_route_option(tcp_addr_str_class(client_peer_addr))
 
 	r.server_peer_addr = server_peer_svc_addr
 	r.server_peer_net = server_peer_svc_net // permitted network for server-side peer
-	r.server_peer_proto = server_peer_proto
+	r.server_peer_option = server_peer_option
 	r.stop_req.Store(false)
 	r.stop_chan = make(chan bool, 8)
 
@@ -257,16 +257,16 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	// most useful works are triggered by ReportEvent() and done by ConnectToPeer()
 	defer wg.Done()
 
-	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_addr, r.server_peer_net))
+	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.server_peer_option, r.peer_addr, r.server_peer_addr, r.server_peer_net))
 	if err != nil {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Failed to send route_start for route(%d,%s,%v,%v) to %s",
-			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
+			r.id, r.peer_addr, r.server_peer_option, r.server_peer_net, r.cts.remote_addr)
 		goto done
 	} else {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Sent route_start for route(%d,%s,%v,%v) to %s",
-			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
+			r.id, r.peer_addr, r.server_peer_option, r.server_peer_net, r.cts.remote_addr)
 	}
 
 main_loop:
@@ -281,15 +281,15 @@ done:
 	r.ReqStop()
 	r.ptc_wg.Wait() // wait for all peer tasks are finished
 
-	err = r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_addr, r.server_peer_net))
+	err = r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_option, r.peer_addr, r.server_peer_addr, r.server_peer_net))
 	if err != nil {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Failed to route_stop for route(%d,%s,%v,%v) to %s - %s",
-			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr, err.Error())
+			r.id, r.peer_addr, r.server_peer_option, r.server_peer_net, r.cts.remote_addr, err.Error())
 	} else {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Sent route_stop for route(%d,%s,%v,%v) to %s",
-			r.id, r.peer_addr, r.server_peer_proto, r.server_peer_net, r.cts.remote_addr)
+			r.id, r.peer_addr, r.server_peer_option, r.server_peer_net, r.cts.remote_addr)
 	}
 
 	r.cts.RemoveClientRoute(r)
@@ -305,7 +305,7 @@ func (r *ClientRoute) ReqStop() {
 	}
 }
 
-func (r *ClientRoute) ConnectToPeer(pts_id PeerId, route_proto RouteOption, pts_raddr string, pts_laddr string, wg *sync.WaitGroup) {
+func (r *ClientRoute) ConnectToPeer(pts_id PeerId, route_option RouteOption, pts_raddr string, pts_laddr string, wg *sync.WaitGroup) {
 	var err error
 	var conn net.Conn
 	var real_conn *net.TCPConn
@@ -319,7 +319,7 @@ func (r *ClientRoute) ConnectToPeer(pts_id PeerId, route_proto RouteOption, pts_
 	var ok bool
 
 // TODO: handle TTY
-//	if route_proto & RouteOption(ROUTE_OPTION_TTY) it must create a pseudo-tty insteaad of connecting to tcp address
+//	if route_option & RouteOption(ROUTE_OPTION_TTY) it must create a pseudo-tty insteaad of connecting to tcp address
 //
 
 	defer wg.Done()
@@ -470,7 +470,7 @@ func (r *ClientRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_d
 					}
 				} else {
 					r.ptc_wg.Add(1)
-					go r.ConnectToPeer(pts_id, r.peer_proto, pd.RemoteAddrStr, pd.LocalAddrStr, &r.ptc_wg)
+					go r.ConnectToPeer(pts_id, r.peer_option, pd.RemoteAddrStr, pd.LocalAddrStr, &r.ptc_wg)
 				}
 			}
 
@@ -735,8 +735,10 @@ func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 		}
 
 		option = RouteOption(ROUTE_OPTION_TCP)
-		// automatic determination of optioncol for common ports
+		// automatic determination of protocol for common ports
 		switch port {
+			case "22":
+				option |= RouteOption(ROUTE_OPTION_SSH)
 			case "80":
 				option |= RouteOption(ROUTE_OPTION_HTTP)
 			case "443":

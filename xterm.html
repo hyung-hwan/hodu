@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Terminal</title>
+<link rel="stylesheet" href="/_ssh/xterm.css" />
+<style>
+	body {
+		margin: 0;
+	}
+	#terminal-container {
+		width: 100%;
+		height: 100vh;
+	}
+</style>
+<script src="/_ssh/xterm.js"></script>
+<script src="/_ssh/xterm-addon-fit.js"></script>
+
+<script>
+window.addEventListener("load", function(event) {
+	const term = new window.Terminal();
+	const fit = new window.FitAddon.FitAddon();
+	const textDecoder = new TextDecoder();
+
+	let currentLocation = window.location.host;
+	let prefix = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+	const socket = new WebSocket(prefix + currentLocation + '/_ssh-ws/{{ .ConnId }}/{{ .RouteId }}');
+	socket.binaryType = 'arraybuffer';
+
+	term.loadAddon(fit)
+	term.open(document.getElementById('terminal-container'));
+	term.writeln('Connecting...');
+
+	const fit_term = function() {
+		fit.fit();
+		socket.send(JSON.stringify({ type: 'resize', data: term.rows.toString() + " " + term.cols.toString() }));
+	};
+
+	socket.onopen = function () {
+		term.writeln('Connected');
+		fit_term();
+	};
+
+	socket.onmessage = function(event) {
+		if (typeof event.data === 'string') {
+			term.write(event.data);
+		} else {
+			const text = textDecoder.decode(new Uint8Array(event.data));
+			term.write(text);
+		}
+	};
+
+	socket.onerror = function (event) {
+		console.error('WebSocket error:', event);
+		term.writeln('WebSocket error. See console for details.');
+	};
+
+	socket.onclose = function () {
+		term.writeln('Disconnected');
+	};
+
+	term.onData(function(data) {
+		socket.send(JSON.stringify({ type: 'key', data: data }));
+	});
+
+	window.addEventListener('resize', fit_term);
+});
+</script>
+</head>
+
+<body>
+<div id="terminal-container"></div>
+</body>
+</html>

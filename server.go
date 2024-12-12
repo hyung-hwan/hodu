@@ -6,14 +6,13 @@ import "errors"
 import "fmt"
 import "io"
 import "log"
-//import "math/rand"
 import "net"
 import "net/http"
 import "net/netip"
-import "os"
 import "sync"
 import "sync/atomic"
 
+import "golang.org/x/net/websocket"
 import "google.golang.org/grpc"
 import "google.golang.org/grpc/credentials"
 //import "google.golang.org/grpc/metadata"
@@ -874,7 +873,6 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	var addr string
 	var gl *net.TCPListener
 	var i int
-	var cwd string
 	var hs_log *log.Logger
 	var opts []grpc.ServerOption
 
@@ -934,10 +932,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 
 	s.ctl_prefix = ctl_prefix
 	s.ctl_mux = http.NewServeMux()
-	cwd, _ = os.Getwd() // TODO:
 
-	s.ctl_mux.Handle(s.ctl_prefix + "/ui/", http.StripPrefix(s.ctl_prefix, http.FileServer(http.Dir(cwd)))) // TODO: proper directory. it must not use the current working directory...
-	s.ctl_mux.Handle(s.ctl_prefix + "/ws/tty", new_server_ctl_ws_tty(&s))
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns", &server_ctl_server_conns{s: &s})
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}", &server_ctl_server_conns_id{s: &s})
 	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes", &server_ctl_server_conns_id_routes{s: &s})
@@ -959,7 +954,21 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	}
 
 	// ---------------------------------------------------------
+
 	s.pxy_mux = http.NewServeMux() // TODO: make /_init configurable...
+	s.pxy_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
+		websocket.Handler(func(ws *websocket.Conn) {
+			server_proxy_serve_ssh_ws(ws, &s)
+		}))
+	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/", &server_proxy_xterm_file{s: &s, file: "xterm.html"})
+	s.pxy_mux.Handle("/_ssh/xterm.js", &server_proxy_xterm_file{s: &s, file: "xterm.js"})
+	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js", &server_proxy_xterm_file{s: &s, file: "xterm-addon-fit.js"})
+	s.pxy_mux.Handle("/_ssh/xterm.css", &server_proxy_xterm_file{s: &s, file: "xterm.css"})
+	s.pxy_mux.Handle("/_ssh/", &server_proxy_xterm_file{s: &s, file: "_forbidden"})
+
+	//cwd, _ = os.Getwd() // TODO:
+	//s.pxy_mux.Handle(s.ctl_prefix + "/ui/", http.StripPrefix(s.ctl_prefix, http.FileServer(http.Dir(cwd)))) // TODO: proper directory. it must not use the current working directory...
+
 	s.pxy_mux.Handle("/_init/{conn_id}/{route_id}/{trailer...}", &server_proxy_http_init{s: &s})
 	s.pxy_mux.Handle("/", &server_proxy_http_main{s: &s})
 

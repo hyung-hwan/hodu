@@ -26,6 +26,7 @@ enum ROUTE_OPTION {
 	TTY    = 8;
 	HTTP   = 16;
 	HTTPS  = 32;
+	SSH    = 64;
 };
 
 message RouteDesc {

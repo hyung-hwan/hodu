@@ -1,6 +1,7 @@
 package hodu
 
 import "encoding/json"
+import "fmt"
 import "net/http"
 import "net/url"
 import "runtime"
@@ -154,7 +155,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ClientPeerAddr: r.peer_addr,
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 						ServerPeerNet: r.server_peer_net,
-						ServerPeerOption: r.server_peer_proto.string(),
+						ServerPeerOption: r.server_peer_option.string(),
 					})
 				}
 				js = append(js, json_out_client_conn{
@@ -272,7 +273,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ClientPeerAddr: r.peer_addr,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
-					ServerPeerOption: r.server_peer_proto.string(),
+					ServerPeerOption: r.server_peer_option.string(),
 				})
 			}
 			js = &json_out_client_conn{
@@ -355,7 +356,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ClientPeerAddr: r.peer_addr,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
-					ServerPeerOption: r.server_peer_proto.string(),
+					ServerPeerOption: r.server_peer_option.string(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -366,21 +367,28 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 		case http.MethodPost:
 			var jcr json_in_client_route
 			var r *ClientRoute
-			var server_peer_proto RouteOption
+			var server_peer_option RouteOption
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
-			if err != nil || jcr.ClientPeerAddr == "" {
+			if err != nil {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-				goto done
+				goto oops
 			}
 
-			server_peer_proto = string_to_route_proto(jcr.ServerPeerOption)
-			if server_peer_proto == RouteOption(ROUTE_OPTION_UNSPEC) {
+			if  jcr.ClientPeerAddr == "" {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-				goto done
+				err = fmt.Errorf("blank client-peer-addr")
+				goto oops;
 			}
 
-			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, jcr.ServerPeerServiceAddr, jcr.ServerPeerServiceNet, server_peer_proto)
+			server_peer_option = string_to_route_option(jcr.ServerPeerOption)
+			if server_peer_option == RouteOption(ROUTE_OPTION_UNSPEC) {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				err = fmt.Errorf("wrong server-peer-option value - %d", server_peer_option)
+				goto oops
+			}
+
+			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, jcr.ServerPeerServiceAddr, jcr.ServerPeerServiceNet, server_peer_option)
 			if err != nil {
 				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
@@ -468,7 +476,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ClientPeerAddr: r.peer_addr,
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				ServerPeerNet: r.server_peer_net,
-				ServerPeerOption: r.server_peer_proto.string(),
+				ServerPeerOption: r.server_peer_option.string(),
 			})
 			if err != nil { goto oops }
 

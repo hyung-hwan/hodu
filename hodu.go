@@ -54,7 +54,7 @@ func tcp_addr_str_class(addr string) string {
 	return "tcp"
 }
 
-func word_to_route_proto(word string) RouteOption {
+func word_to_route_option(word string) RouteOption {
 	switch word {
 		case "tcp4":
 			return RouteOption(ROUTE_OPTION_TCP4)
@@ -68,35 +68,37 @@ func word_to_route_proto(word string) RouteOption {
 			return RouteOption(ROUTE_OPTION_HTTP)
 		case "https":
 			return RouteOption(ROUTE_OPTION_HTTPS)
+		case "ssh":
+			return RouteOption(ROUTE_OPTION_SSH)
 	}
 
 	return RouteOption(ROUTE_OPTION_UNSPEC)
 }
 
-func string_to_route_proto(desc string) RouteOption {
+func string_to_route_option(desc string) RouteOption {
 	var fld string
-	var proto RouteOption
+	var option RouteOption
 	var p RouteOption
 
-	proto = RouteOption(0)
+	option = RouteOption(0)
 	for _, fld = range strings.Fields(desc) {
-		p = word_to_route_proto(fld)
+		p = word_to_route_option(fld)
 		if p == RouteOption(ROUTE_OPTION_UNSPEC) { return p }
-		proto |= p
+		option |= p
 	}
-	return proto
+	return option
 }
 
-func (proto RouteOption) string() string {
+func (option RouteOption) string() string {
 	var str string
-
 	str = ""
-	if proto & RouteOption(ROUTE_OPTION_TCP6) != 0 { str += " tcp6" }
-	if proto & RouteOption(ROUTE_OPTION_TCP4) != 0 { str += " tcp4" }
-	if proto & RouteOption(ROUTE_OPTION_TCP)  != 0 { str += " tcp" }
-	if proto & RouteOption(ROUTE_OPTION_TTY)  != 0 { str += " tty" }
-	if proto & RouteOption(ROUTE_OPTION_HTTP) != 0 { str += " http" }
-	if proto & RouteOption(ROUTE_OPTION_HTTPS) != 0 { str += " https" }
+	if option & RouteOption(ROUTE_OPTION_TCP6)  != 0 { str += " tcp6" }
+	if option & RouteOption(ROUTE_OPTION_TCP4)  != 0 { str += " tcp4" }
+	if option & RouteOption(ROUTE_OPTION_TCP)   != 0 { str += " tcp" }
+	if option & RouteOption(ROUTE_OPTION_TTY)   != 0 { str += " tty" }
+	if option & RouteOption(ROUTE_OPTION_HTTP)  != 0 { str += " http" }
+	if option & RouteOption(ROUTE_OPTION_HTTPS) != 0 { str += " https" }
+	if option & RouteOption(ROUTE_OPTION_SSH)   != 0 { str += " ssh" }
 	if str == "" { return str }
 	return str[1:] // remove the leading space
 }
