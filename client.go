@@ -8,6 +8,7 @@ import "log"
 import "math/rand"
 import "net"
 import "net/http"
+import "strings"
 import "sync"
 import "sync/atomic"
 import "time"
@@ -101,9 +102,12 @@ type ClientRoute struct {
 	cts *ClientConn
 	id RouteId
 	peer_addr string
-	server_peer_listen_addr *net.TCPAddr
+	peer_proto RouteOption
+
+	server_peer_listen_addr *net.TCPAddr // actual service-side service address
+	server_peer_addr string // desired server-side service address
 	server_peer_net string
-	server_peer_proto ROUTE_PROTO
+	server_peer_proto RouteOption
 
 	ptc_mtx        sync.Mutex
 	ptc_map        ClientPeerConnMap
@@ -151,7 +155,7 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 }*/
 
 // --------------------------------------------------------------------
-func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server_peer_net string, server_peer_proto ROUTE_PROTO) *ClientRoute {
+func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server_peer_svc_addr string, server_peer_svc_net string, server_peer_proto RouteOption) *ClientRoute {
 	var r ClientRoute
 
 	r.cts = cts
@@ -159,7 +163,11 @@ func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server
 	r.ptc_map = make(ClientPeerConnMap)
 	r.ptc_cancel_map = make(ClientPeerCancelFuncMap)
 	r.peer_addr = client_peer_addr // client-side peer
-	r.server_peer_net = server_peer_net // permitted network for server-side peer
+	// if the client_peer_addr is a domain name, it can't tell between tcp4 and tcp6
+	r.peer_proto = string_to_route_proto(tcp_addr_str_class(client_peer_addr))
+
+	r.server_peer_addr = server_peer_svc_addr
+	r.server_peer_net = server_peer_svc_net // permitted network for server-side peer
 	r.server_peer_proto = server_peer_proto
 	r.stop_req.Store(false)
 	r.stop_chan = make(chan bool, 8)
@@ -249,7 +257,7 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	// most useful works are triggered by ReportEvent() and done by ConnectToPeer()
 	defer wg.Done()
 
-	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_net))
+	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_addr, r.server_peer_net))
 	if err != nil {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Failed to send route_start for route(%d,%s,%v,%v) to %s",
@@ -273,7 +281,7 @@ done:
 	r.ReqStop()
 	r.ptc_wg.Wait() // wait for all peer tasks are finished
 
-	err = r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_net))
+	err = r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_proto, r.peer_addr, r.server_peer_addr, r.server_peer_net))
 	if err != nil {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Failed to route_stop for route(%d,%s,%v,%v) to %s - %s",
@@ -297,7 +305,7 @@ func (r *ClientRoute) ReqStop() {
 	}
 }
 
-func (r *ClientRoute) ConnectToPeer(pts_id PeerId, pts_raddr string, pts_laddr string, wg *sync.WaitGroup) {
+func (r *ClientRoute) ConnectToPeer(pts_id PeerId, route_proto RouteOption, pts_raddr string, pts_laddr string, wg *sync.WaitGroup) {
 	var err error
 	var conn net.Conn
 	var real_conn *net.TCPConn
@@ -310,10 +318,14 @@ func (r *ClientRoute) ConnectToPeer(pts_id PeerId, pts_raddr string, pts_laddr s
 	var tmout time.Duration
 	var ok bool
 
+// TODO: handle TTY
+//	if route_proto & RouteOption(ROUTE_OPTION_TTY) it must create a pseudo-tty insteaad of connecting to tcp address
+//
+
 	defer wg.Done()
 
 	tmout = time.Duration(r.cts.cli.ptc_tmout)
-	if tmout < 0 { tmout = 10 * time.Second}
+	if tmout <= 0 { tmout = 10 * time.Second}
 	ctx, cancel = context.WithTimeout(r.cts.cli.ctx, tmout)
 	r.ptc_mtx.Lock()
 	r.ptc_cancel_map[pts_id] = cancel
@@ -458,7 +470,7 @@ func (r *ClientRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_d
 					}
 				} else {
 					r.ptc_wg.Add(1)
-					go r.ConnectToPeer(pts_id, pd.RemoteAddrStr, pd.LocalAddrStr, &r.ptc_wg)
+					go r.ConnectToPeer(pts_id, r.peer_proto, pd.RemoteAddrStr, pd.LocalAddrStr, &r.ptc_wg)
 				}
 			}
 
@@ -577,7 +589,7 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 	return &cts
 }
 
-func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_net string, proto ROUTE_PROTO) (*ClientRoute, error) {
+func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_svc_addr string, server_peer_svc_net string, option RouteOption) (*ClientRoute, error) {
 	var r *ClientRoute
 	var id RouteId
 	var nattempts RouteId
@@ -599,11 +611,7 @@ func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_net string, pr
 		}
 	}
 
-	//if cts.route_map[route_id] != nil {
-	//	cts.route_mtx.Unlock()
-	//	return nil, fmt.Errorf("existent route id - %d", route_id)
-	//}
-	r = NewClientRoute(cts, id, addr, server_peer_net, proto)
+	r = NewClientRoute(cts, id, addr, server_peer_svc_addr, server_peer_svc_net, option)
 	cts.route_map[id] = r
 	cts.cli.stats.routes.Add(1)
 	cts.route_mtx.Unlock()
@@ -701,10 +709,41 @@ func (cts *ClientConn) FindClientRouteById(route_id RouteId) *ClientRoute {
 
 func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 	var v string
+	var port string
+	var option RouteOption
+	var va []string
+	var svc_addr string
 	var err error
 
 	for _, v = range peer_addrs {
-		_, err = cts.AddNewClientRoute(v, "", ROUTE_PROTO_TCP)
+		va = strings.Split(v, ",")
+		if len(va) <= 0 || len(va) > 2 {
+			return fmt.Errorf("invalid address %s")
+		}
+
+		_, port, err = net.SplitHostPort(va[0])
+		if err != nil {
+			return fmt.Errorf("invalid address %s", va[0], err.Error())
+		}
+
+		if len(va) >= 2 {
+			_, _, err = net.SplitHostPort(va[1])
+			if err != nil {
+				return fmt.Errorf("invalid address %s", va[1], err.Error())
+			}
+			svc_addr = va[1]
+		}
+
+		option = RouteOption(ROUTE_OPTION_TCP)
+		// automatic determination of optioncol for common ports
+		switch port {
+			case "80":
+				option |= RouteOption(ROUTE_OPTION_HTTP)
+			case "443":
+				option |= RouteOption(ROUTE_OPTION_HTTPS)
+		}
+
+		_, err = cts.AddNewClientRoute(va[0], svc_addr, "", option)
 		if err != nil {
 			return fmt.Errorf("unable to add client route for %s - %s", v, err.Error())
 		}

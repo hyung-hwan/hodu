@@ -143,10 +143,11 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 
 // --------------------------------------------------------------------
 
-func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) error {
+func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg *ServerConfig) error {
 	var s *hodu.Server
 	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
+	var pxytlscfg *tls.Config
 	var ctl_prefix string
 	var logger *AppLogger
 	var log_mask hodu.LogMask
@@ -158,13 +159,11 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 
 	if cfg != nil {
 		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
-		if err != nil {
-			return err
-		}
+		if err != nil { return err }
 		rpctlscfg, err = make_tls_server_config(&cfg.RPC.TLS)
-		if err != nil {
-			return err
-		}
+		if err != nil { return err }
+		pxytlscfg, err = make_tls_server_config(&cfg.PXY.TLS)
+		if err != nil { return err }
 
 		if len(ctl_addrs) <= 0 {
 			ctl_addrs = cfg.CTL.Service.Addrs
@@ -172,6 +171,10 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 
 		if len(rpc_addrs) <= 0 {
 			rpc_addrs = cfg.RPC.Service.Addrs
+		}
+
+		if len(pxy_addrs) <= 0 {
+			pxy_addrs = cfg.PXY.Service.Addrs
 		}
 
 		ctl_prefix = cfg.CTL.Service.Prefix
@@ -191,9 +194,11 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 		logger,
 		ctl_addrs,
 		rpc_addrs,
+		pxy_addrs,
 		ctl_prefix,
 		ctltlscfg,
 		rpctlscfg,
+		pxytlscfg,
 		max_rpc_conns,
 		max_peers)
 	if err != nil {
@@ -202,6 +207,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, cfg *ServerConfig) erro
 
 	s.StartService(nil)
 	s.StartCtlService()
+	s.StartPxyService()
 	s.StartExtService(&signal_handler{svc:s}, nil)
 	s.WaitForTermination()
 
@@ -278,13 +284,15 @@ func main() {
 	if len(os.Args) < 2 { goto wrong_usage }
 
 	if strings.EqualFold(os.Args[1], "server") {
-		var rpc_addrs[] string
-		var ctl_addrs[] string
+		var rpc_addrs []string
+		var ctl_addrs []string
+		var pxy_addrs []string
 		var cfgfile string
 		var cfg *ServerConfig
 
 		ctl_addrs = make([]string, 0)
 		rpc_addrs = make([]string, 0)
+		pxy_addrs = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
 		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
@@ -293,6 +301,10 @@ func main() {
 		})
 		flgs.Func("rpc-on", "specify a rpc listening address", func(v string) error {
 			rpc_addrs = append(rpc_addrs, v)
+			return nil
+		})
+		flgs.Func("pxy-on", "specify a proxy listening address", func(v string) error {
+			pxy_addrs = append(pxy_addrs, v)
 			return nil
 		})
 		flgs.Func("config-file", "specify a configuration file path", func(v string) error {
@@ -317,7 +329,7 @@ func main() {
 			}
 		}
 
-		err = server_main(ctl_addrs, rpc_addrs, cfg)
+		err = server_main(ctl_addrs, rpc_addrs, pxy_addrs, cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops

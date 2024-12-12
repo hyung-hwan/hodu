@@ -4,6 +4,7 @@ import "encoding/json"
 import "net/http"
 import "runtime"
 import "strconv"
+import "unsafe"
 
 type json_out_server_conn struct {
 	Id ConnId `json:"id"`
@@ -15,9 +16,9 @@ type json_out_server_conn struct {
 type json_out_server_route struct {
 	Id RouteId `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
-	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
-	ServerPeerNet string `json:"server-peer-net"`
-	ServerPeerProto ROUTE_PROTO `json:"server-peer-proto"`
+	ServerPeerOption string `json:"server-peer-option"`
+	ServerPeerServiceAddr string `json:"server-peer-service-addr"` // actual listening address
+	ServerPeerServiceNet string `json:"server-peer-service-net"`
 }
 
 type json_out_server_stats struct {
@@ -94,9 +95,9 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					jsp = append(jsp, json_out_server_route{
 						Id: r.id,
 						ClientPeerAddr: r.ptc_addr,
-						ServerPeerListenAddr: r.svc_addr.String(),
-						ServerPeerNet: r.svc_permitted_net.String(),
-						ServerPeerProto: r.svc_proto,
+						ServerPeerServiceAddr: r.svc_addr.String(),
+						ServerPeerServiceNet: r.svc_permitted_net.String(),
+						ServerPeerOption: r.svc_option.string(),
 					})
 				}
 				js = append(js, json_out_server_conn{
@@ -176,9 +177,9 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				jsp = append(jsp, json_out_server_route{
 					Id: r.id,
 					ClientPeerAddr: r.ptc_addr,
-					ServerPeerListenAddr: r.svc_addr.String(),
-					ServerPeerNet: r.svc_permitted_net.String(),
-					ServerPeerProto: r.svc_proto,
+					ServerPeerServiceAddr: r.svc_addr.String(),
+					ServerPeerServiceNet: r.svc_permitted_net.String(),
+					ServerPeerOption: r.svc_option.string(),
 				})
 			}
 			js = &json_out_server_conn{
@@ -256,9 +257,9 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				jsp = append(jsp, json_out_server_route{
 					Id: r.id,
 					ClientPeerAddr: r.ptc_addr,
-					ServerPeerListenAddr: r.svc_addr.String(),
-					ServerPeerNet: r.svc_permitted_net.String(),
-					ServerPeerProto: r.svc_proto,
+					ServerPeerServiceAddr: r.svc_addr.String(),
+					ServerPeerServiceNet: r.svc_permitted_net.String(),
+					ServerPeerOption: r.svc_option.string(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -309,13 +310,13 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
 
-	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(conn_nid) * 8))
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
-	route_nid, err = strconv.ParseUint(route_id, 10, 32)
+	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(route_nid) * 8))
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
@@ -342,9 +343,9 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			err = je.Encode(json_out_server_route{
 				Id: r.id,
 				ClientPeerAddr: r.ptc_addr,
-				ServerPeerListenAddr: r.svc_addr.String(),
-				ServerPeerNet: r.svc_permitted_net.String(),
-				ServerPeerProto: r.svc_proto,
+				ServerPeerServiceAddr: r.svc_addr.String(),
+				ServerPeerServiceNet: r.svc_permitted_net.String(),
+				ServerPeerOption: r.svc_option.string(),
 			})
 			if err != nil { goto oops }
 

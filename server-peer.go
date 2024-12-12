@@ -3,6 +3,7 @@ package hodu
 import "errors"
 import "io"
 import "net"
+import "strings"
 import "sync"
 import "sync/atomic"
 import "time"
@@ -90,7 +91,7 @@ wait_for_started:
 	for {
 		n, err = spc.conn.Read(buf[:])
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "use of closed network connection") { // i don't like this way to check this error.
 				err = pss.Send(MakePeerEofPacket(spc.route.id, spc.conn_id))
 				if err != nil {
 					spc.route.cts.svr.log.Write(spc.route.cts.sid, LOG_ERROR,

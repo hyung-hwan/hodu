@@ -5,6 +5,7 @@ import "net/http"
 import "net/url"
 import "runtime"
 import "strconv"
+import "unsafe"
 
 /*
  *                       POST                 GET            PUT            DELETE
@@ -31,8 +32,9 @@ type json_in_client_conn struct {
 
 type json_in_client_route struct {
 	ClientPeerAddr string `json:"client-peer-addr"`
-	ServerPeerNet string `json:"server-peer-net"` // allowed network in prefix notation
-	ServerPeerProto ROUTE_PROTO `json:"server-peer-proto"`
+	ServerPeerOption string `json:"server-peer-option"`
+	ServerPeerServiceAddr string `json:"server-peer-service-addr"` // desired listening address on the server side
+	ServerPeerServiceNet string `json:"server-peer-service-net"` // permitted network in prefix notation
 }
 
 type json_out_client_conn_id struct {
@@ -55,9 +57,9 @@ type json_out_client_route_id struct {
 type json_out_client_route struct {
 	Id RouteId `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
-	ServerPeerListenAddr string `json:"server-peer-listen-addr"`
-	ServerPeerNet string `json:"server-peer-net"`
-	ServerPeerProto ROUTE_PROTO `json:"server-peer-proto"`
+	ServerPeerOption string `json:"server-peer-option"`
+	ServerPeerListenAddr string `json:"server-peer-service-addr"`
+	ServerPeerNet string `json:"server-peer-service-net"`
 }
 
 type json_out_client_peer struct {
@@ -152,7 +154,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ClientPeerAddr: r.peer_addr,
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 						ServerPeerNet: r.server_peer_net,
-						ServerPeerProto: r.server_peer_proto,
+						ServerPeerOption: r.server_peer_proto.string(),
 					})
 				}
 				js = append(js, json_out_client_conn{
@@ -242,7 +244,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 
 	conn_id = req.PathValue("conn_id")
 
-	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(conn_nid) * 8))
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
@@ -270,7 +272,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ClientPeerAddr: r.peer_addr,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
-					ServerPeerProto: r.server_peer_proto,
+					ServerPeerOption: r.server_peer_proto.string(),
 				})
 			}
 			js = &json_out_client_conn{
@@ -326,10 +328,10 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 
 	conn_id = req.PathValue("conn_id")
 
-	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(conn_nid) * 8))
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id }); err != nil { goto oops }
 		goto done
 	}
 
@@ -353,7 +355,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ClientPeerAddr: r.peer_addr,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
-					ServerPeerProto: r.server_peer_proto,
+					ServerPeerOption: r.server_peer_proto.string(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -364,14 +366,21 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 		case http.MethodPost:
 			var jcr json_in_client_route
 			var r *ClientRoute
+			var server_peer_proto RouteOption
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
-			if err != nil || jcr.ClientPeerAddr == "" || jcr.ServerPeerProto < 0 || jcr.ServerPeerProto > ROUTE_PROTO_TCP6 {
+			if err != nil || jcr.ClientPeerAddr == "" {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				goto done
 			}
 
-			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, jcr.ServerPeerNet, jcr.ServerPeerProto)
+			server_peer_proto = string_to_route_proto(jcr.ServerPeerOption)
+			if server_peer_proto == RouteOption(ROUTE_OPTION_UNSPEC) {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				goto done
+			}
+
+			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, jcr.ServerPeerServiceAddr, jcr.ServerPeerServiceNet, server_peer_proto)
 			if err != nil {
 				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
@@ -424,13 +433,13 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
 
-	conn_nid, err = strconv.ParseUint(conn_id, 10, 32)
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(conn_nid) * 8))
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
-	route_nid, err = strconv.ParseUint(route_id, 10, 32)
+	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(route_nid) * 8))
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
@@ -459,7 +468,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ClientPeerAddr: r.peer_addr,
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				ServerPeerNet: r.server_peer_net,
-				ServerPeerProto: r.server_peer_proto,
+				ServerPeerOption: r.server_peer_proto.string(),
 			})
 			if err != nil { goto oops }
 
@@ -511,7 +520,7 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
-	route_nid, err = strconv.ParseUint(route_id, 10, 32)
+	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(route_nid) * 8))
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
@@ -595,7 +604,7 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
-	route_nid, err = strconv.ParseUint(route_id, 10, 32)
+	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(route_nid) * 8))
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }

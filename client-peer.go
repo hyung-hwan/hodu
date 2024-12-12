@@ -3,6 +3,7 @@ package hodu
 import "errors"
 import "io"
 import "net"
+import "strings"
 import "sync"
 
 func NewClientPeerConn(r *ClientRoute, c *net.TCPConn, id PeerId, pts_raddr string, pts_laddr string) *ClientPeerConn {
@@ -29,7 +30,7 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 	for {
 		n, err = cpc.conn.Read(buf[:])
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "use of closed network connection") { // i hate checking this condition with strings.Contains()
 				cpc.route.cts.cli.log.Write(cpc.route.cts.sid, LOG_INFO,
 					"Client-side peer(%d,%d,%s,%s) closed",
 					cpc.route.id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String())

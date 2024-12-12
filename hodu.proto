@@ -18,17 +18,36 @@ message Seed {
 	uint64 Flags = 2;
 }
 
-enum ROUTE_PROTO {
-	TCP    = 0;
-	TCP4   = 1;
-	TCP6   = 2;
+enum ROUTE_OPTION {
+	UNSPEC = 0;
+	TCP    = 1;
+	TCP4   = 2;
+	TCP6   = 4;
+	TTY    = 8;
+	HTTP   = 16;
+	HTTPS  = 32;
 };
 
 message RouteDesc {
-	uint32      RouteId = 1;
-	string      TargetAddrStr = 2;
-	ROUTE_PROTO ServiceProto = 3;
-	string      ServiceNetStr = 4;
+	uint32 RouteId = 1;
+
+	// C->S(ROUTE_START): client-side peer address
+	// S->C(ROUTE_STARTED): server-side listening address
+	string TargetAddrStr = 2;
+
+	// C->S(ROUTE_START): desired listening option on the server-side(e.g. tcp, tcp4, tcp6) +
+	//                    hint to the service-side peer(e.g. local) +
+	//                    hint to the client-side peer(e.g. tty, http, https)
+	// S->C(ROUTE_STARTED): cloned as sent by C.
+	uint32 ServiceOption = 3;
+
+	// C->S(ROUTE_START): desired lisening address on the service-side
+	// S->C(ROUTE_STARTED): cloned as sent by C
+	string ServiceAddrStr = 4;
+
+	// C->S(ROUTE_START): permitted network of server-side peers.
+	// S->C(ROUTE_STARTED): cloned as sent by C.
+	string ServiceNetStr = 5;
 };
 
 message PeerDesc {

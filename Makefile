@@ -13,6 +13,7 @@ SRCS=\
 	server.go \
 	server-ctl.go \
 	server-peer.go \
+	server-proxy.go \
 	server-ws.go \
 	system.go
 

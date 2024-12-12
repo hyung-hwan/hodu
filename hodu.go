@@ -1,9 +1,12 @@
 package hodu
 
 import "net/http"
+import "net/netip"
 import "os"
 import "runtime"
+import "strings"
 import "sync"
+
 
 const HODU_RPC_VERSION uint32 = 0x010000
 
@@ -20,6 +23,9 @@ const (
 const LOG_ALL LogMask = LogMask(LOG_DEBUG | LOG_INFO | LOG_WARN | LOG_ERROR)
 const LOG_NONE LogMask = LogMask(0)
 
+var IPV4_PREFIX_ZERO = netip.MustParsePrefix("0.0.0.0/0")
+var IPV6_PREFIX_ZERO = netip.MustParsePrefix("::/0")
+
 type Logger interface {
 	Write(id string, level LogLevel, fmtstr string, args ...interface{})
 }
@@ -33,18 +39,66 @@ type Service interface {
 }
 
 func tcp_addr_str_class(addr string) string {
+	// the string is supposed to be addr:port
+
 	if len(addr) > 0 {
-		switch addr[0] {
-			case '[':
-				return "tcp6"
-			case ':':
-				return "tcp"
-			default:
-				return "tcp4"
+		var ap netip.AddrPort
+		var err error
+		ap, err = netip.ParseAddrPort(addr)
+		if err == nil {
+			if ap.Addr().Is6() { return "tcp6" }
+			if ap.Addr().Is4() { return "tcp4" }
 		}
 	}
 
 	return "tcp"
+}
+
+func word_to_route_proto(word string) RouteOption {
+	switch word {
+		case "tcp4":
+			return RouteOption(ROUTE_OPTION_TCP4)
+		case "tcp6":
+			return RouteOption(ROUTE_OPTION_TCP6)
+		case "tcp":
+			return RouteOption(ROUTE_OPTION_TCP)
+		case "tty":
+			return RouteOption(ROUTE_OPTION_TTY)
+		case "http":
+			return RouteOption(ROUTE_OPTION_HTTP)
+		case "https":
+			return RouteOption(ROUTE_OPTION_HTTPS)
+	}
+
+	return RouteOption(ROUTE_OPTION_UNSPEC)
+}
+
+func string_to_route_proto(desc string) RouteOption {
+	var fld string
+	var proto RouteOption
+	var p RouteOption
+
+	proto = RouteOption(0)
+	for _, fld = range strings.Fields(desc) {
+		p = word_to_route_proto(fld)
+		if p == RouteOption(ROUTE_OPTION_UNSPEC) { return p }
+		proto |= p
+	}
+	return proto
+}
+
+func (proto RouteOption) string() string {
+	var str string
+
+	str = ""
+	if proto & RouteOption(ROUTE_OPTION_TCP6) != 0 { str += " tcp6" }
+	if proto & RouteOption(ROUTE_OPTION_TCP4) != 0 { str += " tcp4" }
+	if proto & RouteOption(ROUTE_OPTION_TCP)  != 0 { str += " tcp" }
+	if proto & RouteOption(ROUTE_OPTION_TTY)  != 0 { str += " tty" }
+	if proto & RouteOption(ROUTE_OPTION_HTTP) != 0 { str += " http" }
+	if proto & RouteOption(ROUTE_OPTION_HTTPS) != 0 { str += " https" }
+	if str == "" { return str }
+	return str[1:] // remove the leading space
 }
 
 func dump_call_frame_and_exit(log Logger, req *http.Request, err interface{}) {

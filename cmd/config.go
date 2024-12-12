@@ -47,6 +47,10 @@ type CTLServiceConfig struct {
 	Addrs  []string `yaml:"addresses"`
 }
 
+type PXYServiceConfig struct {
+	Addrs  []string `yaml:"addresses"`
+}
+
 type RPCServiceConfig struct { // rpc server-side configuration
 	Addrs     []string  `yaml:"addresses"`
 }
@@ -79,6 +83,11 @@ type ServerConfig struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
 	} `yaml:"ctl"`
+
+	PXY struct {
+		Service PXYServiceConfig    `yaml:"service"`
+		TLS ServerTLSConfig         `yaml:"tls"`
+	} `yaml:"pxy"`
 
 	RPC struct {
 		Service RPCServiceConfig    `yaml:"service"`
