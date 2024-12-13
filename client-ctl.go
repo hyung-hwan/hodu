@@ -33,6 +33,7 @@ type json_in_client_conn struct {
 
 type json_in_client_route struct {
 	ClientPeerAddr string `json:"client-peer-addr"`
+	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
 	ServerPeerServiceAddr string `json:"server-peer-service-addr"` // desired listening address on the server side
 	ServerPeerServiceNet string `json:"server-peer-service-net"` // permitted network in prefix notation
@@ -58,6 +59,7 @@ type json_out_client_route_id struct {
 type json_out_client_route struct {
 	Id RouteId `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
+	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
 	ServerPeerListenAddr string `json:"server-peer-service-addr"`
 	ServerPeerNet string `json:"server-peer-service-net"`
@@ -354,6 +356,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				jsp = append(jsp, json_out_client_route{
 					Id: r.id,
 					ClientPeerAddr: r.peer_addr,
+					ClientPeerName: r.peer_name,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
 					ServerPeerOption: r.server_peer_option.string(),
@@ -375,7 +378,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				goto oops
 			}
 
-			if  jcr.ClientPeerAddr == "" {
+			if jcr.ClientPeerAddr == "" {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				err = fmt.Errorf("blank client-peer-addr")
 				goto oops;
@@ -388,7 +391,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				goto oops
 			}
 
-			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, jcr.ServerPeerServiceAddr, jcr.ServerPeerServiceNet, server_peer_option)
+			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, jcr.ClientPeerName, jcr.ServerPeerServiceAddr, jcr.ServerPeerServiceNet, server_peer_option)
 			if err != nil {
 				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }

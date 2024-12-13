@@ -103,6 +103,7 @@ type ServerRoute struct {
 	svc_option  RouteOption
 
 	ptc_addr    string
+	ptc_name    string
 	id          RouteId
 
 	pts_mtx     sync.Mutex
@@ -964,6 +965,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 		websocket.Handler(func(ws *websocket.Conn) {
 			s.pxy_ws.ServeWebsocket(ws)
 		}))
+	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}", &server_ctl_server_conns_id_routes_id{s: &s})
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/", &server_proxy_xterm_file{s: &s, file: "xterm.html"})
 	s.pxy_mux.Handle("/_ssh/xterm.js", &server_proxy_xterm_file{s: &s, file: "xterm.js"})
 	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js", &server_proxy_xterm_file{s: &s, file: "xterm-addon-fit.js"})

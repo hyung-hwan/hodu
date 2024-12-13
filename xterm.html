@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>{{ .RouteName }}</title>
+<title>Terminal</title>
 <link rel="stylesheet" href="/_ssh/xterm.css" />
 <style>
 	body {
@@ -19,9 +19,15 @@
 		height: 100vh;
 	}
 
-	#terminal-status-container {
+	#terminal-info-container {
 		vertical-align: middle;
 		padding: 3px;
+	}
+
+	#terminal-target {
+		display: inline-block;
+		height: 100%;
+		vertical-align: middle;
 	}
 
 	#terminal-status {
@@ -74,6 +80,11 @@
 		box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 		text-align: center;
 	}
+	#login-form-title {
+		line-height: 2em;
+		font-size: 2em;
+		font-weight: bold;
+	}
 </style>
 <script src="/_ssh/xterm.js"></script>
 <script src="/_ssh/xterm-addon-fit.js"></script>
@@ -81,11 +92,13 @@
 <script>
 window.onload = function(event) {
 	const terminal_container = document.getElementById('terminal-container');
+	const terminal_target = document.getElementById('terminal-target');
 	const terminal_status = document.getElementById('terminal-status');
 	const terminal_errmsg = document.getElementById('terminal-errmsg');
 	const terminal_view_container = document.getElementById('terminal-view-container');
 	const terminal_disconnect = document.getElementById('terminal-disconnect');
 	const login_container = document.getElementById('login-container');
+	const login_form_title = document.getElementById('login-form-title');
 	const login_form = document.getElementById('login-form');
 	const username_field = document.getElementById('username');
 	const password_field= document.getElementById('password');
@@ -97,25 +110,48 @@ window.onload = function(event) {
 	term.loadAddon(fit_addon)
 	term.open(terminal_view_container);
 
+	let set_terminal_target = function(name) {
+		terminal_target.innerHTML = name;
+		login_form_title.innerHTML = name
+	}
+
 	let set_terminal_status = function(msg, errmsg) {
 		if (msg != null) terminal_status.innerHTML = msg;
 		if (errmsg != null) terminal_errmsg.innerHTML = errmsg
 	}
 
+	let adjust_terminal_size_unconnected = function() {
+		fit_addon.fit();
+	}
+
+	let fetch_session_info = async function() {
+		let url = window.location.protocol + '//' + window.location.host + '/_ssh/server-conns/{{ .ConnId }}//routes/{{ .RouteId }}';
+		try {
+			const resp = await fetch(url);
+			if (!resp.ok) throw new Error(`HTTP error in getting route({{ .ConnId }}, {{ .RouteId }}) info - status ${resp.status}`);
+			const route = await resp.json()
+			if ('client-peer-name' in route) {
+				set_terminal_target(route['client-peer-name']) // change to the name
+				document.title = route['client-peer-name']
+			}
+		} catch (e) {
+			set_terminal_target('');
+			document.title = 'Terminal';
+			set_terminal_status (null, e);
+		}
+	}
+
 	let toggle_login_form = function(visible) {
+		if (visible) fetch_session_info();
 		login_container.style.visibility = (visible? 'visible': 'hidden');
 		terminal_disconnect.style.visibility = (visible? 'hidden': 'visible');
 		if (visible) username_field.focus();
 		else term.focus();
 	}
 
-	let resize_term_unconnected = function() {
-		fit_addon.fit();
-	}
-
 	toggle_login_form(true);
-	window.onresize = resize_term_unconnected;
-	resize_term_unconnected()
+	window.onresize = adjust_terminal_size_unconnected;
+	adjust_terminal_size_unconnected()
 
 	login_form.onsubmit = async function(event) {
 		event.preventDefault();
@@ -130,7 +166,7 @@ window.onload = function(event) {
 
 		set_terminal_status('Connecting...', '');
 
-		const resize_term_connected = function() {
+		const adjust_terminal_size_connected = function() {
 			fit_addon.fit();
 			if (socket.readyState == 1) // if open
 				socket.send(JSON.stringify({ type: 'size', data: [term.rows.toString(), term.cols.toString()] }));
@@ -151,7 +187,8 @@ window.onload = function(event) {
 					if (msg.data.length >= 1) {
 						if (msg.data[0] == 'opened') {
 							set_terminal_status('Connected', '');
-							resize_term_connected()
+							adjust_terminal_size_connected()
+							term.clear()
 						} else if (msg.data[0] == 'closed') {
 							// doesn't really matter
 							// socket.onclose() will be executed anyway
@@ -159,28 +196,26 @@ window.onload = function(event) {
 					}
 				} else if (msg.type == "error") {
 					toggle_login_form(true);
-					window.onresize = resize_term_unconnected;
+					window.onresize = adjust_terminal_size_unconnected;
 					set_terminal_status(null, msg.data.join(' '))
 				}
 			} catch (e) {
 				set_terminal_status('Disconnected', e);
 				toggle_login_form(true)
-				window.onresize = resize_term_unconnected;
+				window.onresize = adjust_terminal_size_unconnected;
 			}
 		};
 
 		socket.onerror = function(event) {
 			set_terminal_status('Disconnected', event);
 			toggle_login_form(true)
-			window.onresize = resize_term_unconnected;
-			term.write("\r\n")
+			window.onresize = adjust_terminal_size_unconnected;
 		};
 
 		socket.onclose = function() {
 			set_terminal_status('Disconnected', null);
 			toggle_login_form(true)
-			window.onresize = resize_term_unconnected;
-			term.write("\r\n")
+			window.onresize = adjust_terminal_size_unconnected;
 		};
 
 		term.onData(function(data) {
@@ -188,7 +223,7 @@ window.onload = function(event) {
 				socket.send(JSON.stringify({ type: 'iov', data: [data] }));
 		});
 
-		window.onresize = resize_term_connected;
+		window.onresize = adjust_terminal_size_connected;
 		terminal_disconnect.onclick = function(event) {
 			socket.send(JSON.stringify({ type: 'close', data: [""] }));
 			//socket.close()
@@ -202,7 +237,7 @@ window.onload = function(event) {
 
 <div id="login-container">
 	<div id="login-form-container">
-		<h2>{{ .RouteName }}</h2>
+		<div id="login-form-title"></div>
 		<form id="login-form">
 			<label>
 				Username: <input type="text" id="username" required />
@@ -218,7 +253,8 @@ window.onload = function(event) {
 </div>
 
 <div id="terminal-container">
-<div id="terminal-status-container">
+<div id="terminal-info-container">
+	<div id="terminal-target"></div>
 	<div id="terminal-status"></div>
 	<div id="terminal-errmsg"></div>
 	<div id="terminal-control">

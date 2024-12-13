@@ -104,6 +104,7 @@ type ClientRoute struct {
 	cts *ClientConn
 	id RouteId
 	peer_addr string
+	peer_name string
 	peer_option RouteOption
 
 	server_peer_listen_addr *net.TCPAddr // actual service-side service address
@@ -157,7 +158,7 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 }*/
 
 // --------------------------------------------------------------------
-func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server_peer_svc_addr string, server_peer_svc_net string, server_peer_option RouteOption) *ClientRoute {
+func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, client_peer_name string, server_peer_svc_addr string, server_peer_svc_net string, server_peer_option RouteOption) *ClientRoute {
 	var r ClientRoute
 
 	r.cts = cts
@@ -165,6 +166,7 @@ func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, server
 	r.ptc_map = make(ClientPeerConnMap)
 	r.ptc_cancel_map = make(ClientPeerCancelFuncMap)
 	r.peer_addr = client_peer_addr // client-side peer
+	r.peer_name = client_peer_name
 	// if the client_peer_addr is a domain name, it can't tell between tcp4 and tcp6
 	r.peer_option = string_to_route_option(tcp_addr_str_class(client_peer_addr))
 
@@ -592,7 +594,7 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 	return &cts
 }
 
-func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_svc_addr string, server_peer_svc_net string, option RouteOption) (*ClientRoute, error) {
+func (cts *ClientConn) AddNewClientRoute(addr string, name string, server_peer_svc_addr string, server_peer_svc_net string, option RouteOption) (*ClientRoute, error) {
 	var r *ClientRoute
 	var start_id RouteId
 
@@ -611,7 +613,7 @@ func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_svc_addr strin
 		}
 	}
 
-	r = NewClientRoute(cts, cts.route_next_id, addr, server_peer_svc_addr, server_peer_svc_net, option)
+	r = NewClientRoute(cts, cts.route_next_id, addr, name, server_peer_svc_addr, server_peer_svc_net, option)
 	cts.route_map[r.id] = r
 	cts.route_next_id++
 	cts.cli.stats.routes.Add(1)
@@ -746,7 +748,7 @@ func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 				option |= RouteOption(ROUTE_OPTION_HTTPS)
 		}
 
-		_, err = cts.AddNewClientRoute(va[0], svc_addr, "", option)
+		_, err = cts.AddNewClientRoute(va[0], svc_addr, svc_addr/* TODO: accept name form parameter*/, "", option) 
 		if err != nil {
 			return fmt.Errorf("unable to add client route for %s - %s", v, err.Error())
 		}

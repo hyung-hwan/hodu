@@ -16,6 +16,7 @@ type json_out_server_conn struct {
 type json_out_server_route struct {
 	Id RouteId `json:"id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
+	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
 	ServerPeerServiceAddr string `json:"server-peer-service-addr"` // actual listening address
 	ServerPeerServiceNet string `json:"server-peer-service-net"`
@@ -95,6 +96,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					jsp = append(jsp, json_out_server_route{
 						Id: r.id,
 						ClientPeerAddr: r.ptc_addr,
+						ClientPeerName: r.ptc_name,
 						ServerPeerServiceAddr: r.svc_addr.String(),
 						ServerPeerServiceNet: r.svc_permitted_net.String(),
 						ServerPeerOption: r.svc_option.string(),
@@ -177,6 +179,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				jsp = append(jsp, json_out_server_route{
 					Id: r.id,
 					ClientPeerAddr: r.ptc_addr,
+					ClientPeerName: r.ptc_name,
 					ServerPeerServiceAddr: r.svc_addr.String(),
 					ServerPeerServiceNet: r.svc_permitted_net.String(),
 					ServerPeerOption: r.svc_option.string(),

@@ -369,7 +369,6 @@ type server_proxy_xterm_file struct {
 }
 
 type server_proxy_xterm_session_info struct {
-	RouteName string
 	ConnId string
 	RouteId string
 }
@@ -407,7 +406,6 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 				w.WriteHeader(http.StatusOK)
 				tmpl.Execute(w,
 					&server_proxy_xterm_session_info{
-						RouteName: "Terminal",
 						ConnId: req.PathValue("conn_id"),
 						RouteId: req.PathValue("route_id"),
 					})
