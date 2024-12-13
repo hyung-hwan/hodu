@@ -57,6 +57,7 @@ type Server struct {
 
 	pts_limit       int // global pts limit
 	cts_limit       int
+	cts_next_id     ConnId
 	cts_mtx         sync.Mutex
 	cts_map         ServerConnMap
 	cts_map_by_addr ServerConnMapByAddr
@@ -76,21 +77,21 @@ type Server struct {
 // connection from client.
 // client connect to the server, the server accept it, and makes a tunnel request
 type ServerConn struct {
-	svr        *Server
-	id          ConnId
-	sid         string // for logging
+	svr          *Server
+	id            ConnId
+	sid           string // for logging
 
-	remote_addr net.Addr // client address that created this structure
-	local_addr  net.Addr // local address that the client is connected to
-	pss        *GuardedPacketStreamServer
+	remote_addr   net.Addr // client address that created this structure
+	local_addr    net.Addr // local address that the client is connected to
+	pss          *GuardedPacketStreamServer
 
-	route_mtx   sync.Mutex
-	route_map   ServerRouteMap
-	route_wg    sync.WaitGroup
+	route_mtx     sync.Mutex
+	route_map     ServerRouteMap
+	route_wg      sync.WaitGroup
 
-	wg          sync.WaitGroup
-	stop_req    atomic.Bool
-	stop_chan   chan bool
+	wg            sync.WaitGroup
+	stop_req      atomic.Bool
+	stop_chan     chan bool
 }
 
 type ServerRoute struct {
@@ -107,7 +108,7 @@ type ServerRoute struct {
 	pts_mtx     sync.Mutex
 	pts_map     ServerPeerConnMap
 	pts_limit   int
-	pts_last_id PeerId
+	pts_next_id PeerId
 	pts_wg      sync.WaitGroup
 	stop_req    atomic.Bool
 }
@@ -181,7 +182,7 @@ func NewServerRoute(cts *ServerConn, id RouteId, option RouteOption, ptc_addr st
 	r.ptc_addr = ptc_addr
 	r.pts_limit = PTS_LIMIT
 	r.pts_map = make(ServerPeerConnMap)
-	r.pts_last_id = 0
+	r.pts_next_id = 0
 	r.stop_req.Store(false)
 
 	return &r, nil
@@ -199,22 +200,22 @@ func (r *ServerRoute) AddNewServerPeerConn(c *net.TCPConn) (*ServerPeerConn, err
 		return nil, fmt.Errorf("peer-to-server connection table full")
 	}
 
-	start_id = r.pts_last_id
+	start_id = r.pts_next_id
 	for {
-		_, ok = r.pts_map[r.pts_last_id]
+		_, ok = r.pts_map[r.pts_next_id]
 		if !ok {
 			break
 		}
-		r.pts_last_id++
-		if r.pts_last_id == start_id {
+		r.pts_next_id++
+		if r.pts_next_id == start_id {
 			// unlikely to happen but it cycled through the whole range.
 			return nil, fmt.Errorf("failed to assign peer-to-server connection id")
 		}
 	}
 
-	pts = NewServerPeerConn(r, c, r.pts_last_id)
+	pts = NewServerPeerConn(r, c, r.pts_next_id)
 	r.pts_map[pts.conn_id] = pts
-	r.pts_last_id++
+	r.pts_next_id++
 	r.cts.svr.stats.peers.Add(1)
 
 	return pts, nil
@@ -905,6 +906,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.ext_svcs = make([]Service, 0, 1)
 	s.pts_limit = peer_max
 	s.cts_limit = rpc_max
+	s.cts_next_id = 0
 	s.cts_map = make(ServerConnMap)
 	s.cts_map_by_addr = make(ServerConnMapByAddr)
 	s.stop_chan = make(chan bool, 8)
@@ -1185,7 +1187,7 @@ func (s *Server) ReqStop() {
 
 func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, pss Hodu_PacketStreamServer) (*ServerConn, error) {
 	var cts ServerConn
-	var id ConnId
+	var start_id ConnId
 	var ok bool
 
 	cts.svr = s
@@ -1204,15 +1206,20 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 		return nil, fmt.Errorf("too many connections - %d", s.cts_limit)
 	}
 
-	//id = rand.Uint32()
-	id = ConnId(monotonic_time() / 1000)
+	//start_id = rand.Uint64()
+	//start_id = ConnId(monotonic_time() / 1000)
+	start_id = s.cts_next_id
 	for {
-		_, ok = s.cts_map[id]
+		_, ok = s.cts_map[s.cts_next_id]
 		if !ok { break }
-		id++
+		s.cts_next_id++
+		if s.cts_next_id == start_id {
+			s.cts_mtx.Unlock()
+			return nil, fmt.Errorf("unable to assign id")
+		}
 	}
-	cts.id = id
-	cts.sid = fmt.Sprintf("%d", id) // id in string used for logging
+	cts.id = s.cts_next_id
+	cts.sid = fmt.Sprintf("%d", cts.id) // id in string used for logging
 
 	_, ok = s.cts_map_by_addr[cts.remote_addr]
 	if ok {
@@ -1220,7 +1227,8 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 		return nil, fmt.Errorf("existing client - %s", cts.remote_addr.String())
 	}
 	s.cts_map_by_addr[cts.remote_addr] = &cts
-	s.cts_map[id] = &cts;
+	s.cts_map[cts.id] = &cts;
+	s.cts_next_id++;
 	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.cts_mtx.Unlock()
 

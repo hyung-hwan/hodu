@@ -5,7 +5,7 @@ import "crypto/tls"
 import "errors"
 import "fmt"
 import "log"
-import "math/rand"
+//import "math/rand"
 import "net"
 import "net/http"
 import "strings"
@@ -59,6 +59,7 @@ type Client struct {
 	ptc_limit   int // global maximum number of peers
 	cts_limit   int
 	cts_mtx     sync.Mutex
+	cts_next_id ConnId
 	cts_map     ClientConnMap
 
 	wg          sync.WaitGroup
@@ -76,26 +77,27 @@ type Client struct {
 
 // client connection to server
 type ClientConn struct {
-	cli        *Client
-	cfg         ClientConfigActive
-	id          ConnId
-	sid         string // id rendered in string
+	cli          *Client
+	cfg           ClientConfigActive
+	id            ConnId
+	sid           string // id rendered in string
 
-	local_addr  string
-	remote_addr string
-	conn       *grpc.ClientConn // grpc connection to the server
-	hdc         HoduClient
-	psc        *GuardedPacketStreamClient // guarded grpc stream
+	local_addr    string
+	remote_addr   string
+	conn         *grpc.ClientConn // grpc connection to the server
+	hdc           HoduClient
+	psc          *GuardedPacketStreamClient // guarded grpc stream
 
-	s_seed      Seed
-	c_seed      Seed
+	s_seed        Seed
+	c_seed        Seed
 
-	route_mtx   sync.Mutex
-	route_map   ClientRouteMap
-	route_wg    sync.WaitGroup
+	route_mtx     sync.Mutex
+	route_next_id RouteId
+	route_map     ClientRouteMap
+	route_wg      sync.WaitGroup
 
-	stop_req    atomic.Bool
-	stop_chan   chan bool
+	stop_req      atomic.Bool
+	stop_chan     chan bool
 }
 
 type ClientRoute struct {
@@ -579,6 +581,7 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 
 	cts.cli = c
 	cts.route_map = make(ClientRouteMap)
+	cts.route_next_id = 0
 	cts.cfg.ClientConfig = *cfg
 	cts.stop_req.Store(false)
 	cts.stop_chan = make(chan bool, 8)
@@ -591,32 +594,30 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 
 func (cts *ClientConn) AddNewClientRoute(addr string, server_peer_svc_addr string, server_peer_svc_net string, option RouteOption) (*ClientRoute, error) {
 	var r *ClientRoute
-	var id RouteId
-	var nattempts RouteId
+	var start_id RouteId
 
-	nattempts = 0
-	id = RouteId(rand.Uint32())
+	//start_id = RouteId(rand.Uint64())
+	start_id = cts.route_next_id
 
 	cts.route_mtx.Lock()
 	for {
 		var ok bool
-
-		_, ok = cts.route_map[id]
+		_, ok = cts.route_map[cts.route_next_id]
 		if !ok { break }
-		id++
-		nattempts++
-		if nattempts == ^RouteId(0) {
+		cts.route_next_id++
+		if cts.route_next_id == start_id {
 			cts.route_mtx.Unlock()
-			return nil, fmt.Errorf("route map full")
+			return nil, fmt.Errorf("unable to assign id")
 		}
 	}
 
-	r = NewClientRoute(cts, id, addr, server_peer_svc_addr, server_peer_svc_net, option)
-	cts.route_map[id] = r
+	r = NewClientRoute(cts, cts.route_next_id, addr, server_peer_svc_addr, server_peer_svc_net, option)
+	cts.route_map[r.id] = r
+	cts.route_next_id++
 	cts.cli.stats.routes.Add(1)
 	cts.route_mtx.Unlock()
 
-	cts.cli.log.Write(cts.sid, LOG_INFO, "Added route(%d,%s)", id, addr)
+	cts.cli.log.Write(cts.sid, LOG_INFO, "Added route(%d,%s)", r.id, addr)
 
 	cts.route_wg.Add(1)
 	go r.RunTask(&cts.route_wg)
@@ -847,6 +848,7 @@ start_over:
 	}
 	cts.s_seed = *s_seed
 	cts.c_seed = c_seed
+	cts.route_next_id = 0 // reset this whenever a new connection is made. the number of routes must be zero.
 
 	cts.cli.log.Write(cts.sid, LOG_INFO, "Got seed from server[%d] %s - ver=%#x", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], cts.s_seed.Version)
 
@@ -875,6 +877,7 @@ start_over:
 			goto done
 		}
 	}
+// TODO: remember the previouslyu POSTed routes and readd them??
 
 	for {
 		var pkt *Packet
@@ -1098,6 +1101,7 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 	c.ptc_tmout = peer_conn_tmout
 	c.ptc_limit = peer_max
 	c.cts_limit = rpc_max
+	c.cts_next_id = 0
 	c.cts_map = make(ClientConnMap)
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
@@ -1139,7 +1143,7 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 	var cts *ClientConn
 	var ok bool
-	var id ConnId
+	var start_id ConnId
 
 	if len(cfg.ServerAddrs) <= 0 {
 		return nil, fmt.Errorf("no server rpc address specified")
@@ -1154,18 +1158,24 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 		return nil, fmt.Errorf("too many connections - %d", c.cts_limit)
 	}
 
-	//id = rand.Uint32()
-	id = ConnId(monotonic_time() / 1000)
+	//start_id = rand.Uint64()
+	//start_id = ConnId(monotonic_time() / 1000)
+	start_id = c.cts_next_id
 	for {
-		_, ok = c.cts_map[id]
+		_, ok = c.cts_map[c.cts_next_id]
 		if !ok { break }
-		id++
+		c.cts_next_id++
+		if c.cts_next_id == start_id {
+			c.cts_mtx.Lock()
+			return nil, fmt.Errorf("unable to assign id")
+		}
 	}
-	cts.id = id
-	cts.cfg.Id = id // store it again in the active configuration for easy access via control channel
-	cts.sid = fmt.Sprintf("%d", id) // id in string used for logging
+	cts.id = c.cts_next_id
+	cts.cfg.Id = cts.id // store it again in the active configuration for easy access via control channel
+	cts.sid = fmt.Sprintf("%d", cts.id) // id in string used for logging
 
-	c.cts_map[id] = cts
+	c.cts_map[cts.id] = cts
+	c.cts_next_id++
 	c.stats.conns.Add(1)
 	c.cts_mtx.Unlock()
 
