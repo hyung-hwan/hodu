@@ -4,73 +4,228 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Terminal</title>
+<title>{{ .RouteName }}</title>
 <link rel="stylesheet" href="/_ssh/xterm.css" />
 <style>
 	body {
 		margin: 0;
+		height: 100%;
 	}
+
 	#terminal-container {
+		display: flex;
+		flex-direction: column;
 		width: 100%;
 		height: 100vh;
+	}
+
+	#terminal-status-container {
+		vertical-align: middle;
+		padding: 3px;
+	}
+
+	#terminal-status {
+		display: inline-block;
+		font-weight: bold;
+		height: 100%;
+		vertical-align: middle;
+	}
+
+	#terminal-errmsg {
+		display: inline-block;
+		color: red;
+		height: 100%;
+		vertical-align: middle;
+	}
+
+	#terminal-control {
+		display: inline-block;
+		height: 100%;
+		vertical-align: middle;
+	}
+
+	#terminal-control button {
+		vertical-align: middle;
+	}
+
+	#terminal-view-container {
+		flex: 1;
+		width: 100%;
+		min-height: 0;
+		/*height: 100%;*/
+	}
+
+	#login-container {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background-color: rgba(0, 0, 0, 0.5);
+		z-index: 99999;
+	}
+	#login-form-container {
+		background: white;
+		padding: 20px;
+		border-radius: 8px;
+		box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+		text-align: center;
 	}
 </style>
 <script src="/_ssh/xterm.js"></script>
 <script src="/_ssh/xterm-addon-fit.js"></script>
 
 <script>
-window.addEventListener("load", function(event) {
+window.onload = function(event) {
+	const terminal_container = document.getElementById('terminal-container');
+	const terminal_status = document.getElementById('terminal-status');
+	const terminal_errmsg = document.getElementById('terminal-errmsg');
+	const terminal_view_container = document.getElementById('terminal-view-container');
+	const terminal_disconnect = document.getElementById('terminal-disconnect');
+	const login_container = document.getElementById('login-container');
+	const login_form = document.getElementById('login-form');
+	const username_field = document.getElementById('username');
+	const password_field= document.getElementById('password');
+
 	const term = new window.Terminal();
-	const fit = new window.FitAddon.FitAddon();
-	const textDecoder = new TextDecoder();
+	const fit_addon = new window.FitAddon.FitAddon();
+	const text_decoder = new TextDecoder();
 
-	let currentLocation = window.location.host;
-	let prefix = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-	const socket = new WebSocket(prefix + currentLocation + '/_ssh-ws/{{ .ConnId }}/{{ .RouteId }}');
-	socket.binaryType = 'arraybuffer';
+	term.loadAddon(fit_addon)
+	term.open(terminal_view_container);
 
-	term.loadAddon(fit)
-	term.open(document.getElementById('terminal-container'));
-	term.writeln('Connecting...');
+	let set_terminal_status = function(msg, errmsg) {
+		if (msg != null) terminal_status.innerHTML = msg;
+		if (errmsg != null) terminal_errmsg.innerHTML = errmsg
+	}
 
-	const fit_term = function() {
-		fit.fit();
-		socket.send(JSON.stringify({ type: 'resize', data: term.rows.toString() + " " + term.cols.toString() }));
-	};
+	let toggle_login_form = function(visible) {
+		login_container.style.visibility = (visible? 'visible': 'hidden');
+		terminal_disconnect.style.visibility = (visible? 'hidden': 'visible');
+		if (visible) username_field.focus();
+		else term.focus();
+	}
 
-	socket.onopen = function () {
-		term.writeln('Connected');
-		fit_term();
-	};
+	let resize_term_unconnected = function() {
+		fit_addon.fit();
+	}
 
-	socket.onmessage = function(event) {
-		if (typeof event.data === 'string') {
-			term.write(event.data);
-		} else {
-			const text = textDecoder.decode(new Uint8Array(event.data));
-			term.write(text);
-		}
-	};
+	toggle_login_form(true);
+	window.onresize = resize_term_unconnected;
+	resize_term_unconnected()
 
-	socket.onerror = function (event) {
-		console.error('WebSocket error:', event);
-		term.writeln('WebSocket error. See console for details.');
-	};
+	login_form.onsubmit = async function(event) {
+		event.preventDefault();
+		toggle_login_form(false)
 
-	socket.onclose = function () {
-		term.writeln('Disconnected');
-	};
+		const username = username_field.value.trim();
+		const password = password_field.value.trim();
 
-	term.onData(function(data) {
-		socket.send(JSON.stringify({ type: 'key', data: data }));
-	});
+		let prefix = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+		const socket = new WebSocket(prefix + window.location.host + '/_ssh-ws/{{ .ConnId }}/{{ .RouteId }}');
+		socket.binaryType = 'arraybuffer';
 
-	window.addEventListener('resize', fit_term);
-});
+		set_terminal_status('Connecting...', '');
+
+		const resize_term_connected = function() {
+			fit_addon.fit();
+			if (socket.readyState == 1) // if open
+				socket.send(JSON.stringify({ type: 'size', data: [term.rows.toString(), term.cols.toString()] }));
+		};
+
+		socket.onopen = function () {
+			socket.send(JSON.stringify({ type: 'open', data: [username, password]}));
+		};
+
+		socket.onmessage = function(event) {
+			try {
+				let event_text;
+				event_text = (typeof event.data === 'string')? event.data: text_decoder.decode(new Uint8Array(event.data));
+				const msg = JSON.parse(event_text);
+				if (msg.type == "iov") {
+					for (const data of msg.data) term.write(data);
+				} else if (msg.type == "status") {
+					if (msg.data.length >= 1) {
+						if (msg.data[0] == 'opened') {
+							set_terminal_status('Connected', '');
+							resize_term_connected()
+						} else if (msg.data[0] == 'closed') {
+							// doesn't really matter
+							// socket.onclose() will be executed anyway
+						}
+					}
+				} else if (msg.type == "error") {
+					toggle_login_form(true);
+					window.onresize = resize_term_unconnected;
+					set_terminal_status(null, msg.data.join(' '))
+				}
+			} catch (e) {
+				set_terminal_status('Disconnected', e);
+				toggle_login_form(true)
+				window.onresize = resize_term_unconnected;
+			}
+		};
+
+		socket.onerror = function(event) {
+			set_terminal_status('Disconnected', event);
+			toggle_login_form(true)
+			window.onresize = resize_term_unconnected;
+			term.write("\r\n")
+		};
+
+		socket.onclose = function() {
+			set_terminal_status('Disconnected', null);
+			toggle_login_form(true)
+			window.onresize = resize_term_unconnected;
+			term.write("\r\n")
+		};
+
+		term.onData(function(data) {
+			if (socket.readyState == 1) // if open
+				socket.send(JSON.stringify({ type: 'iov', data: [data] }));
+		});
+
+		window.onresize = resize_term_connected;
+		terminal_disconnect.onclick = function(event) {
+			socket.send(JSON.stringify({ type: 'close', data: [""] }));
+			//socket.close()
+		};
+	}
+};
 </script>
 </head>
 
 <body>
-<div id="terminal-container"></div>
+
+<div id="login-container">
+	<div id="login-form-container">
+		<h2>{{ .RouteName }}</h2>
+		<form id="login-form">
+			<label>
+				Username: <input type="text" id="username" required />
+			</label>
+			<br /><br />
+			<label>
+				Password: <input type="password" id="password" required />
+			</label>
+			<br /><br />
+			<button type="submit">Connect</button>
+		</form>
+	</div>
+</div>
+
+<div id="terminal-container">
+<div id="terminal-status-container">
+	<div id="terminal-status"></div>
+	<div id="terminal-errmsg"></div>
+	<div id="terminal-control">
+		<button id="terminal-disconnect" type="button">Disconnect</button>
+	</div>
+</div>
+<div id="terminal-view-container"></div>
+</div>
 </body>
 </html>

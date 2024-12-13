@@ -11,7 +11,9 @@ import "net/http"
 import "net/url"
 import "strconv"
 import "strings"
+import "sync"
 import "text/template"
+import "time"
 import "unsafe"
 
 import "golang.org/x/crypto/ssh"
@@ -367,6 +369,7 @@ type server_proxy_xterm_file struct {
 }
 
 type server_proxy_xterm_session_info struct {
+	RouteName string
 	ConnId string
 	RouteId string
 }
@@ -404,8 +407,9 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 				w.WriteHeader(http.StatusOK)
 				tmpl.Execute(w,
 					&server_proxy_xterm_session_info{
-						req.PathValue("conn_id"),
-						req.PathValue("route_id"),
+						RouteName: "Terminal",
+						ConnId: req.PathValue("conn_id"),
+						RouteId: req.PathValue("route_id"),
 					})
 			}
 		case "_forbidden":
@@ -413,39 +417,122 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 		default:
 			w.WriteHeader(http.StatusNotFound)
 	}
+
+// TODO: logging..
 }
 // ------------------------------------
 
 type server_proxy_ssh_ws struct {
 	s *Server
-	h websocket.Handler
+	ws *websocket.Conn
 }
 
 type json_ssh_ws_event struct {
 	Type string `json:"type"`
-	Data string `json:"data"`
+	Data []string `json:"data"`
 }
 
 // TODO: put this task to sync group.
 // TODO: put the above proxy task to sync group too.
 
+func (pxy *server_proxy_ssh_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
+	var msg []byte
+	var err error
 
-func server_proxy_serve_ssh_ws(ws *websocket.Conn, s *Server) {
+	msg, err = json.Marshal(json_ssh_ws_event{Type: type_val, Data: []string{ data } })
+	if err == nil { err = websocket.Message.Send(ws, msg) }
+	return err
+}
+
+func (pxy *server_proxy_ssh_ws) connect_ssh (ctx context.Context, username string, password string, r *ServerRoute) ( *ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
+	var cc *ssh.ClientConfig
+	var addr net.TCPAddr
+	var dialer *net.Dialer
+	var conn net.Conn
+	var ssh_conn ssh.Conn
+	var chans <-chan ssh.NewChannel
+	var reqs <-chan *ssh.Request
+	var c *ssh.Client
+	var sess *ssh.Session
+	var in io.Writer // input to target
+	var out io.Reader // ooutput from target
+	var err error
+
+	cc = &ssh.ClientConfig{
+		User: username,
+		Auth: []ssh.AuthMethod{ ssh.Password(password) },
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		// Timeout: 2 * time.Second ,
+	}
+
+// CHECK OPTIONS
+	// if r.svc_option & RouteOption(ROUTE_OPTION_SSH) == 0 {
+	// REJECT??
+	//}
+// TODO: timeout...
+
+	addr = *r.svc_addr;
+	if addr.IP.To4() != nil {
+		addr.IP = net.IPv4(127, 0, 0, 1) // net.IPv4loopback is not defined. so use net.IPv4()
+	} else {
+		addr.IP = net.IPv6loopback // net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+	}
+
+	dialer = &net.Dialer{}
+	conn, err = dialer.DialContext(ctx, "tcp", addr.String())
+	if err != nil { goto oops }
+
+	ssh_conn, chans, reqs, err = ssh.NewClientConn(conn, addr.String(), cc)
+	if err != nil { goto oops }
+
+	c = ssh.NewClient(ssh_conn, chans, reqs)
+
+	sess, err = c.NewSession()
+	if err != nil { goto oops }
+
+	out, err = sess.StdoutPipe()
+	if err != nil { goto oops }
+
+	in, err = sess.StdinPipe()
+	if err != nil { goto oops }
+
+	err = sess.RequestPty("xterm", 25, 80, ssh.TerminalModes{})
+	if err != nil { goto oops }
+
+	err = sess.Shell()
+	if err != nil { goto oops }
+
+	return c, sess, in, out, nil
+
+oops:
+	if sess != nil { sess.Close() }
+	if c != nil { c.Close() }
+	return nil, nil, nil, nil, err
+}
+
+func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
+	var s *Server
 	var req *http.Request
 	var conn_id string
 	var conn_nid uint64
 	var route_id string
 	var route_nid uint64
 	var r *ServerRoute
-	var addr net.TCPAddr
-	var cc *ssh.ClientConfig
+	var username string
+	var password string
 	var c *ssh.Client
 	var sess *ssh.Session
 	var in io.Writer
 	var out io.Reader
+	var wg sync.WaitGroup
+	var conn_ready_chan chan bool
+	var connect_ssh_ctx context.Context
+	var connect_ssh_cancel context.CancelFunc
 	var err error
 
+	s = pxy.s
 	req = ws.Request()
+	conn_ready_chan = make(chan bool, 3)
 
 	defer func() {
 		var err interface{} = recover()
@@ -457,127 +544,120 @@ func server_proxy_serve_ssh_ws(ws *websocket.Conn, s *Server) {
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(conn_nid) * 8))
 	if err != nil {
-		return
+		// TODO:
+		goto done
 	}
 	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(route_nid) * 8))
 	if err != nil {
-		return
+		// TODO:
+		goto done
 	}
 
 	r = s.FindServerRouteById(ConnId(conn_nid), RouteId(route_nid))
 	if r == nil {
 		// TODO: enhance logging. original request, conn_nid, route_nid
+		pxy.send_ws_data(ws, "error", fmt.Sprintf("route(%d,%d) not found", conn_nid, route_nid))
 		s.log.Write("", LOG_ERROR, "No server route(%d,%d) found", conn_nid, route_nid)
-		return
-	}
-	
-	cc = &ssh.ClientConfig{
-		 User: "hyung-hwan",
-		Auth: []ssh.AuthMethod{
-			ssh.Password("evianilie99"),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		goto done
 	}
 
-// CHECK OPTIONS 
-	// if r.svc_option & RouteOption(ROUTE_OPTION_SSH) == 0 {
-	// REJECT??
-	//}
-// TODO: timeout...
-	addr = *r.svc_addr;
-	if addr.IP.To4() != nil {
-		addr.IP = net.IPv4(127, 0, 0, 1) // net.IPv4loopback is not defined. so use net.IPv4()
-	} else {
-		addr.IP = net.IPv6loopback // net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
-	}
-	c, err = ssh.Dial("tcp", addr.String(), cc)
-	if err != nil {
-		s.log.Write("", LOG_ERROR, "SSH dial error - %s", err.Error())
-		return
-	}
-	defer c.Close()
-
-	sess, err = c.NewSession()
-	if err != nil {
-		s.log.Write("", LOG_ERROR, "SSH session error - %s", err.Error())
-		return
-	}
-	defer sess.Close()
-
-	out, err = sess.StdoutPipe()
-	if err != nil {
-		s.log.Write("", LOG_ERROR, "STDOUT pipe error - ", err.Error())
-		return
-	}
-
-	in, err = sess.StdinPipe()
-	if err != nil {
-		s.log.Write("", LOG_ERROR, "STDIN pipe error - ", err.Error())
-		return
-	}
-
-	err = sess.RequestPty("xterm", 40, 80, ssh.TerminalModes{})
-	if err != nil {
-		s.log.Write("", LOG_ERROR, "Request PTY error - ", err.Error())
-		return
-	}
-
-	err = sess.Shell()
-	if err != nil {
-		s.log.Write("", LOG_ERROR, "Start shell error - ", err.Error())
-		return
-	}
-
-	// Async reader and writer to websocket
+	wg.Add(1)
 	go func() {
-		var buf []byte
-		var n int
-		var err error
+		var conn_ready bool
 
-		defer sess.Close()
-		buf = make([]byte, 1024)
-		for {
-			n, err = out.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					s.log.Write("", LOG_ERROR, "Read from SSH stdout error:", err)
-				}
-				return
-			}
-			if n > 0 {
-				_, err = ws.Write(buf[:n])
+		defer wg.Done()
+		defer ws.Close() // dirty way to break the main loop
+
+		conn_ready = <-conn_ready_chan
+		if conn_ready { // connected
+			var buf []byte
+			var n int
+			var err error
+
+			buf = make([]byte, 2048)
+			for {
+				n, err = out.Read(buf)
 				if err != nil {
-					s.log.Write("", LOG_ERROR, "Write to WebSocket error:", err)
-					return
+					if err != io.EOF {
+						s.log.Write("", LOG_ERROR, "Read from SSH stdout error - %s", err.Error())
+					}
+					break
+				}
+				if n > 0 {
+					err = pxy.send_ws_data(ws, "iov", string(buf[:n]))
+					if err != nil {
+						s.log.Write("", LOG_ERROR, "Failed to send to websocket - %s", err.Error())
+						break
+					}
 				}
 			}
 		}
 	}()
 
-	// Sync websocket reader and writer to sshIn
+ws_recv_loop:
 	for {
 		var msg []byte
 		err = websocket.Message.Receive(ws, &msg)
 		if err != nil {
 			// TODO: check if EOF
 			s.log.Write("", LOG_ERROR, "Failed to read from websocket - %s", err.Error())
-			break
+			goto done
 		}
 		if len(msg) > 0 {
 			var ev json_ssh_ws_event
 			err = json.Unmarshal(msg, &ev)
 			if err == nil {
 				switch ev.Type {
-					case "key":
-						in.Write([]byte(ev.Data))
-					case "resize":
-						var sz []string
-						sz = strings.Fields(ev.Data)
-						if (len(sz) == 2) {
+					case "open":
+						if sess == nil && len(ev.Data) == 2 {
+							username = string(ev.Data[0])
+							password = string(ev.Data[1])
+
+							connect_ssh_ctx, connect_ssh_cancel = context.WithTimeout(req.Context(), 10 * time.Second) // TODO: configurable timeout
+
+							wg.Add(1)
+							go func() {
+								var err error
+
+								defer wg.Done()
+								c, sess, in, out, err = pxy.connect_ssh(connect_ssh_ctx, username, password, r)
+								if err != nil {
+									s.log.Write("", LOG_ERROR, "failed to connect ssh - %s", err.Error())
+									pxy.send_ws_data(ws, "error", err.Error())
+									ws.Close() // dirty way to flag out the error
+								} else {
+									err = pxy.send_ws_data(ws, "status", "opened")
+									if err != nil {
+										s.log.Write("", LOG_ERROR, "Failed to write opened event to websocket - %s", err.Error())
+										ws.Close() // dirty way to flag out the error
+									} else {
+										conn_ready_chan <- true
+									}
+								}
+								connect_ssh_cancel = nil
+							}()
+						}
+
+					case "close":
+						var cancel context.CancelFunc
+						cancel = connect_ssh_cancel // is it a good way to avoid mutex?
+						if cancel != nil { cancel() }
+						break ws_recv_loop
+
+					case "iov":
+						if sess != nil {
+							var i int
+							for i, _ = range ev.Data {
+								in.Write([]byte(ev.Data[i]))
+							}
+						}
+
+					case "size":
+						if sess != nil && len(ev.Data) == 2 {
 							var rows int
 							var cols int
-							rows, _ = strconv.Atoi(sz[0]);
-							cols, _ = strconv.Atoi(sz[1]);
+							rows, _ = strconv.Atoi(ev.Data[0])
+							cols, _ = strconv.Atoi(ev.Data[1])
 							sess.WindowChange(rows, cols)
 							s.log.Write("", LOG_DEBUG, "Resized terminal to %d,%d", rows, cols)
 							// ignore error
@@ -586,4 +666,19 @@ func server_proxy_serve_ssh_ws(ws *websocket.Conn, s *Server) {
 			}
 		}
 	}
+
+	if sess != nil {
+		err = pxy.send_ws_data(ws, "status", "closed")
+		if err != nil {
+			s.log.Write("", LOG_ERROR, "Failed to write closed event to websocket - %s", err.Error())
+		}
+	}
+
+done:
+	conn_ready_chan <- false
+	ws.Close()
+	if sess != nil { sess.Close() }
+	if c != nil { c.Close() }
+	wg.Wait()
+	s.log.Write("", LOG_DEBUG, "[%s] %s %s - ended", req.RemoteAddr, req.Method, req.URL.String())
 }

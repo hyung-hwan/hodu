@@ -57,6 +57,7 @@ xterm-addon-fit.js:
 
 xterm.css:
 	curl -L -o "$@" https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.min.css
+	sed -r -i 's|^/\*# sourceMappingURL=/.+ \*/$$||g' "$@"
 
 cmd/tls.crt:
 	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=$(NAME)" --addext "subjectAltName=DNS:$(NAME),IP:10.0.0.1,IP:::1"

@@ -42,6 +42,7 @@ type Server struct {
 	ext_svcs        []Service
 
 	pxy_addr        []string
+	pxy_ws          *server_proxy_ssh_ws
 	pxy_mux         *http.ServeMux
 	pxy             []*http.Server // proxy server
 
@@ -955,10 +956,11 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 
 	// ---------------------------------------------------------
 
+	s.pxy_ws = &server_proxy_ssh_ws{s: &s}
 	s.pxy_mux = http.NewServeMux() // TODO: make /_init configurable...
 	s.pxy_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
 		websocket.Handler(func(ws *websocket.Conn) {
-			server_proxy_serve_ssh_ws(ws, &s)
+			s.pxy_ws.ServeWebsocket(ws)
 		}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/", &server_proxy_xterm_file{s: &s, file: "xterm.html"})
 	s.pxy_mux.Handle("/_ssh/xterm.js", &server_proxy_xterm_file{s: &s, file: "xterm.js"})
