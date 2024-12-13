@@ -5,28 +5,28 @@ type RouteId    uint32 // keep this in sync with the type of RouteId in hodu.pro
 type PeerId     uint32 // keep this in sync with the type of RouteId in hodu.proto
 type RouteOption uint32
 
-func MakeRouteStartPacket(route_id RouteId, proto RouteOption, ptc_addr string, svc_addr string, svc_net string) *Packet {
+func MakeRouteStartPacket(route_id RouteId, proto RouteOption, ptc_addr string, ptc_name string, svc_addr string, svc_net string) *Packet {
 	return &Packet{
 		Kind: PACKET_KIND_ROUTE_START,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: uint32(route_id), ServiceOption: uint32(proto), TargetAddrStr: ptc_addr, ServiceAddrStr: svc_addr, ServiceNetStr: svc_net}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: uint32(route_id), ServiceOption: uint32(proto), TargetAddrStr: ptc_addr, TargetName: ptc_name, ServiceAddrStr: svc_addr, ServiceNetStr: svc_net}}}
 }
 
-func MakeRouteStopPacket(route_id RouteId, proto RouteOption, ptc_addr string, svc_addr string, svc_net string) *Packet {
+func MakeRouteStopPacket(route_id RouteId, proto RouteOption, ptc_addr string, ptc_name string, svc_addr string, svc_net string) *Packet {
 	return &Packet{
 		Kind: PACKET_KIND_ROUTE_STOP,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: uint32(route_id), ServiceOption: uint32(proto), TargetAddrStr: ptc_addr, ServiceAddrStr: svc_addr, ServiceNetStr: svc_net}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: uint32(route_id), ServiceOption: uint32(proto), TargetAddrStr: ptc_addr, TargetName: ptc_name, ServiceAddrStr: svc_addr, ServiceNetStr: svc_net}}}
 }
 
-func MakeRouteStartedPacket(route_id RouteId, proto RouteOption, addr string, svc_addr string, svc_net string) *Packet {
+func MakeRouteStartedPacket(route_id RouteId, proto RouteOption, addr string, ptc_name string, svc_addr string, svc_net string) *Packet {
 	// the connection from a peer to the server has been established
 	return &Packet{Kind: PACKET_KIND_ROUTE_STARTED,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: uint32(route_id), ServiceOption: uint32(proto), TargetAddrStr: addr, ServiceAddrStr: svc_addr, ServiceNetStr: svc_net}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: uint32(route_id), ServiceOption: uint32(proto), TargetAddrStr: addr, TargetName: ptc_name, ServiceAddrStr: svc_addr, ServiceNetStr: svc_net}}}
 }
 
-func MakeRouteStoppedPacket(route_id RouteId, proto RouteOption, addr string, svc_addr string, svc_net string) *Packet {
+func MakeRouteStoppedPacket(route_id RouteId, proto RouteOption, addr string, ptc_name string, svc_addr string, svc_net string) *Packet {
 	// the connection from a peer to the server has been established
 	return &Packet{Kind: PACKET_KIND_ROUTE_STOPPED,
-		U: &Packet_Route{Route: &RouteDesc{RouteId: uint32(route_id), ServiceOption: uint32(proto), TargetAddrStr: addr, ServiceAddrStr: svc_addr, ServiceNetStr: svc_net}}}
+		U: &Packet_Route{Route: &RouteDesc{RouteId: uint32(route_id), ServiceOption: uint32(proto), TargetAddrStr: addr, TargetName: ptc_name, ServiceAddrStr: svc_addr, ServiceNetStr: svc_net}}}
 }
 
 func MakePeerStartedPacket(route_id RouteId, peer_id PeerId, remote_addr string, local_addr string) *Packet {

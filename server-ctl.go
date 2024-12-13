@@ -260,6 +260,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				jsp = append(jsp, json_out_server_route{
 					Id: r.id,
 					ClientPeerAddr: r.ptc_addr,
+					ClientPeerName: r.ptc_name,
 					ServerPeerServiceAddr: r.svc_addr.String(),
 					ServerPeerServiceNet: r.svc_permitted_net.String(),
 					ServerPeerOption: r.svc_option.string(),
@@ -346,6 +347,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			err = je.Encode(json_out_server_route{
 				Id: r.id,
 				ClientPeerAddr: r.ptc_addr,
+				ClientPeerName: r.ptc_name,
 				ServerPeerServiceAddr: r.svc_addr.String(),
 				ServerPeerServiceNet: r.svc_permitted_net.String(),
 				ServerPeerOption: r.svc_option.string(),

@@ -261,7 +261,7 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	// most useful works are triggered by ReportEvent() and done by ConnectToPeer()
 	defer wg.Done()
 
-	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.server_peer_option, r.peer_addr, r.server_peer_addr, r.server_peer_net))
+	err = r.cts.psc.Send(MakeRouteStartPacket(r.id, r.server_peer_option, r.peer_addr, r.peer_name, r.server_peer_addr, r.server_peer_net))
 	if err != nil {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Failed to send route_start for route(%d,%s,%v,%v) to %s",
@@ -285,7 +285,7 @@ done:
 	r.ReqStop()
 	r.ptc_wg.Wait() // wait for all peer tasks are finished
 
-	err = r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_option, r.peer_addr, r.server_peer_addr, r.server_peer_net))
+	err = r.cts.psc.Send(MakeRouteStopPacket(r.id, r.server_peer_option, r.peer_addr, r.peer_name, r.server_peer_addr, r.server_peer_net))
 	if err != nil {
 		r.cts.cli.log.Write(r.cts.sid, LOG_DEBUG,
 			"Failed to route_stop for route(%d,%s,%v,%v) to %s - %s",
@@ -716,12 +716,13 @@ func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 	var option RouteOption
 	var va []string
 	var svc_addr string
+	var ptc_name string
 	var err error
 
 	for _, v = range peer_addrs {
 		va = strings.Split(v, ",")
-		if len(va) <= 0 || len(va) > 2 {
-			return fmt.Errorf("invalid address %s")
+		if len(va) <= 0 || len(va) >= 4 {
+			return fmt.Errorf("invalid address %v", va)
 		}
 
 		_, port, err = net.SplitHostPort(va[0])
@@ -737,6 +738,10 @@ func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 			svc_addr = va[1]
 		}
 
+		if len(va) >= 3 {
+			ptc_name = va[2]
+		}
+
 		option = RouteOption(ROUTE_OPTION_TCP)
 		// automatic determination of protocol for common ports
 		switch port {
@@ -748,7 +753,7 @@ func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 				option |= RouteOption(ROUTE_OPTION_HTTPS)
 		}
 
-		_, err = cts.AddNewClientRoute(va[0], svc_addr, svc_addr/* TODO: accept name form parameter*/, "", option) 
+		_, err = cts.AddNewClientRoute(va[0], ptc_name, svc_addr, "", option)
 		if err != nil {
 			return fmt.Errorf("unable to add client route for %s - %s", v, err.Error())
 		}

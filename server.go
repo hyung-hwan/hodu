@@ -143,7 +143,7 @@ func (g *GuardedPacketStreamServer) Context() context.Context {
 
 // ------------------------------------
 
-func NewServerRoute(cts *ServerConn, id RouteId, option RouteOption, ptc_addr string, svc_requested_addr string, svc_permitted_net string) (*ServerRoute, error) {
+func NewServerRoute(cts *ServerConn, id RouteId, option RouteOption, ptc_addr string, ptc_name string, svc_requested_addr string, svc_permitted_net string) (*ServerRoute, error) {
 	var r ServerRoute
 	var l *net.TCPListener
 	var svcaddr *net.TCPAddr
@@ -181,6 +181,7 @@ func NewServerRoute(cts *ServerConn, id RouteId, option RouteOption, ptc_addr st
 	r.svc_option = option
 
 	r.ptc_addr = ptc_addr
+	r.ptc_name = ptc_name
 	r.pts_limit = PTS_LIMIT
 	r.pts_map = make(ServerPeerConnMap)
 	r.pts_next_id = 0
@@ -356,7 +357,7 @@ func (cts *ServerConn) make_route_listener(id RouteId, option RouteOption, svc_r
 	return l, svcaddr, nil
 }
 
-func (cts *ServerConn) AddNewServerRoute(route_id RouteId, proto RouteOption, ptc_addr string, svc_requested_addr string, svc_permitted_net string) (*ServerRoute, error) {
+func (cts *ServerConn) AddNewServerRoute(route_id RouteId, proto RouteOption, ptc_addr string, ptc_name string, svc_requested_addr string, svc_permitted_net string) (*ServerRoute, error) {
 	var r *ServerRoute
 	var err error
 
@@ -369,7 +370,7 @@ func (cts *ServerConn) AddNewServerRoute(route_id RouteId, proto RouteOption, pt
 		cts.route_mtx.Unlock()
 		return nil, fmt.Errorf("existent route id - %d", route_id)
 	}
-	r, err = NewServerRoute(cts, route_id, proto, ptc_addr, svc_requested_addr, svc_permitted_net)
+	r, err = NewServerRoute(cts, route_id, proto, ptc_addr, ptc_name, svc_requested_addr, svc_permitted_net)
 	if err != nil {
 		cts.route_mtx.Unlock()
 		return nil, err
@@ -489,13 +490,13 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				if ok {
 					var r *ServerRoute
 
-					r, err = cts.AddNewServerRoute(RouteId(x.Route.RouteId), RouteOption(x.Route.ServiceOption), x.Route.TargetAddrStr, x.Route.ServiceAddrStr, x.Route.ServiceNetStr)
+					r, err = cts.AddNewServerRoute(RouteId(x.Route.RouteId), RouteOption(x.Route.ServiceOption), x.Route.TargetAddrStr, x.Route.TargetName, x.Route.ServiceAddrStr, x.Route.ServiceNetStr)
 					if err != nil {
 						cts.svr.log.Write(cts.sid, LOG_ERROR,
 							"Failed to add route(%d,%s) for %s - %s",
 							x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr, err.Error())
 
-						err = cts.pss.Send(MakeRouteStoppedPacket(RouteId(x.Route.RouteId), RouteOption(x.Route.ServiceOption), x.Route.TargetAddrStr, x.Route.ServiceAddrStr, x.Route.ServiceNetStr))
+						err = cts.pss.Send(MakeRouteStoppedPacket(RouteId(x.Route.RouteId), RouteOption(x.Route.ServiceOption), x.Route.TargetAddrStr, x.Route.TargetName, x.Route.ServiceAddrStr, x.Route.ServiceNetStr))
 						if err != nil {
 							cts.svr.log.Write(cts.sid, LOG_ERROR,
 								"Failed to send route_stopped event(%d,%s,%v,%s) to client %s - %s",
@@ -511,7 +512,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						cts.svr.log.Write(cts.sid, LOG_INFO,
 							"Added route(%d,%s,%s,%v,%v) for client %s to cts(%d)",
 							r.id, r.ptc_addr, r.svc_addr.String(), r.svc_option, r.svc_permitted_net, cts.remote_addr, cts.id)
-						err = cts.pss.Send(MakeRouteStartedPacket(r.id, r.svc_option, r.svc_addr.String(), r.svc_requested_addr, r.svc_permitted_net.String()))
+						err = cts.pss.Send(MakeRouteStartedPacket(r.id, r.svc_option, r.svc_addr.String(), r.ptc_name, r.svc_requested_addr, r.svc_permitted_net.String()))
 						if err != nil {
 							r.ReqStop()
 							cts.svr.log.Write(cts.sid, LOG_ERROR,
@@ -541,7 +542,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						cts.svr.log.Write(cts.sid, LOG_ERROR,
 							"Deleted route(%d,%s,%s,%v,%v) for client %s",
 							r.id, r.ptc_addr, r.svc_addr.String(), r.svc_option, r.svc_permitted_net.String(), cts.remote_addr)
-						err = cts.pss.Send(MakeRouteStoppedPacket(r.id, r.svc_option, r.ptc_addr, r.svc_requested_addr, r.svc_permitted_net.String()))
+						err = cts.pss.Send(MakeRouteStoppedPacket(r.id, r.svc_option, r.ptc_addr, r.ptc_name, r.svc_requested_addr, r.svc_permitted_net.String()))
 						if err != nil {
 							r.ReqStop()
 							cts.svr.log.Write(cts.sid, LOG_ERROR,

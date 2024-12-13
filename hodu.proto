@@ -38,7 +38,7 @@ message RouteDesc {
 
 	// C->S(ROUTE_START): human-readable name of client-side peer
 	// S->C(ROUTE_STARTED): clone as sent by C
-	string TargetNameStr = 3;
+	string TargetName= 3;
 
 	// C->S(ROUTE_START): desired listening option on the server-side(e.g. tcp, tcp4, tcp6) +
 	//                    hint to the service-side peer(e.g. local) +
