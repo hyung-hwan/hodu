@@ -888,12 +888,12 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	/* create the specified number of listeners */
 	s.rpc = make([]*net.TCPListener, 0)
 	for _, addr = range rpc_addrs {
-		rpcaddr, err = net.ResolveTCPAddr(NET_TYPE_TCP, addr) // Make this interruptable???
+		rpcaddr, err = net.ResolveTCPAddr("tcp", addr) // Make this interruptable???
 		if err != nil {
 			goto oops
 		}
 
-		l, err = net.ListenTCP(NET_TYPE_TCP, rpcaddr)
+		l, err = net.ListenTCP("tcp", rpcaddr)
 		if err != nil {
 			goto oops
 		}

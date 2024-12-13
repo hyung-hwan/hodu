@@ -5,7 +5,6 @@ SRCS=\
 	client.go \
 	client-ctl.go \
 	client-peer.go \
-	frame.go \
 	hodu.go \
 	hodu.pb.go \
 	hodu_grpc.pb.go \
