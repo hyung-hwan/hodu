@@ -34,6 +34,7 @@ type Service interface {
 	RunTask(wg *sync.WaitGroup) // blocking. run the actual task loop. it must call wg.Done() upon exit from itself.
 	StartService(data interface{}) // non-blocking. spin up a service. it may be invokded multiple times for multiple instances
 	StopServices() // non-blocking. send stop request to all services spun up
+	FixServices() // do some fixup as needed
 	WaitForTermination() // blocking. must wait until all services are stopped
 	WriteLog(id string, level LogLevel, fmtstr string, args ...interface{})
 }

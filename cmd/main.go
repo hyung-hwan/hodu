@@ -29,10 +29,30 @@ var hodul_tls_key_text []byte
 // --------------------------------------------------------------------
 
 type AppLogger struct {
-	id string
-	out io.Writer
-	mtx sync.Mutex
-	mask hodu.LogMask
+	Id       string
+	Out      io.Writer
+	Mask     hodu.LogMask
+
+	_mtx     sync.Mutex
+	_file    *os.File
+}
+
+func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
+	return &AppLogger{Id: id, Out: w, Mask: mask}
+}
+
+func NewAppLoggerToFile (id string, file string, mask hodu.LogMask) (*AppLogger, error) {
+	var err error
+	var f *os.File
+
+	f, err = os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil { return nil, err }
+
+	return &AppLogger{Id: id, Out: f, Mask: mask, _file: f}, nil
+}
+
+func (l* AppLogger) Close() {
+	if l._file != nil { l._file.Close() }
 }
 
 func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ...interface{}) {
@@ -47,7 +67,7 @@ func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ..
 	var caller_line int
 	var caller_ok bool
 
-	if l.mask & hodu.LogMask(level) == 0 { return }
+	if l.Mask & hodu.LogMask(level) == 0 { return }
 
 	now = time.Now()
 
@@ -65,20 +85,20 @@ func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ..
 // TODO: add pid?
 	msg = fmt.Sprintf(fmtstr, args...)
 	if id == "" {
-		lid = fmt.Sprintf("%s: ", l.id)
+		lid = fmt.Sprintf("%s: ", l.Id)
 	} else {
-		lid = fmt.Sprintf("%s(%s): ", l.id, id)
+		lid = fmt.Sprintf("%s(%s): ", l.Id, id)
 	}
 
-	l.mtx.Lock()
-	l.out.Write([]byte(hdr))
+	l._mtx.Lock()
+	l.Out.Write([]byte(hdr))
 	if caller_ok {
-		l.out.Write([]byte(fmt.Sprintf("[%s:%d] ", filepath.Base(caller_file), caller_line)))
+		l.Out.Write([]byte(fmt.Sprintf("[%s:%d] ", filepath.Base(caller_file), caller_line)))
 	}
-	if lid != "" { l.out.Write([]byte(lid)) }
-	l.out.Write([]byte(msg))
-	if msg[len(msg) - 1] != '\n' { l.out.Write([]byte("\n")) }
-	l.mtx.Unlock()
+	if lid != "" { l.Out.Write([]byte(lid)) }
+	l.Out.Write([]byte(msg))
+	if msg[len(msg) - 1] != '\n' { l.Out.Write([]byte("\n")) }
+	l._mtx.Unlock()
 }
 
 // --------------------------------------------------------------------
@@ -105,8 +125,8 @@ chan_loop:
 	for {
 		select {
 		case <-sighup_chan:
-			// TODO:
-			//sh.svc.ReqReload()
+			sh.svc.FixServices()
+
 		case sig = <-sigterm_chan:
 			sh.svc.StopServices()
 			sh.svc.WriteLog ("", hodu.LOG_INFO, "Received %s signal", sig)
@@ -132,6 +152,9 @@ func (sh *signal_handler) StopServices() {
 	syscall.Kill(syscall.Getpid(), syscall.SIGTERM) // TODO: find a better to terminate the signal handler...
 }
 
+func (sh *signal_handler) FixServices() {
+}
+
 func (sh *signal_handler) WaitForTermination() {
 	// not implemented. see the comment in StartServices()
 	// sh.wg.Wait()
@@ -151,6 +174,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 	var ctl_prefix string
 	var logger *AppLogger
 	var log_mask hodu.LogMask
+	var log_file string
 	var max_rpc_conns int
 	var max_peers int
 	var err error
@@ -179,6 +203,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 
 		ctl_prefix = cfg.CTL.Service.Prefix
 		log_mask = log_strings_to_mask(cfg.APP.LogMask)
+		log_file = cfg.APP.LogFile
 		max_rpc_conns = cfg.APP.MaxRpcConns
 		max_peers = cfg.APP.MaxPeers
 	}
@@ -187,8 +212,15 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 		return fmt.Errorf("no rpc service addresses specified")
 	}
 
-	// TODO: Change out field depending on cfg.APP.LogFile
-	logger = &AppLogger{id: "server", out: os.Stderr, mask: log_mask}
+	if log_file == "" {
+		logger = NewAppLogger("server", os.Stderr, log_mask)
+	} else {
+		logger, err = NewAppLoggerToFile("server", log_file, log_mask)
+		if err != nil {
+			return fmt.Errorf("failed to initialize logger - %s", err.Error())
+		}
+	}
+
 	s, err = hodu.NewServer(
 		context.Background(),
 		logger,
@@ -210,6 +242,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 	s.StartPxyService()
 	s.StartExtService(&signal_handler{svc:s}, nil)
 	s.WaitForTermination()
+	logger.Close()
 
 	return nil
 }
@@ -224,6 +257,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	var cc hodu.ClientConfig
 	var logger *AppLogger
 	var log_mask hodu.LogMask
+	var log_file string
 	var max_rpc_conns int
 	var max_peers int
 	var peer_conn_tmout time.Duration
@@ -247,6 +281,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 		cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
 		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
 		log_mask = log_strings_to_mask(cfg.APP.LogMask)
+		log_file = cfg.APP.LogFile
 		max_rpc_conns = cfg.APP.MaxRpcConns
 		max_peers = cfg.APP.MaxPeers
 		peer_conn_tmout = cfg.APP.PeerConnTmout
@@ -257,7 +292,14 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	cc.ServerAddrs = rpc_addrs
 	cc.PeerAddrs = peer_addrs
 
-	logger = &AppLogger{id: "client", out: os.Stderr, mask: log_mask}
+	if log_file == "" {
+		logger = NewAppLogger("server", os.Stderr, log_mask)
+	} else {
+		logger, err = NewAppLoggerToFile("server", log_file, log_mask)
+		if err != nil {
+			return fmt.Errorf("failed to initialize logger - %s", err.Error())
+		}
+	}
 	c = hodu.NewClient(
 		context.Background(),
 		logger,
@@ -273,6 +315,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	c.StartCtlService() // control channel
 	c.StartExtService(&signal_handler{svc:c}, nil) // signal handler task
 	c.WaitForTermination()
+	logger.Close()
 
 	return nil
 }

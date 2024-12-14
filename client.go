@@ -721,36 +721,53 @@ func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
 
 	for _, v = range peer_addrs {
 		va = strings.Split(v, ",")
-		if len(va) <= 0 || len(va) >= 4 {
-			return fmt.Errorf("invalid address %v", va)
-		}
+		if len(va) <= 0 { return fmt.Errorf("blank value") }
+		if len(va) >= 5 { return fmt.Errorf("too many fields in %v", v) }
 
-		_, port, err = net.SplitHostPort(va[0])
+		_, port, err = net.SplitHostPort(strings.TrimSpace(va[0]))
 		if err != nil {
 			return fmt.Errorf("invalid address %s", va[0], err.Error())
 		}
 
 		if len(va) >= 2 {
-			_, _, err = net.SplitHostPort(va[1])
+			var f string
+			f = strings.TrimSpace(va[1])
+			_, _, err = net.SplitHostPort(f)
 			if err != nil {
 				return fmt.Errorf("invalid address %s", va[1], err.Error())
 			}
-			svc_addr = va[1]
-		}
-
-		if len(va) >= 3 {
-			ptc_name = va[2]
+			svc_addr = f
 		}
 
 		option = RouteOption(ROUTE_OPTION_TCP)
-		// automatic determination of protocol for common ports
-		switch port {
-			case "22":
-				option |= RouteOption(ROUTE_OPTION_SSH)
-			case "80":
-				option |= RouteOption(ROUTE_OPTION_HTTP)
-			case "443":
-				option |= RouteOption(ROUTE_OPTION_HTTPS)
+		if len(va) >= 3 {
+			switch strings.ToLower(strings.TrimSpace(va[2])) {
+				case "ssh":
+					option |= RouteOption(ROUTE_OPTION_SSH)
+				case "http":
+					option |= RouteOption(ROUTE_OPTION_HTTP)
+				case "https":
+					option |= RouteOption(ROUTE_OPTION_HTTPS)
+
+				case "":
+					fallthrough
+				case "auto":
+					// automatic determination of protocol for common ports
+					switch port {
+						case "22":
+							option |= RouteOption(ROUTE_OPTION_SSH)
+						case "80":
+							option |= RouteOption(ROUTE_OPTION_HTTP)
+						case "443":
+							option |= RouteOption(ROUTE_OPTION_HTTPS)
+					}
+				default:
+					return fmt.Errorf("invalid option value %s", va[2])
+			}
+		}
+
+		if len(va) >= 4 {
+			ptc_name = strings.TrimSpace(va[3])
 		}
 
 		_, err = cts.AddNewClientRoute(va[0], ptc_name, svc_addr, "", option)
@@ -1458,6 +1475,9 @@ func (c *Client) StopServices() {
 	for _, ext_svc = range c.ext_svcs {
 		ext_svc.StopServices()
 	}
+}
+
+func (s *Client) FixServices() {
 }
 
 func (c *Client) WaitForTermination() {

@@ -1373,6 +1373,9 @@ func (s *Server) StopServices() {
 	}
 }
 
+func (s *Server) FixServices() {
+}
+
 func (s *Server) WaitForTermination() {
 	s.wg.Wait()
 }
