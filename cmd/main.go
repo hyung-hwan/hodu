@@ -9,8 +9,6 @@ import "hodu"
 import "io"
 import "os"
 import "os/signal"
-import "path/filepath"
-import "runtime"
 import "strings"
 import "sync"
 import "syscall"
@@ -25,81 +23,6 @@ var HODU_VERSION string = "0.0.0"
 var hodu_tls_cert_text []byte
 //go:embed tls.key
 var hodul_tls_key_text []byte
-
-// --------------------------------------------------------------------
-
-type AppLogger struct {
-	Id       string
-	Out      io.Writer
-	Mask     hodu.LogMask
-
-	_mtx     sync.Mutex
-	_file    *os.File
-}
-
-func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
-	return &AppLogger{Id: id, Out: w, Mask: mask}
-}
-
-func NewAppLoggerToFile (id string, file string, mask hodu.LogMask) (*AppLogger, error) {
-	var err error
-	var f *os.File
-
-	f, err = os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil { return nil, err }
-
-	return &AppLogger{Id: id, Out: f, Mask: mask, _file: f}, nil
-}
-
-func (l* AppLogger) Close() {
-	if l._file != nil { l._file.Close() }
-}
-
-func (l* AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ...interface{}) {
-	var now time.Time
-	var off_m int
-	var off_h int
-	var off_s int
-	var hdr string
-	var msg string
-	var lid string
-	var caller_file string
-	var caller_line int
-	var caller_ok bool
-
-	if l.Mask & hodu.LogMask(level) == 0 { return }
-
-	now = time.Now()
-
-	_, off_s = now.Zone()
-	off_m = off_s / 60;
-	off_h = off_m / 60;
-	off_m = off_m % 60;
-	if (off_m < 0) { off_m = -off_m; }
-
-	hdr = fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d %+03d%02d ",
-		now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), off_h, off_m)
-
-	_, caller_file, caller_line, caller_ok = runtime.Caller(1)
-
-// TODO: add pid?
-	msg = fmt.Sprintf(fmtstr, args...)
-	if id == "" {
-		lid = fmt.Sprintf("%s: ", l.Id)
-	} else {
-		lid = fmt.Sprintf("%s(%s): ", l.Id, id)
-	}
-
-	l._mtx.Lock()
-	l.Out.Write([]byte(hdr))
-	if caller_ok {
-		l.Out.Write([]byte(fmt.Sprintf("[%s:%d] ", filepath.Base(caller_file), caller_line)))
-	}
-	if lid != "" { l.Out.Write([]byte(lid)) }
-	l.Out.Write([]byte(msg))
-	if msg[len(msg) - 1] != '\n' { l.Out.Write([]byte("\n")) }
-	l._mtx.Unlock()
-}
 
 // --------------------------------------------------------------------
 type signal_handler struct {
@@ -174,7 +97,9 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 	var ctl_prefix string
 	var logger *AppLogger
 	var log_mask hodu.LogMask
-	var log_file string
+	var logfile string
+	var logfile_maxsize int64
+	var logfile_rotate int
 	var max_rpc_conns int
 	var max_peers int
 	var err error
@@ -203,7 +128,9 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 
 		ctl_prefix = cfg.CTL.Service.Prefix
 		log_mask = log_strings_to_mask(cfg.APP.LogMask)
-		log_file = cfg.APP.LogFile
+		logfile = cfg.APP.LogFile
+		logfile_maxsize = cfg.APP.LogMaxSize
+		logfile_rotate = cfg.APP.LogRotate
 		max_rpc_conns = cfg.APP.MaxRpcConns
 		max_peers = cfg.APP.MaxPeers
 	}
@@ -212,10 +139,10 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 		return fmt.Errorf("no rpc service addresses specified")
 	}
 
-	if log_file == "" {
+	if logfile == "" {
 		logger = NewAppLogger("server", os.Stderr, log_mask)
 	} else {
-		logger, err = NewAppLoggerToFile("server", log_file, log_mask)
+		logger, err = NewAppLoggerToFile("server", logfile, logfile_maxsize, logfile_rotate, log_mask)
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
@@ -257,7 +184,9 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	var cc hodu.ClientConfig
 	var logger *AppLogger
 	var log_mask hodu.LogMask
-	var log_file string
+	var logfile string
+	var logfile_maxsize int64
+	var logfile_rotate int
 	var max_rpc_conns int
 	var max_peers int
 	var peer_conn_tmout time.Duration
@@ -281,7 +210,9 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 		cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
 		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
 		log_mask = log_strings_to_mask(cfg.APP.LogMask)
-		log_file = cfg.APP.LogFile
+		logfile = cfg.APP.LogFile
+		logfile_maxsize = cfg.APP.LogMaxSize
+		logfile_rotate = cfg.APP.LogRotate
 		max_rpc_conns = cfg.APP.MaxRpcConns
 		max_peers = cfg.APP.MaxPeers
 		peer_conn_tmout = cfg.APP.PeerConnTmout
@@ -292,10 +223,10 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	cc.ServerAddrs = rpc_addrs
 	cc.PeerAddrs = peer_addrs
 
-	if log_file == "" {
+	if logfile == "" {
 		logger = NewAppLogger("server", os.Stderr, log_mask)
 	} else {
-		logger, err = NewAppLoggerToFile("server", log_file, log_mask)
+		logger, err = NewAppLoggerToFile("server", logfile, logfile_maxsize, logfile_rotate, log_mask)
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}

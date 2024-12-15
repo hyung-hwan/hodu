@@ -64,6 +64,8 @@ type RPCEndpointConfig struct { // rpc client-side configuration
 type ServerAppConfig  struct {
 	LogMask     []string  `yaml:"log-mask"`
 	LogFile     string    `yaml:"log-file"`
+	LogMaxSize  int64     `yaml:"log-max-size"`
+	LogRotate   int       `yaml:"log-rotate"`
 	MaxPeers    int       `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
 }
@@ -71,6 +73,8 @@ type ServerAppConfig  struct {
 type ClientAppConfig  struct {
 	LogMask       []string      `yaml:"log-mask"`
 	LogFile       string        `yaml:"log-file"`
+	LogMaxSize    int64         `yaml:"log-max-size"`
+	LogRotate     int           `yaml:"log-rotate"`
 	MaxPeers      int           `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns   int           `yaml:"max-rpc-conns"` // maximum number of rpc connections
 	PeerConnTmout time.Duration `yaml:"peer-conn-timeout"`

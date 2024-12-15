@@ -28,6 +28,8 @@ var IPV6_PREFIX_ZERO = netip.MustParsePrefix("::/0")
 
 type Logger interface {
 	Write(id string, level LogLevel, fmtstr string, args ...interface{})
+	WriteWithCallDepth(id string, level LogLevel, call_depth int, fmtstr string, args ...interface{})
+	Rotate()
 }
 
 type Service interface {

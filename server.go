@@ -865,7 +865,8 @@ type server_http_log_writer struct {
 func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 	// the standard http.Server always requires *log.Logger
 	// use this iowriter to create a logger to pass it to the http server.
-	hlw.svr.log.Write("", LOG_INFO, string(p))
+	// since this is another log write wrapper, give adjustment value
+	hlw.svr.log.WriteWithCallDepth("", LOG_INFO, +1, string(p))
 	return len(p), nil
 }
 
@@ -1374,6 +1375,7 @@ func (s *Server) StopServices() {
 }
 
 func (s *Server) FixServices() {
+	s.log.Rotate()
 }
 
 func (s *Server) WaitForTermination() {

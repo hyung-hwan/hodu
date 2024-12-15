@@ -27,6 +27,7 @@ CMD_DATA=\
 
 CMD_SRCS=\
 	cmd/config.go \
+	cmd/logger.go \
 	cmd/main.go \
 
 all: $(NAME)

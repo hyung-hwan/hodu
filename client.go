@@ -1477,7 +1477,8 @@ func (c *Client) StopServices() {
 	}
 }
 
-func (s *Client) FixServices() {
+func (c *Client) FixServices() {
+	c.log.Rotate()
 }
 
 func (c *Client) WaitForTermination() {
