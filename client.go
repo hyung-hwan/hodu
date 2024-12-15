@@ -8,7 +8,6 @@ import "log"
 //import "math/rand"
 import "net"
 import "net/http"
-import "strings"
 import "sync"
 import "sync/atomic"
 import "time"
@@ -28,9 +27,18 @@ type ClientPeerConnMap = map[PeerId]*ClientPeerConn
 type ClientPeerCancelFuncMap = map[PeerId]context.CancelFunc
 
 // --------------------------------------------------------------------
+type ClientRouteConfig struct {
+	PeerAddr        string
+	PeerName        string
+	Option      RouteOption
+	ServiceAddr string // server-peer-service-addr
+	ServiceNet  string // server-peer-service-net
+}
+
 type ClientConfig struct {
 	ServerAddrs []string
-	PeerAddrs []string
+	//PeerAddrs []string
+	Routes      []ClientRouteConfig
 	ServerSeedTmout time.Duration
 	ServerAuthority string // http2 :authority header
 }
@@ -710,67 +718,12 @@ func (cts *ClientConn) FindClientRouteById(route_id RouteId) *ClientRoute {
 	return r
 }
 
-func (cts *ClientConn) AddClientRoutes(peer_addrs []string) error {
-	var v string
-	var port string
-	var option RouteOption
-	var va []string
-	var svc_addr string
-	var ptc_name string
+func (cts *ClientConn) AddClientRoutes(routes []ClientRouteConfig) error {
+	var v ClientRouteConfig
 	var err error
 
-	for _, v = range peer_addrs {
-		va = strings.Split(v, ",")
-		if len(va) <= 0 { return fmt.Errorf("blank value") }
-		if len(va) >= 5 { return fmt.Errorf("too many fields in %v", v) }
-
-		_, port, err = net.SplitHostPort(strings.TrimSpace(va[0]))
-		if err != nil {
-			return fmt.Errorf("invalid address %s", va[0], err.Error())
-		}
-
-		if len(va) >= 2 {
-			var f string
-			f = strings.TrimSpace(va[1])
-			_, _, err = net.SplitHostPort(f)
-			if err != nil {
-				return fmt.Errorf("invalid address %s", va[1], err.Error())
-			}
-			svc_addr = f
-		}
-
-		option = RouteOption(ROUTE_OPTION_TCP)
-		if len(va) >= 3 {
-			switch strings.ToLower(strings.TrimSpace(va[2])) {
-				case "ssh":
-					option |= RouteOption(ROUTE_OPTION_SSH)
-				case "http":
-					option |= RouteOption(ROUTE_OPTION_HTTP)
-				case "https":
-					option |= RouteOption(ROUTE_OPTION_HTTPS)
-
-				case "":
-					fallthrough
-				case "auto":
-					// automatic determination of protocol for common ports
-					switch port {
-						case "22":
-							option |= RouteOption(ROUTE_OPTION_SSH)
-						case "80":
-							option |= RouteOption(ROUTE_OPTION_HTTP)
-						case "443":
-							option |= RouteOption(ROUTE_OPTION_HTTPS)
-					}
-				default:
-					return fmt.Errorf("invalid option value %s", va[2])
-			}
-		}
-
-		if len(va) >= 4 {
-			ptc_name = strings.TrimSpace(va[3])
-		}
-
-		_, err = cts.AddNewClientRoute(va[0], ptc_name, svc_addr, "", option)
+	for _, v = range routes {
+		_, err = cts.AddNewClientRoute(v.PeerAddr, v.PeerName, v.ServiceAddr, "", v.Option)
 		if err != nil {
 			return fmt.Errorf("unable to add client route for %s - %s", v, err.Error())
 		}
@@ -892,16 +845,15 @@ start_over:
 
 	cts.psc = &GuardedPacketStreamClient{Hodu_PacketStreamClient: psc}
 
-	if len(cts.cfg.PeerAddrs) > 0 {
+	if len(cts.cfg.Routes) > 0 {
 		// the connection structure to a server is ready.
 		// let's add routes to the client-side peers if given
-		err = cts.AddClientRoutes(cts.cfg.PeerAddrs)
+		err = cts.AddClientRoutes(cts.cfg.Routes)
 		if err != nil {
-			cts.cli.log.Write(cts.sid, LOG_ERROR, "Failed to add routes to server[%s] %s for %v - %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], cts.cfg.PeerAddrs, err.Error())
+			cts.cli.log.Write(cts.sid, LOG_ERROR, "Failed to add routes to server[%d] %s for %v - %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], cts.cfg.Routes, err.Error())
 			goto done
 		}
 	}
-// TODO: remember the previouslyu POSTed routes and readd them??
 
 	for {
 		var pkt *Packet

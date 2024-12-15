@@ -7,6 +7,7 @@ import "flag"
 import "fmt"
 import "hodu"
 import "io"
+import "net"
 import "os"
 import "os/signal"
 import "strings"
@@ -176,7 +177,69 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 
 // --------------------------------------------------------------------
 
-func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cfg *ClientConfig) error {
+func parse_client_route_config(v string) (*hodu.ClientRouteConfig, error) {
+	var va []string
+	var ptc_name string
+	var svc_addr string
+	var option hodu.RouteOption
+	var port string
+	var err error
+
+	va = strings.Split(v, ",")
+
+	if len(va) <= 0 { return nil, fmt.Errorf("blank value") }
+	if len(va) >= 5 { return nil, fmt.Errorf("too many fields in %v", v) }
+
+	_, port, err = net.SplitHostPort(strings.TrimSpace(va[0]))
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %s", va[0], err.Error())
+	}
+
+	if len(va) >= 2 {
+		var f string
+		f = strings.TrimSpace(va[1])
+		_, _, err = net.SplitHostPort(f)
+		if err != nil {
+			return nil, fmt.Errorf("invalid address %s", va[1], err.Error())
+		}
+		svc_addr = f
+	}
+
+	option = hodu.RouteOption(hodu.ROUTE_OPTION_TCP)
+	if len(va) >= 3 {
+		switch strings.ToLower(strings.TrimSpace(va[2])) {
+			case "ssh":
+				option |= hodu.RouteOption(hodu.ROUTE_OPTION_SSH)
+			case "http":
+				option |= hodu.RouteOption(hodu.ROUTE_OPTION_HTTP)
+			case "https":
+				option |= hodu.RouteOption(hodu.ROUTE_OPTION_HTTPS)
+
+			case "":
+				fallthrough
+			case "auto":
+				// automatic determination of protocol for common ports
+				switch port {
+					case "22":
+						option |= hodu.RouteOption(hodu.ROUTE_OPTION_SSH)
+					case "80":
+						option |= hodu.RouteOption(hodu.ROUTE_OPTION_HTTP)
+					case "443":
+						option |= hodu.RouteOption(hodu.ROUTE_OPTION_HTTPS)
+				}
+			default:
+				return nil, fmt.Errorf("invalid option value %s", va[2])
+		}
+	}
+
+	if len(va) >= 4 {
+		ptc_name = strings.TrimSpace(va[3])
+	}
+
+	return &hodu.ClientRouteConfig{PeerAddr: va[0], PeerName: ptc_name, Option: option, ServiceAddr: svc_addr}, nil // TODO: other fields
+}
+
+func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string, cfg *ClientConfig) error {
 	var c *hodu.Client
 	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
@@ -190,6 +253,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	var max_rpc_conns int
 	var max_peers int
 	var peer_conn_tmout time.Duration
+	var i int
 	var err error
 
 	log_mask = hodu.LOG_ALL
@@ -221,7 +285,13 @@ func client_main(ctl_addrs []string, rpc_addrs []string, peer_addrs []string, cf
 	// unlke the server, we allow the client to start with no rpc address.
 	// no check if len(rpc_addrs) <= 0 is mdde here.
 	cc.ServerAddrs = rpc_addrs
-	cc.PeerAddrs = peer_addrs
+	cc.Routes = make([]hodu.ClientRouteConfig, len(route_configs))
+	for i, _ = range route_configs {
+		var c *hodu.ClientRouteConfig
+		c, err = parse_client_route_config(route_configs[i])
+		if err != nil { return err }
+		cc.Routes[i] = *c
+	}
 
 	if logfile == "" {
 		logger = NewAppLogger("server", os.Stderr, log_mask)
