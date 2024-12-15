@@ -10,6 +10,11 @@ import "strings"
 import "sync"
 import "time"
 
+type app_logger_msg_t struct {
+	code int
+	data string
+}
+
 type AppLogger struct {
 	Id              string
 	Out             io.Writer
@@ -19,39 +24,48 @@ type AppLogger struct {
 	file_name       string // you can get the file name from file but this is to preserve the original.
 	file_rotate     int
 	file_max_size   int64
-	msg_chan        chan string
-	stop_req_chan   chan struct{}
-	rotate_req_chan chan struct{}
+	msg_chan        chan app_logger_msg_t
 	wg              sync.WaitGroup
 }
 
 func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
 	var l *AppLogger
-	l = &AppLogger{Id: id, Out: w, Mask: mask, msg_chan: make(chan string, 256), stop_req_chan: make(chan struct{}, 1), rotate_req_chan: make(chan struct{}, 16) }
+	l = &AppLogger{
+		Id: id,
+		Out: w,
+		Mask: mask,
+		msg_chan: make(chan app_logger_msg_t, 256),
+	}
 	l.wg.Add(1)
 	go l.logger_task()
 	return l
 }
 
-func NewAppLoggerToFile (id string, file string, max_size int64, rotate int, mask hodu.LogMask) (*AppLogger, error) {
+func NewAppLoggerToFile (id string, file_name string, max_size int64, rotate int, mask hodu.LogMask) (*AppLogger, error) {
 	var l *AppLogger
 	var f *os.File
+	var matched bool
 	var err error
 
-	f, err = os.OpenFile(file, os.O_CREATE | os.O_APPEND | os.O_WRONLY, 0666)
+	f, err = os.OpenFile(file_name, os.O_CREATE | os.O_APPEND | os.O_WRONLY, 0666)
 	if err != nil { return nil, err }
+
+	matched, _ = filepath.Match("/dev/*", file_name)
+	if matched {
+		// if the log file is under /dev, disable rotation
+		max_size = 0
+		rotate = 0
+	}
 
 	l = &AppLogger{
 		Id: id,
 		Out: f,
 		Mask: mask,
 		file: f,
-		file_name: file,
+		file_name: file_name,
 		file_max_size: max_size,
 		file_rotate: rotate,
-		msg_chan: make(chan string, 256),
-		stop_req_chan: make(chan struct{}, 1),
-		rotate_req_chan: make(chan struct{}, 16),
+		msg_chan: make(chan app_logger_msg_t, 256),
 	}
 	l.wg.Add(1)
 	go l.logger_task()
@@ -59,42 +73,44 @@ func NewAppLoggerToFile (id string, file string, max_size int64, rotate int, mas
 }
 
 func (l *AppLogger) Close() {
-	l.stop_req_chan <- struct{}{}
+	l.msg_chan <- app_logger_msg_t{code: 1}
 	l.wg.Wait()
 	if l.file != nil { l.file.Close() }
 }
 
+func (l *AppLogger) Rotate() {
+	l.msg_chan <- app_logger_msg_t{code: 2}
+}
+
 func (l *AppLogger) logger_task() {
-	var msg string
+	var msg app_logger_msg_t
 	defer l.wg.Done()
 
 main_loop:
 	for {
 		select {
 			case msg = <-l.msg_chan:
-				//l.Out.Write([]byte(msg))
-				io.WriteString(l.Out, msg)
-				if l.file_max_size > 0 && l.file != nil {
-					var fi os.FileInfo
-					var err error
-					fi, err = l.file.Stat()
-					if err == nil && fi.Size() >= l.file_max_size {
-						l.rotate()
+				if msg.code == 0 {
+					//l.Out.Write([]byte(msg))
+					io.WriteString(l.Out, msg.data)
+					if l.file_max_size > 0 && l.file != nil {
+						var fi os.FileInfo
+						var err error
+						fi, err = l.file.Stat()
+						if err == nil && fi.Size() >= l.file_max_size {
+							l.rotate()
+						}
 					}
+				} else if msg.code == 1 {
+					break main_loop
+				} else if msg.code == 2 {
+					l.rotate()
 				}
-
-			case <-l.stop_req_chan:
-				break main_loop
-
-			case <- l.rotate_req_chan:
-				l.rotate()
+				// other code must not appear here.
 		}
 	}
 }
 
-func (l *AppLogger) Rotate() {
-	l.rotate_req_chan <- struct{}{}
-}
 
 func (l *AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ...interface{}) {
 	if l.Mask & hodu.LogMask(level) == 0 { return }
@@ -148,7 +164,7 @@ func (l *AppLogger) write(id string, level hodu.LogLevel, call_depth int, fmtstr
 	if msg[len(msg) - 1] != '\n' { sb.WriteRune('\n') }
 
 	// use queue to avoid blocking operation as much as possible
-	l.msg_chan <- sb.String()
+	l.msg_chan <- app_logger_msg_t{ code: 0, data: sb.String() }
 }
 
 func (l *AppLogger) rotate() {

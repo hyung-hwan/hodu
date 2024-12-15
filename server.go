@@ -278,7 +278,7 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 	r.ReqStop()
 
 	r.pts_wg.Wait()
-	r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "All service-side peer handlers completed on route(%d)", r.id)
+	r.cts.svr.log.Write(r.cts.sid, LOG_DEBUG, "All service-side peer handlers ended on route(%d)", r.id)
 
 	r.cts.RemoveServerRoute(r) // final phase...
 }
@@ -1060,10 +1060,10 @@ task_loop:
 	s.ReqStop()
 
 	s.rpc_wg.Wait()
-	s.log.Write("", LOG_DEBUG, "All RPC listeners completed")
+	s.log.Write("", LOG_DEBUG, "All RPC listeners ended")
 
 	s.cts_wg.Wait()
-	s.log.Write("", LOG_DEBUG, "All CTS handlers completed")
+	s.log.Write("", LOG_DEBUG, "All CTS handlers ended")
 
 	// stop the main grpc server after all the other tasks are finished.
 	s.rpc_svr.Stop()

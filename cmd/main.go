@@ -262,6 +262,7 @@ func main() {
 		var ctl_addrs []string
 		var pxy_addrs []string
 		var cfgfile string
+		var logfile string
 		var cfg *ServerConfig
 
 		ctl_addrs = make([]string, 0)
@@ -279,6 +280,10 @@ func main() {
 		})
 		flgs.Func("pxy-on", "specify a proxy listening address", func(v string) error {
 			pxy_addrs = append(pxy_addrs, v)
+			return nil
+		})
+		flgs.Func("log-file", "specify a log file", func(v string) error {
+			logfile = v
 			return nil
 		})
 		flgs.Func("config-file", "specify a configuration file path", func(v string) error {
@@ -302,6 +307,7 @@ func main() {
 				goto oops
 			}
 		}
+		if logfile != "" { cfg.APP.LogFile = logfile }
 
 		err = server_main(ctl_addrs, rpc_addrs, pxy_addrs, cfg)
 		if err != nil {
@@ -312,6 +318,7 @@ func main() {
 		var rpc_addrs []string
 		var ctl_addrs []string
 		var cfgfile string
+		var logfile string
 		var cfg *ClientConfig
 
 		ctl_addrs = make([]string, 0)
@@ -326,6 +333,10 @@ func main() {
 			rpc_addrs = append(rpc_addrs, v)
 			return nil
 		})
+		flgs.Func("log-file", "specify a log file", func(v string) error {
+			logfile = v
+			return nil
+		})
 		flgs.Func("config-file", "specify a configuration file path", func(v string) error {
 			cfgfile = v
 			return nil
@@ -338,13 +349,14 @@ func main() {
 			goto wrong_usage
 		}
 
-		if (cfgfile != "") {
+		if cfgfile != "" {
 			cfg, err = load_client_config(cfgfile)
 			if err != nil {
 				fmt.Printf ("ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
 				goto oops
 			}
 		}
+		if logfile != "" { cfg.APP.LogFile = logfile }
 
 		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), cfg)
 		if err != nil {
