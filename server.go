@@ -69,6 +69,7 @@ type Server struct {
 		conns atomic.Int64
 		routes atomic.Int64
 		peers atomic.Int64
+		ssh_proxy_sessions atomic.Int64
 	}
 
 	UnimplementedHoduServer
@@ -998,6 +999,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.stats.conns.Store(0)
 	s.stats.routes.Store(0)
 	s.stats.peers.Store(0)
+	s.stats.ssh_proxy_sessions.Store(0)
 
 	return &s, nil
 

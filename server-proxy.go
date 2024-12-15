@@ -572,6 +572,7 @@ func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
 			var n int
 			var err error
 
+			s.stats.ssh_proxy_sessions.Add(1)
 			buf = make([]byte, 2048)
 			for {
 				n, err = out.Read(buf)
@@ -589,6 +590,7 @@ func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
 					}
 				}
 			}
+			s.stats.ssh_proxy_sessions.Add(-1)
 		}
 	}()
 

@@ -34,6 +34,8 @@ type json_out_server_stats struct {
 	ServerConns int64 `json:"server-conns"`
 	ServerRoutes int64 `json:"server-routes"`
 	ServerPeers int64 `json:"server-peers"`
+
+	SshProxySessions int64 `json:"ssh-proxy-session"`
 }
 
 // ------------------------------------
@@ -402,6 +404,7 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.ServerConns = s.stats.conns.Load()
 			stats.ServerRoutes = s.stats.routes.Load()
 			stats.ServerPeers = s.stats.peers.Load()
+			stats.SshProxySessions = s.stats.ssh_proxy_sessions.Load()
 			status_code = http.StatusOK; w.WriteHeader(status_code)
 			if err = je.Encode(stats); err != nil { goto oops }
 

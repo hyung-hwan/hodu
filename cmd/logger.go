@@ -50,11 +50,14 @@ func NewAppLoggerToFile (id string, file_name string, max_size int64, rotate int
 	f, err = os.OpenFile(file_name, os.O_CREATE | os.O_APPEND | os.O_WRONLY, 0666)
 	if err != nil { return nil, err }
 
-	matched, _ = filepath.Match("/dev/*", file_name)
-	if matched {
-		// if the log file is under /dev, disable rotation
-		max_size = 0
-		rotate = 0
+	if os.PathSeparator == '/' {
+		// this check is performed only on systems where the path separator is /.
+		matched, _ = filepath.Match("/dev/*", file_name)
+		if matched {
+			// if the log file is under /dev, disable rotation
+			max_size = 0
+			rotate = 0
+		}
 	}
 
 	l = &AppLogger{
