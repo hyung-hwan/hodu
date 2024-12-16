@@ -1,9 +1,14 @@
 package hodu
 
-type ConnId     uint64
-type RouteId    uint32 // keep this in sync with the type of RouteId in hodu.proto
-type PeerId     uint32 // keep this in sync with the type of RouteId in hodu.proto
+type ConnId      uint64
+type RouteId     uint32 // keep this in sync with the type of RouteId in hodu.proto
+type PeerId      uint32 // keep this in sync with the type of RouteId in hodu.proto
 type RouteOption uint32
+
+type ConnRouteId struct {
+	conn_id ConnId
+	route_id RouteId
+}
 
 func MakeRouteStartPacket(route_id RouteId, proto RouteOption, ptc_addr string, ptc_name string, svc_addr string, svc_net string) *Packet {
 	return &Packet{

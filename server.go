@@ -22,10 +22,13 @@ import "google.golang.org/grpc/stats"
 const PTS_LIMIT int = 16384
 const CTS_LIMIT int = 16384
 
+type PortId uint16
+
 type ServerConnMapByAddr = map[net.Addr]*ServerConn
 type ServerConnMap = map[ConnId]*ServerConn
 type ServerRouteMap = map[RouteId]*ServerRoute
 type ServerPeerConnMap = map[PeerId]*ServerPeerConn
+type ServerSvcPortMap = map[PortId]ConnRouteId
 
 type Server struct {
 	ctx             context.Context
@@ -64,6 +67,9 @@ type Server struct {
 	cts_wg          sync.WaitGroup
 
 	log             Logger
+
+	svc_port_mtx    sync.Mutex
+	svc_port_map    ServerSvcPortMap
 
 	stats struct {
 		conns atomic.Int64
@@ -316,6 +322,8 @@ func (cts *ServerConn) make_route_listener(id RouteId, option RouteOption, svc_r
 	var l *net.TCPListener
 	var svcaddr *net.TCPAddr
 	var nw string
+	var prev_cri ConnRouteId
+	var ok bool
 	var err error
 
 	if svc_requested_addr != "" {
@@ -354,7 +362,20 @@ func (cts *ServerConn) make_route_listener(id RouteId, option RouteOption, svc_r
 	}
 
 	svcaddr = l.Addr().(*net.TCPAddr)
-	cts.svr.log.Write(cts.sid, LOG_DEBUG, "Route(%d) listening on %s", id, svcaddr.String())
+
+	cts.svr.svc_port_mtx.Lock()
+	prev_cri, ok = cts.svr.svc_port_map[PortId(svcaddr.Port)]
+	if ok {
+		cts.svr.log.Write(cts.sid, LOG_ERROR,
+			"Route(%d,%d) on %s not unique by port number - existing route(%d,%d)",
+			cts.id, id, prev_cri.conn_id, prev_cri.route_id, svcaddr.String())
+		l.Close()
+		return nil, nil, err
+	}
+	cts.svr.svc_port_map[PortId(svcaddr.Port)] = ConnRouteId{conn_id: cts.id, route_id: id}
+	cts.svr.svc_port_mtx.Unlock()
+
+	cts.svr.log.Write(cts.sid, LOG_DEBUG, "Route(%d,%d) listening on %s", cts.id, id, svcaddr.String())
 	return l, svcaddr, nil
 }
 
@@ -403,6 +424,10 @@ func (cts *ServerConn) RemoveServerRoute(route *ServerRoute) error {
 	cts.svr.stats.routes.Add(-1)
 	cts.route_mtx.Unlock()
 
+	cts.svr.svc_port_mtx.Lock()
+	delete(cts.svr.svc_port_map, PortId(route.svc_addr.Port))
+	cts.svr.svc_port_mtx.Unlock()
+
 	r.ReqStop()
 	return nil
 }
@@ -420,6 +445,10 @@ func (cts *ServerConn) RemoveServerRouteById(route_id RouteId) (*ServerRoute, er
 	delete(cts.route_map, route_id)
 	cts.svr.stats.routes.Add(-1)
 	cts.route_mtx.Unlock()
+
+	cts.svr.svc_port_mtx.Lock()
+	delete(cts.svr.svc_port_map, PortId(r.svc_addr.Port))
+	cts.svr.svc_port_mtx.Unlock()
 
 	r.ReqStop()
 	return r, nil
@@ -913,6 +942,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.cts_next_id = 0
 	s.cts_map = make(ServerConnMap)
 	s.cts_map_by_addr = make(ServerConnMapByAddr)
+	s.svc_port_map = make(ServerSvcPortMap)
 	s.stop_chan = make(chan bool, 8)
 	s.stop_req.Store(false)
 
@@ -965,9 +995,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.pxy_ws = &server_proxy_ssh_ws{s: &s}
 	s.pxy_mux = http.NewServeMux() // TODO: make /_init configurable...
 	s.pxy_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
-		websocket.Handler(func(ws *websocket.Conn) {
-			s.pxy_ws.ServeWebsocket(ws)
-		}))
+		websocket.Handler(func(ws *websocket.Conn) { s.pxy_ws.ServeWebsocket(ws) }))
 	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}", &server_ctl_server_conns_id_routes_id{s: &s})
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/", &server_proxy_xterm_file{s: &s, file: "xterm.html"})
 	s.pxy_mux.Handle("/_ssh/xterm.js", &server_proxy_xterm_file{s: &s, file: "xterm.js"})
@@ -1337,11 +1365,21 @@ func (s *Server) FindServerRouteById(id ConnId, route_id RouteId) *ServerRoute {
 	defer s.cts_mtx.Unlock()
 
 	cts, ok = s.cts_map[id]
-	if !ok {
-		return nil
-	}
+	if !ok { return nil }
 
 	return cts.FindServerRouteById(route_id)
+}
+
+func (s *Server) FindServerRouteByPortId(port_id PortId) *ServerRoute {
+	var cri ConnRouteId
+	var ok bool
+
+	s.svc_port_mtx.Lock()
+	defer s.svc_port_mtx.Unlock()
+
+	cri, ok = s.svc_port_map[port_id]
+	if !ok { return nil }
+	return s.FindServerRouteById(cri.conn_id, cri.route_id)
 }
 
 

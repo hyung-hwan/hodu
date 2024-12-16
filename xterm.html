@@ -90,6 +90,9 @@
 <script src="/_ssh/xterm-addon-fit.js"></script>
 
 <script>
+const conn_id = '{{ .ConnId }}';
+const route_id = '{{ .RouteId }}';
+
 window.onload = function(event) {
 	const terminal_container = document.getElementById('terminal-container');
 	const terminal_target = document.getElementById('terminal-target');
@@ -111,13 +114,13 @@ window.onload = function(event) {
 	term.open(terminal_view_container);
 
 	let set_terminal_target = function(name) {
-		terminal_target.innerHTML = name;
-		login_form_title.innerHTML = name
+		terminal_target.innerText = name;
+		login_form_title.innerText = name
 	}
 
 	let set_terminal_status = function(msg, errmsg) {
-		if (msg != null) terminal_status.innerHTML = msg;
-		if (errmsg != null) terminal_errmsg.innerHTML = errmsg
+		if (msg != null) terminal_status.innerText = msg;
+		if (errmsg != null) terminal_errmsg.innerText = errmsg
 	}
 
 	let adjust_terminal_size_unconnected = function() {
@@ -125,10 +128,12 @@ window.onload = function(event) {
 	}
 
 	let fetch_session_info = async function() {
-		let url = window.location.protocol + '//' + window.location.host + '/_ssh/server-conns/{{ .ConnId }}//routes/{{ .RouteId }}';
+		let url = window.location.protocol + '//' + window.location.host;
+		url += `/_ssh/server-conns/${conn_id}/routes/${route_id}`;
+
 		try {
 			const resp = await fetch(url);
-			if (!resp.ok) throw new Error(`HTTP error in getting route({{ .ConnId }}, {{ .RouteId }}) info - status ${resp.status}`);
+			if (!resp.ok) throw new Error(`HTTP error in getting route(${conn_id},${route_id}) info - status ${resp.status}`);
 			const route = await resp.json()
 			if ('client-peer-name' in route) {
 				set_terminal_target(route['client-peer-name']) // change to the name
@@ -161,7 +166,8 @@ window.onload = function(event) {
 		const password = password_field.value.trim();
 
 		let prefix = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-		const socket = new WebSocket(prefix + window.location.host + '/_ssh-ws/{{ .ConnId }}/{{ .RouteId }}');
+		let url = prefix + window.location.host+ `/_ssh-ws/${conn_id}/${route_id}`;
+		const socket = new WebSocket(url)
 		socket.binaryType = 'arraybuffer';
 
 		set_terminal_status('Connecting...', '');

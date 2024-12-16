@@ -1,3 +1,10 @@
+# make
+# make GOARCH=386
+# make GOARCH=amd64
+# make GOOS=linux GOARCH=mips
+#
+# 'go tool dist list' for available os and architextures
+
 NAME=hodu
 VERSION=1.0.0
 
