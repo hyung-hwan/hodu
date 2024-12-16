@@ -1006,6 +1006,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	//cwd, _ = os.Getwd() // TODO:
 	//s.pxy_mux.Handle(s.ctl_prefix + "/ui/", http.StripPrefix(s.ctl_prefix, http.FileServer(http.Dir(cwd)))) // TODO: proper directory. it must not use the current working directory...
 
+	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}", &server_proxy_http_main{s: &s, prefix: "/_http"})
 	s.pxy_mux.Handle("/_init/{conn_id}/{route_id}/{trailer...}", &server_proxy_http_init{s: &s})
 	s.pxy_mux.Handle("/", &server_proxy_http_main{s: &s})
 

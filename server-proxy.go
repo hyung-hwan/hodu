@@ -21,10 +21,6 @@ import "golang.org/x/net/http/httpguts"
 import "golang.org/x/net/websocket"
 
 const SERVER_PROXY_ID_COOKIE string = "hodu-proxy-id"
-const SERVER_PROXY_MODE_COOKIE string = "hodu-proxy-mode"
-
-const SERVER_PROXY_MODE_VERBATIM string = "verbatim"
-const SERVER_PROXY_MODE_PREFIXED string = "prefixed"
 
 //go:embed xterm.js
 var xterm_js []byte
@@ -41,6 +37,7 @@ type server_proxy_http_init struct {
 
 type server_proxy_http_main struct {
 	s *Server
+	prefix string
 }
 
 type server_proxy_ssh struct {
@@ -132,7 +129,7 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, add_path 
 	if add_path {
 		_, ok = newhdr["X-Forwarded-Path"]
 		if !ok {
-			newhdr.Set("X-Forwarded-Path", req.URL.RawPath)
+			newhdr.Set("X-Forwarded-Path", req.URL.Path)
 		}
 	}
 }
@@ -175,7 +172,6 @@ func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Re
 		goto done
 	}
 
-	w.Header().Add("Set-Cookie", fmt.Sprintf("%s=%s; Path=/; HttpOnly", SERVER_PROXY_MODE_COOKIE, SERVER_PROXY_MODE_VERBATIM))
 	w.Header().Add("Set-Cookie", fmt.Sprintf("%s=%d-%d; Path=/; HttpOnly", SERVER_PROXY_ID_COOKIE, conn_nid, route_nid)) // use the interpreted ids.
 	w.Header().Set("Location", strings.TrimPrefix(req.URL.Path, fmt.Sprintf("/_init/%s/%s", conn_id, route_id))) // use the orignal id srings
 	status_code = http.StatusFound; w.WriteHeader(status_code)
@@ -202,8 +198,11 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	var mode *http.Cookie
 	var id *http.Cookie
 	var ids []string
+	var conn_id string
+	var route_id string
 	var conn_nid uint64
 	var route_nid uint64
+	var prefixed bool
 	var client *http.Client
 	var resp *http.Response
 	var tcp_conn *net.TCPConn
@@ -211,6 +210,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	var addr net.TCPAddr
 	var proxy_req *http.Request
 	var proxy_url *url.URL
+	var proxy_url_path string
 	var proxy_proto string
 	var req_upgrade_type string
 	var err error
@@ -227,41 +227,62 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	if ctx.Done() != nil {
 	}
 */
-	mode, err = req.Cookie(SERVER_PROXY_MODE_COOKIE)
-	if err == nil {
-		if (mode.Value == SERVER_PROXY_MODE_PREFIXED) {
-			// TODO:
+
+	prefixed = true
+	conn_id = req.PathValue("conn_id")
+	route_id = req.PathValue("route_id")
+	if conn_id == "" && route_id == "" {
+		// it's not via  /_http/<<conn-id>>/<<route-id>>
+
+		id, err = req.Cookie(SERVER_PROXY_ID_COOKIE)
+		if err != nil {
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			goto oops
 		}
-	}
-	
-	id, err = req.Cookie(SERVER_PROXY_ID_COOKIE)
-	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-		goto oops
+
+		ids = strings.Split(id.Value, "-")
+		if (len(ids) != 2) {
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			err = fmt.Errorf("invalid proxy id cookie value - %s", id.Value)
+			goto oops
+		}
+
+		prefixed = false
+		conn_id = ids[0]
+		route_id = ids[1]
 	}
 
-	ids = strings.Split(id.Value, "-")
-	if (len(ids) != 2) {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-		err = fmt.Errorf("invalid proxy id cookie value - %s", id.Value)
-		goto oops
-	}
+	if route_id == "_" {
+		var port_nid uint64
 
-	conn_nid, err = strconv.ParseUint(ids[0], 10, int(unsafe.Sizeof(ConnId(0)) * 8))
-	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-		goto oops
-	}
-	route_nid, err = strconv.ParseUint(ids[1], 10, int(unsafe.Sizeof(RouteId(0)) * 8))
-	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-		goto oops
-	}
+		port_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
+		if err != nil {
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			goto oops
+		}
 
-	r = s.FindServerRouteById(ConnId(conn_nid), RouteId(route_nid))
-	if r == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
-		goto done
+		r = s.FindServerRouteByPortId(PortId(port_nid))
+		if r == nil {
+			status_code = http.StatusNotFound; w.WriteHeader(status_code)
+			goto done
+		}
+	} else {
+		conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+		if err != nil {
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			goto oops
+		}
+		route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
+		if err != nil {
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			goto oops
+		}
+
+		r = s.FindServerRouteById(ConnId(conn_nid), RouteId(route_nid))
+		if r == nil {
+			status_code = http.StatusNotFound; w.WriteHeader(status_code)
+			goto done
+		}
 	}
 
 	addr = *r.svc_addr;
@@ -297,14 +318,21 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 		proxy_proto = "http"
 	}
 
+	proxy_url_path = req.URL.Path
+	if prefixed {
+		proxy_url_path = strings.TrimPrefix(proxy_url_path, fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id))
+	}
+
 	//proxy_url = fmt.Sprintf("%s://%s%s", proxy_proto, r.ptc_addr, req.URL.Path)
 	proxy_url = &url.URL{
 		Scheme:   proxy_proto,
 		Host:     r.ptc_addr,
-		Path:     req.URL.Path,
+		Path:     proxy_url_path,
 		RawQuery: req.URL.RawQuery,
 		Fragment: req.URL.Fragment,
 	}
+
+	s.log.Write("", LOG_DEBUG, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
 
 // TODO: http.NewRequestWithContext().??
 	proxy_req, err = http.NewRequest(req.Method, proxy_url.String(), req.Body)
@@ -316,7 +344,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	if httpguts.HeaderValuesContainsToken(req.Header["Connection"], "Upgrade") {
 		req_upgrade_type = req.Header.Get("Upgrade")
 	}
-	mutate_proxy_req_headers(req, proxy_req, false)
+	mutate_proxy_req_headers(req, proxy_req, prefixed)
 
 	if httpguts.HeaderValuesContainsToken(req.Header["Te"], "trailers") {
 		proxy_req.Header.Set("Te", "trailers")
