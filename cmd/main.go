@@ -192,7 +192,7 @@ func parse_client_route_config(v string) (*hodu.ClientRouteConfig, error) {
 
 	_, port, err = net.SplitHostPort(strings.TrimSpace(va[0]))
 	if err != nil {
-		return nil, fmt.Errorf("invalid address %s", va[0], err.Error())
+		return nil, fmt.Errorf("invalid client-side peer address [%s] - %s", va[0], err.Error())
 	}
 
 	if len(va) >= 2 {
@@ -200,7 +200,7 @@ func parse_client_route_config(v string) (*hodu.ClientRouteConfig, error) {
 		f = strings.TrimSpace(va[1])
 		_, _, err = net.SplitHostPort(f)
 		if err != nil {
-			return nil, fmt.Errorf("invalid address %s", va[1], err.Error())
+			return nil, fmt.Errorf("invalid server-side service address [%s] - %s", va[1], err.Error())
 		}
 		svc_addr = f
 	}
