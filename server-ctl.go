@@ -3,8 +3,6 @@ package hodu
 import "encoding/json"
 import "net/http"
 import "runtime"
-import "strconv"
-import "unsafe"
 
 type json_out_server_conn struct {
 	Id ConnId `json:"id"`
@@ -142,7 +140,6 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	var err error
 	var je *json.Encoder
 	var conn_id string
-	var conn_nid uint64
 	var cts *ServerConn
 
 	defer func() {
@@ -154,18 +151,10 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
-
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	cts, err = get_server_conn(s, conn_id)
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
-		goto done
-	}
-
-	cts = s.FindServerConnById(ConnId(conn_nid))
-	if cts == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 		goto done
 	}
 
@@ -223,7 +212,6 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	var status_code int
 	var err error
 	var conn_id string
-	var conn_nid uint64
 	var je *json.Encoder
 	var cts *ServerConn
 
@@ -236,18 +224,10 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
-
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	cts, err = get_server_conn(s, conn_id)
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
-		goto done
-	}
-
-	cts = s.FindServerConnById(ConnId(conn_nid))
-	if cts == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 		goto done
 	}
 
@@ -296,12 +276,8 @@ oops:
 func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var s *Server
 	var status_code int
-	var port_id string
 	var conn_id string
 	var route_id string
-	var port_nid uint64
-	var conn_nid uint64
-	var route_nid uint64
 	var je *json.Encoder
 	var r *ServerRoute
 	var err error
@@ -316,54 +292,10 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
-	if route_id == "_" {
-		port_id = conn_id
-		route_id = ""
-	}
-
-	if port_id != "" {
-		// this condition is for ssh proxy server.
-		port_nid, err = strconv.ParseUint(port_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
-		if err != nil {
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-			if err = je.Encode(json_errmsg{Text: "wrong port id - " + port_id}); err != nil { goto oops }
-			goto done
-		}
-
-		r = s.FindServerRouteByPortId(PortId(port_nid))
-		if r == nil {
-			status_code = http.StatusNotFound; w.WriteHeader(status_code)
-			if err = je.Encode(json_errmsg{Text: "non-existent port id - " + port_id}); err != nil { goto oops }
-		}
-	} else {
-		var cts *ServerConn
-
-		conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
-		if err != nil {
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-			if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
-			goto done
-		}
-		route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
-		if err != nil {
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-			if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
-			goto done
-		}
-
-		cts = s.FindServerConnById(ConnId(conn_nid))
-		if cts == nil {
-			status_code = http.StatusNotFound; w.WriteHeader(status_code)
-			if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
-			goto done
-		}
-
-		r = cts.FindServerRouteById(RouteId(route_nid))
-		if r == nil {
-			status_code = http.StatusNotFound; w.WriteHeader(status_code)
-			if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
-			goto done
-		}
+	r, err = get_server_route(s, conn_id, route_id)
+	if err != nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 	}
 
 	switch req.Method {
@@ -387,8 +319,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 	}
 
-done:
-	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
+//done:
 	s.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
 	return
 
