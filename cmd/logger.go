@@ -16,9 +16,9 @@ type app_logger_msg_t struct {
 }
 
 type AppLogger struct {
-	Id              string
-	Out             io.Writer
-	Mask            hodu.LogMask
+	id              string
+	out             io.Writer
+	mask            hodu.LogMask
 
 	file            *os.File
 	file_name       string // you can get the file name from file but this is to preserve the original.
@@ -31,9 +31,9 @@ type AppLogger struct {
 func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
 	var l *AppLogger
 	l = &AppLogger{
-		Id: id,
-		Out: w,
-		Mask: mask,
+		id: id,
+		out: w,
+		mask: mask,
 		msg_chan: make(chan app_logger_msg_t, 256),
 	}
 	l.wg.Add(1)
@@ -61,9 +61,9 @@ func NewAppLoggerToFile (id string, file_name string, max_size int64, rotate int
 	}
 
 	l = &AppLogger{
-		Id: id,
-		Out: f,
-		Mask: mask,
+		id: id,
+		out: f,
+		mask: mask,
 		file: f,
 		file_name: file_name,
 		file_max_size: max_size,
@@ -94,8 +94,8 @@ main_loop:
 		select {
 			case msg = <-l.msg_chan:
 				if msg.code == 0 {
-					//l.Out.Write([]byte(msg))
-					io.WriteString(l.Out, msg.data)
+					//l.out.Write([]byte(msg))
+					io.WriteString(l.out, msg.data)
 					if l.file_max_size > 0 && l.file != nil {
 						var fi os.FileInfo
 						var err error
@@ -116,12 +116,12 @@ main_loop:
 
 
 func (l *AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ...interface{}) {
-	if l.Mask & hodu.LogMask(level) == 0 { return }
+	if l.mask & hodu.LogMask(level) == 0 { return }
 	l.write(id, level, 1, fmtstr, args...)
 }
 
 func (l *AppLogger) WriteWithCallDepth(id string, level hodu.LogLevel, call_depth int, fmtstr string, args ...interface{}) {
-	if l.Mask & hodu.LogMask(level) == 0 { return }
+	if l.mask & hodu.LogMask(level) == 0 { return }
 	l.write(id, level, call_depth + 1, fmtstr, args...)
 }
 
@@ -136,7 +136,7 @@ func (l *AppLogger) write(id string, level hodu.LogLevel, call_depth int, fmtstr
 	var caller_ok bool
 	var sb strings.Builder
 
-	//if l.Mask & hodu.LogMask(level) == 0 { return }
+	//if l.mask & hodu.LogMask(level) == 0 { return }
 
 	now = time.Now()
 
@@ -155,7 +155,7 @@ func (l *AppLogger) write(id string, level hodu.LogLevel, call_depth int, fmtstr
 	if caller_ok {
 		sb.WriteString(fmt.Sprintf("[%s:%d] ", filepath.Base(callerfile), caller_line))
 	}
-	sb.WriteString(l.Id)
+	sb.WriteString(l.id)
 	if id != "" {
 		sb.WriteString("(")
 		sb.WriteString(id)
@@ -196,12 +196,12 @@ func (l *AppLogger) rotate() {
 	if err != nil {
 		l.file.Close()
 		l.file = nil
-		l.Out = os.Stderr
+		l.out = os.Stderr
 		// don't reset l.file_name. you can derive that there was an error
-		// if l.file_name is not blank, and if l.Out is os.Stderr, 
+		// if l.file_name is not blank, and if l.out is os.Stderr,
 	} else {
 		l.file.Close()
 		l.file = f
-		l.Out = l.file
+		l.out = l.file
 	}
 }

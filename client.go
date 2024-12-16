@@ -602,14 +602,13 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 	return &cts
 }
 
-func (cts *ClientConn) AddNewClientRoute(addr string, name string, server_peer_svc_addr string, server_peer_svc_net string, option RouteOption) (*ClientRoute, error) {
+func (cts *ClientConn) AddNewClientRoute(rc *ClientRouteConfig) (*ClientRoute, error) {
 	var r *ClientRoute
 	var start_id RouteId
 
+	cts.route_mtx.Lock()
 	//start_id = RouteId(rand.Uint64())
 	start_id = cts.route_next_id
-
-	cts.route_mtx.Lock()
 	for {
 		var ok bool
 		_, ok = cts.route_map[cts.route_next_id]
@@ -621,13 +620,13 @@ func (cts *ClientConn) AddNewClientRoute(addr string, name string, server_peer_s
 		}
 	}
 
-	r = NewClientRoute(cts, cts.route_next_id, addr, name, server_peer_svc_addr, server_peer_svc_net, option)
+	r = NewClientRoute(cts, cts.route_next_id, rc.PeerAddr, rc.PeerName, rc.ServiceAddr, rc.ServiceNet, rc.Option)
 	cts.route_map[r.id] = r
 	cts.route_next_id++
 	cts.cli.stats.routes.Add(1)
 	cts.route_mtx.Unlock()
 
-	cts.cli.log.Write(cts.sid, LOG_INFO, "Added route(%d,%s)", r.id, addr)
+	cts.cli.log.Write(cts.sid, LOG_INFO, "Added route(%d,%d) %s", cts.id, r.id, r.peer_addr)
 
 	cts.route_wg.Add(1)
 	go r.RunTask(&cts.route_wg)
@@ -718,12 +717,18 @@ func (cts *ClientConn) FindClientRouteById(route_id RouteId) *ClientRoute {
 	return r
 }
 
+func (cts *ClientConn) AddClientRouteConfig (route *ClientRouteConfig) {
+	cts.route_mtx.Lock()
+	cts.cfg.Routes = append(cts.cfg.Routes, *route)
+	cts.route_mtx.Unlock()
+}
+
 func (cts *ClientConn) AddClientRoutes(routes []ClientRouteConfig) error {
 	var v ClientRouteConfig
 	var err error
 
 	for _, v = range routes {
-		_, err = cts.AddNewClientRoute(v.PeerAddr, v.PeerName, v.ServiceAddr, "", v.Option)
+		_, err = cts.AddNewClientRoute(&v)
 		if err != nil {
 			return fmt.Errorf("unable to add client route for %s - %s", v, err.Error())
 		}

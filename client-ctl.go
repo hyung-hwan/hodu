@@ -155,6 +155,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					jsp = append(jsp, json_out_client_route{
 						Id: r.id,
 						ClientPeerAddr: r.peer_addr,
+						ClientPeerName: r.peer_name,
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 						ServerPeerNet: r.server_peer_net,
 						ServerPeerOption: r.server_peer_option.string(),
@@ -273,6 +274,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				jsp = append(jsp, json_out_client_route{
 					Id: r.id,
 					ClientPeerAddr: r.peer_addr,
+					ClientPeerName: r.peer_name,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
 					ServerPeerOption: r.server_peer_option.string(),
@@ -370,6 +372,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 		case http.MethodPost:
 			var jcr json_in_client_route
 			var r *ClientRoute
+			var rc *ClientRouteConfig
 			var server_peer_option RouteOption
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
@@ -391,7 +394,16 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				goto oops
 			}
 
-			r, err = cts.AddNewClientRoute(jcr.ClientPeerAddr, jcr.ClientPeerName, jcr.ServerPeerServiceAddr, jcr.ServerPeerServiceNet, server_peer_option)
+			rc = &ClientRouteConfig{
+				PeerAddr: jcr.ClientPeerAddr,
+				PeerName: jcr.ClientPeerName,
+				Option: server_peer_option,
+				ServiceAddr: jcr.ServerPeerServiceAddr,
+				ServiceNet: jcr.ServerPeerServiceNet,
+			}
+
+			//cts.AddClientRouteConfig(rc) // TODO: this is to remember... but how to delete it?
+			r, err = cts.AddNewClientRoute(rc)
 			if err != nil {
 				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
@@ -477,6 +489,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			err = je.Encode(json_out_client_route{
 				Id: r.id,
 				ClientPeerAddr: r.peer_addr,
+				ClientPeerName: r.peer_name,
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				ServerPeerNet: r.server_peer_net,
 				ServerPeerOption: r.server_peer_option.string(),
