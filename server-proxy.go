@@ -32,6 +32,7 @@ var xterm_html []byte
 
 type server_proxy_http_init struct {
 	s *Server
+	prefix string
 }
 
 type server_proxy_http_main struct {
@@ -77,7 +78,7 @@ func delete_hop_by_hop_headers(header http.Header) {
 	}
 }
 
-func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, add_path bool) {
+func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_prefix string) {
 	var hdr http.Header
 	var newhdr http.Header
 	var remote_addr string
@@ -125,10 +126,21 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, add_path 
 		newhdr.Set("X-Forwarded-Host", req.Host)
 	}
 
-	if add_path {
+	if path_prefix != "" {
+		var v []string
+
 		_, ok = newhdr["X-Forwarded-Path"]
 		if !ok {
 			newhdr.Set("X-Forwarded-Path", req.URL.Path)
+		}
+
+		v, ok = newhdr["X-Forwarded-Path-Prefix"]
+		if !ok {
+			newhdr.Set("X-Forwarded-Path-Prefix", path_prefix)
+		} else {
+			// TODO: how to multiple existing items...
+			//       there isn't supposed to be multiple items...
+			newhdr.Set("X-Forwarded-Path-Prefix", v[0] + path_prefix)
 		}
 	}
 }
@@ -142,6 +154,7 @@ func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Re
 	var conn_id string
 	var route_id string
 	var hdr http.Header
+	var path_prefix string
 	var err error
 
 	defer func() {
@@ -153,6 +166,7 @@ func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
+	path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
 
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
 	if err != nil {
@@ -162,7 +176,7 @@ func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	hdr = w.Header()
 	hdr.Add("Set-Cookie", fmt.Sprintf("%s=%s-%s; Path=/; HttpOnly", SERVER_PROXY_ID_COOKIE, r.cts.id, r.id)) // use numeric id
-	hdr.Set("Location", strings.TrimPrefix(req.URL.Path, fmt.Sprintf("/_init/%s/%s", conn_id, route_id))) // use the original ids as in the request
+	hdr.Set("Location", strings.TrimPrefix(req.URL.Path, path_prefix)) // use the original ids as in the request
 	status_code = http.StatusFound; w.WriteHeader(status_code)
 
 //done:
@@ -187,7 +201,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	var id *http.Cookie
 	var conn_id string
 	var route_id string
-	var prefixed bool
+	var path_prefix string
 	var client *http.Client
 	var resp *http.Response
 	var tcp_conn *net.TCPConn
@@ -213,7 +227,6 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 */
 
-	prefixed = true
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
 	if conn_id == "" && route_id == "" {
@@ -233,9 +246,11 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 			goto oops
 		}
 
-		prefixed = false
 		conn_id = ids[0]
 		route_id = ids[1]
+		path_prefix = ""
+	} else {
+		path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
 	}
 
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
@@ -278,9 +293,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 
 	proxy_url_path = req.URL.Path
-	if prefixed {
-		proxy_url_path = strings.TrimPrefix(proxy_url_path, fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id))
-	}
+	if path_prefix != "" { proxy_url_path = strings.TrimPrefix(proxy_url_path, path_prefix) }
 
 	proxy_url = &url.URL{
 		Scheme:   proxy_proto,
@@ -302,7 +315,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	if httpguts.HeaderValuesContainsToken(req.Header["Connection"], "Upgrade") {
 		req_upgrade_type = req.Header.Get("Upgrade")
 	}
-	mutate_proxy_req_headers(req, proxy_req, prefixed)
+	mutate_proxy_req_headers(req, proxy_req, path_prefix)
 
 	if httpguts.HeaderValuesContainsToken(req.Header["Te"], "trailers") {
 		proxy_req.Header.Set("Te", "trailers")
@@ -338,7 +351,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 			hdr.Set("Location", xxx)
 		}*/
 
-		if !prefixed {
+		if path_prefix == "" {
 			hdr.Add("Set-Cookie", fmt.Sprintf("%s=%d-%d; Path=/; HttpOnly", SERVER_PROXY_ID_COOKIE, conn_id, route_id))
 		}
 		status_code = resp.StatusCode; w.WriteHeader(status_code)
