@@ -151,7 +151,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
-	cts, err = get_server_conn(s, conn_id)
+	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
@@ -224,7 +224,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
-	cts, err = get_server_conn(s, conn_id)
+	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
 		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
@@ -292,7 +292,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
-	r, err = get_server_route(s, conn_id, route_id)
+	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
 	if err != nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }

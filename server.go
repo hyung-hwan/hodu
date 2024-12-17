@@ -9,8 +9,10 @@ import "log"
 import "net"
 import "net/http"
 import "net/netip"
+import "strconv"
 import "sync"
 import "sync/atomic"
+import "unsafe"
 
 import "golang.org/x/net/websocket"
 import "google.golang.org/grpc"
@@ -1383,6 +1385,58 @@ func (s *Server) FindServerRouteByPortId(port_id PortId) *ServerRoute {
 	return s.FindServerRouteById(cri.conn_id, cri.route_id)
 }
 
+func (s *Server) FindServerRouteByIdStr(conn_id string, route_id string) (*ServerRoute, error) {
+	var r *ServerRoute
+	var err error
+
+	if route_id == "_" {
+		var port_nid uint64
+
+		port_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
+		if err != nil {
+			return nil, fmt.Errorf("invalid port id %s - %s", conn_id, err.Error())
+		}
+
+		r = s.FindServerRouteByPortId(PortId(port_nid))
+		if r == nil {
+			return nil, fmt.Errorf("port(%d) not found", port_nid)
+		}
+	} else {
+		var conn_nid uint64
+		var route_nid uint64
+
+		conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+		if err != nil { return nil, fmt.Errorf("invalid connection id - %s", err.Error()) }
+
+		route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
+		if err != nil { return nil, fmt.Errorf("invalid route id - %s", err.Error()) }
+
+		r = s.FindServerRouteById(ConnId(conn_nid), RouteId(route_nid))
+		if r == nil {
+			return nil, fmt.Errorf("route(%d,%d) not found", conn_nid, route_nid)
+		}
+	}
+
+	return r, nil
+}
+
+func (s *Server) FindServerConnByIdStr(conn_id string) (*ServerConn, error) {
+	var conn_nid uint64
+	var cts *ServerConn
+	var err error
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	if err != nil {
+		return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error());
+	}
+
+	cts = s.FindServerConnById(ConnId(conn_nid))
+	if cts == nil {
+		return nil, fmt.Errorf("non-existent connection id %d", conn_nid)
+	}
+
+	return cts, nil
+}
 
 func (s *Server) StartService(cfg interface{}) {
 	s.wg.Add(1)
