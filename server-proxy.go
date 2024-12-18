@@ -134,13 +134,13 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 			newhdr.Set("X-Forwarded-Path", req.URL.Path)
 		}
 
-		v, ok = newhdr["X-Forwarded-Path-Prefix"]
+		v, ok = newhdr["X-Forwarded-Prefix"]
 		if !ok {
-			newhdr.Set("X-Forwarded-Path-Prefix", path_prefix)
+			newhdr.Set("X-Forwarded-Prefix", path_prefix)
 		} else {
 			// TODO: how to multiple existing items...
 			//       there isn't supposed to be multiple items...
-			newhdr.Set("X-Forwarded-Path-Prefix", v[0] + path_prefix)
+			newhdr.Set("X-Forwarded-Prefix", v[0] + path_prefix)
 		}
 	}
 }
