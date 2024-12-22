@@ -1,5 +1,6 @@
 package hodu
 
+import "net"
 import "net/http"
 import "net/netip"
 import "os"
@@ -111,4 +112,21 @@ func dump_call_frame_and_exit(log Logger, req *http.Request, err interface{}) {
 	buf = make([]byte, 65536); buf = buf[:min(65536, runtime.Stack(buf, false))]
 	log.Write("", LOG_ERROR, "[%s] %s %s - %v\n%s", req.RemoteAddr, req.Method, req.URL.String(), err, string(buf))
 	os.Exit(99) // fatal error. treat panic() as a fatal runtime error
+}
+
+func svc_addr_to_dst_addr (svc_addr *net.TCPAddr) *net.TCPAddr {
+	var addr net.TCPAddr
+
+	addr = *svc_addr
+	if addr.IP.To4() != nil {
+		if addr.IP.IsUnspecified() {
+			addr.IP = net.IPv4(127, 0, 0, 1) // net.IPv4loopback is not defined. so use net.IPv4()
+		}
+	} else {
+		if addr.IP.IsUnspecified() {
+			addr.IP = net.IPv6loopback // net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+		}
+	}
+
+	return &addr
 }
