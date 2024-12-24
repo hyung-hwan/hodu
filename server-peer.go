@@ -64,7 +64,7 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 		goto done_without_stop
 	}
 
-	tmr = time.NewTimer(2 * time.Second) // TODO: make this configurable...
+	tmr = time.NewTimer(4 * time.Second) // TODO: make this configurable...
 wait_for_started:
 	for {
 		select {

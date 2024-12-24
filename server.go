@@ -1010,7 +1010,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 
 	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}", &server_proxy_http_main{s: &s, prefix: "/_http"})
 	s.pxy_mux.Handle("/_init/{conn_id}/{route_id}/{trailer...}", &server_proxy_http_init{s: &s, prefix: "/_init"})
-	s.pxy_mux.Handle("/", &server_proxy_http_main{s: &s})
+	s.pxy_mux.Handle("/", &server_proxy_http_main{s: &s, prefix: ""})
 
 	s.pxy_addr = make([]string, len(pxy_addrs))
 	s.pxy = make([]*http.Server, len(pxy_addrs))
@@ -1197,6 +1197,11 @@ func (s *Server) ReqStop() {
 		var cts *ServerConn
 		var hs *http.Server
 
+		// call cancellation function before anything else
+		// to break sub-tasks relying on this server context.
+		// for example, http.Client in server_proxy_http_main
+		s.ctx_cancel()
+
 		for _, hs = range s.ctl {
 			hs.Shutdown(s.ctx) // to break s.ctl.Serve()
 		}
@@ -1218,7 +1223,6 @@ func (s *Server) ReqStop() {
 		s.cts_mtx.Unlock()
 
 		s.stop_chan <- true
-		s.ctx_cancel()
 	}
 }
 

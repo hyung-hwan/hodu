@@ -1299,6 +1299,7 @@ func (c *Client) ReqStop() {
 		var cts *ClientConn
 		var ctl *http.Server
 
+		c.ctx_cancel()
 		for _, ctl = range c.ctl {
 			ctl.Shutdown(c.ctx) // to break c.ctl.ListenAndServe()
 		}
@@ -1308,7 +1309,6 @@ func (c *Client) ReqStop() {
 		}
 
 		c.stop_chan <- true
-		c.ctx_cancel()
 	}
 }
 
