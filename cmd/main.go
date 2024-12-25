@@ -90,11 +90,12 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 
 // --------------------------------------------------------------------
 
-func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg *ServerConfig) error {
+func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx_addrs []string, cfg *ServerConfig) error {
 	var s *hodu.Server
 	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
 	var pxytlscfg *tls.Config
+	var wpxtlscfg *tls.Config
 	var ctl_prefix string
 	var logger *AppLogger
 	var log_mask hodu.LogMask
@@ -114,18 +115,13 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 		if err != nil { return err }
 		pxytlscfg, err = make_tls_server_config(&cfg.PXY.TLS)
 		if err != nil { return err }
+		wpxtlscfg, err = make_tls_server_config(&cfg.WPX.TLS)
+		if err != nil { return err }
 
-		if len(ctl_addrs) <= 0 {
-			ctl_addrs = cfg.CTL.Service.Addrs
-		}
-
-		if len(rpc_addrs) <= 0 {
-			rpc_addrs = cfg.RPC.Service.Addrs
-		}
-
-		if len(pxy_addrs) <= 0 {
-			pxy_addrs = cfg.PXY.Service.Addrs
-		}
+		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
+		if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Service.Addrs }
+		if len(pxy_addrs) <= 0 { pxy_addrs = cfg.PXY.Service.Addrs }
+		if len(wpx_addrs) <= 0 { wpx_addrs = cfg.WPX.Service.Addrs }
 
 		ctl_prefix = cfg.CTL.Service.Prefix
 		log_mask = log_strings_to_mask(cfg.APP.LogMask)
@@ -155,10 +151,12 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 		ctl_addrs,
 		rpc_addrs,
 		pxy_addrs,
+		wpx_addrs,
 		ctl_prefix,
 		ctltlscfg,
 		rpctlscfg,
 		pxytlscfg,
+		wpxtlscfg,
 		max_rpc_conns,
 		max_peers)
 	if err != nil {
@@ -168,6 +166,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, cfg
 	s.StartService(nil)
 	s.StartCtlService()
 	s.StartPxyService()
+	s.StartWpxService()
 	s.StartExtService(&signal_handler{svc:s}, nil)
 	s.WaitForTermination()
 	logger.Close()
@@ -331,6 +330,7 @@ func main() {
 		var rpc_addrs []string
 		var ctl_addrs []string
 		var pxy_addrs []string
+		var wpx_addrs []string
 		var cfgfile string
 		var logfile string
 		var cfg *ServerConfig
@@ -338,6 +338,7 @@ func main() {
 		ctl_addrs = make([]string, 0)
 		rpc_addrs = make([]string, 0)
 		pxy_addrs = make([]string, 0)
+		wpx_addrs = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
 		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
@@ -350,6 +351,10 @@ func main() {
 		})
 		flgs.Func("pxy-on", "specify a proxy listening address", func(v string) error {
 			pxy_addrs = append(pxy_addrs, v)
+			return nil
+		})
+		flgs.Func("wpx-on", "specify a wpx listening address", func(v string) error {
+			wpx_addrs = append(wpx_addrs, v)
 			return nil
 		})
 		flgs.Func("log-file", "specify a log file", func(v string) error {
@@ -379,7 +384,7 @@ func main() {
 		}
 		if logfile != "" { cfg.APP.LogFile = logfile }
 
-		err = server_main(ctl_addrs, rpc_addrs, pxy_addrs, cfg)
+		err = server_main(ctl_addrs, rpc_addrs, pxy_addrs, wpx_addrs, cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops
@@ -443,7 +448,7 @@ func main() {
 	os.Exit(0)
 
 wrong_usage:
-	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --pxy-on=addr:port [--config-file=file]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s client --rpc-server=addr:port --ctl-on=addr:port [--config-file=file] [peer-addr:peer-port ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)

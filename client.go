@@ -240,11 +240,8 @@ func (r *ClientRoute) ReqStopAllClientPeerConns() {
 	var c *ClientPeerConn
 
 	r.ptc_mtx.Lock()
-	defer r.ptc_mtx.Unlock()
-
-	for _, c = range r.ptc_map {
-		c.ReqStop()
-	}
+	for _, c = range r.ptc_map { c.ReqStop() }
+	r.ptc_mtx.Unlock()
 }
 
 func (r *ClientRoute) FindClientPeerConnById(conn_id PeerId) *ClientPeerConn {
@@ -310,9 +307,11 @@ done:
 func (r *ClientRoute) ReqStop() {
 	if r.stop_req.CompareAndSwap(false, true) {
 		var ptc *ClientPeerConn
-		for _, ptc = range r.ptc_map {
-			ptc.ReqStop()
-		}
+
+		r.ptc_mtx.Lock()
+		for _, ptc = range r.ptc_map { ptc.ReqStop() }
+		r.ptc_mtx.Unlock()
+
 		r.stop_chan <- true
 	}
 }
@@ -634,13 +633,9 @@ func (cts *ClientConn) AddNewClientRoute(rc *ClientRouteConfig) (*ClientRoute, e
 
 func (cts *ClientConn) ReqStopAllClientRoutes() {
 	var r *ClientRoute
-
 	cts.route_mtx.Lock()
-	defer cts.route_mtx.Unlock()
-
-	for _, r = range cts.route_map {
-		r.ReqStop()
-	}
+	for _, r = range cts.route_map { r.ReqStop() }
+	cts.route_mtx.Unlock()
 }
 
 /*
@@ -741,9 +736,7 @@ func (cts *ClientConn) disconnect_from_server() {
 		var r *ClientRoute
 
 		cts.route_mtx.Lock()
-		for _, r = range cts.route_map {
-			r.ReqStop()
-		}
+		for _, r = range cts.route_map { r.ReqStop() }
 		cts.route_mtx.Unlock()
 
 		cts.conn.Close()
@@ -1174,13 +1167,9 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 
 func (c *Client) ReqStopAllClientConns() {
 	var cts *ClientConn
-
 	c.cts_mtx.Lock()
-	defer c.cts_mtx.Unlock()
-
-	for _, cts = range c.cts_map {
-		cts.ReqStop()
-	}
+	for _, cts = range c.cts_map { cts.ReqStop() }
+	c.cts_mtx.Unlock()
 }
 
 /*
@@ -1312,9 +1301,9 @@ func (c *Client) ReqStop() {
 			ctl.Shutdown(c.ctx) // to break c.ctl.ListenAndServe()
 		}
 
-		for _, cts = range c.cts_map {
-			cts.ReqStop()
-		}
+		c.cts_mtx.Lock()
+		for _, cts = range c.cts_map { cts.ReqStop() }
+		c.cts_mtx.Unlock()
 
 		c.stop_chan <- true
 	}

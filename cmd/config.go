@@ -93,6 +93,11 @@ type ServerConfig struct {
 		TLS ServerTLSConfig         `yaml:"tls"`
 	} `yaml:"pxy"`
 
+	WPX struct {
+		Service PXYServiceConfig    `yaml:"service"`
+		TLS ServerTLSConfig         `yaml:"tls"`
+	} `yaml:"wpx"`
+
 	RPC struct {
 		Service RPCServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`

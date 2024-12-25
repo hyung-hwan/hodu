@@ -25,6 +25,7 @@ const PTS_LIMIT int = 16384
 const CTS_LIMIT int = 16384
 
 type PortId uint16
+const PORT_ID_MARKER string = "_"
 
 type ServerConnMapByAddr = map[net.Addr]*ServerConn
 type ServerConnMap = map[ConnId]*ServerConn
@@ -36,6 +37,7 @@ type Server struct {
 	ctx             context.Context
 	ctx_cancel      context.CancelFunc
 	pxytlscfg       *tls.Config
+	wpxtlscfg       *tls.Config
 	ctltlscfg       *tls.Config
 	rpctlscfg       *tls.Config
 
@@ -50,6 +52,10 @@ type Server struct {
 	pxy_ws          *server_proxy_ssh_ws
 	pxy_mux         *http.ServeMux
 	pxy             []*http.Server // proxy server
+
+	wpx_addr        []string
+	wpx_mux         *http.ServeMux
+	wpx             []*http.Server // proxy server than handles http/https only
 
 	ctl_addr        []string
 	ctl_prefix      string
@@ -296,9 +302,9 @@ func (r *ServerRoute) ReqStop() {
 	if r.stop_req.CompareAndSwap(false, true) {
 		var pts *ServerPeerConn
 
-		for _, pts = range r.pts_map {
-			pts.ReqStop()
-		}
+		r.pts_mtx.Lock()
+		for _, pts = range r.pts_map { pts.ReqStop() }
+		r.pts_mtx.Unlock()
 
 		r.svc_l.Close()
 	}
@@ -475,11 +481,8 @@ func (cts *ServerConn) ReqStopAllServerRoutes() {
 	var r *ServerRoute
 
 	cts.route_mtx.Lock()
-	defer cts.route_mtx.Unlock()
-
-	for _, r = range cts.route_map {
-		r.ReqStop()
-	}
+	for _, r = range cts.route_map { r.ReqStop() }
+	cts.route_mtx.Unlock()
 }
 
 func (cts *ServerConn) ReportEvent(route_id RouteId, pts_id PeerId, event_type PACKET_KIND, event_data interface{}) error {
@@ -725,9 +728,9 @@ func (cts *ServerConn) ReqStop() {
 	if cts.stop_req.CompareAndSwap(false, true) {
 		var r *ServerRoute
 
-		for _, r = range cts.route_map {
-			r.ReqStop()
-		}
+		cts.route_mtx.Lock()
+		for _, r = range cts.route_map { r.ReqStop() }
+		cts.route_mtx.Unlock()
 
 		// there is no good way to break a specific connection client to
 		// the grpc server. while the global grpc server is closed in
@@ -902,7 +905,7 @@ func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, pxytlscfg *tls.Config, rpc_max int, peer_max int) (*Server, error) {
+func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, pxytlscfg *tls.Config, wpxtlscfg *tls.Config, rpc_max int, peer_max int) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
 	var rpcaddr *net.TCPAddr
@@ -938,6 +941,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.ctltlscfg = ctltlscfg
 	s.rpctlscfg = rpctlscfg
 	s.pxytlscfg = pxytlscfg
+	s.wpxtlscfg = wpxtlscfg
 	s.ext_svcs = make([]Service, 0, 1)
 	s.pts_limit = peer_max
 	s.cts_limit = rpc_max
@@ -995,7 +999,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	// ---------------------------------------------------------
 
 	s.pxy_ws = &server_proxy_ssh_ws{s: &s}
-	s.pxy_mux = http.NewServeMux() // TODO: make /_init configurable...
+	s.pxy_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh_ws,_http configurable...
 	s.pxy_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
 		websocket.Handler(func(ws *websocket.Conn) { s.pxy_ws.ServeWebsocket(ws) }))
 	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}", &server_ctl_server_conns_id_routes_id{s: &s})
@@ -1004,9 +1008,6 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js", &server_proxy_xterm_file{s: &s, file: "xterm-addon-fit.js"})
 	s.pxy_mux.Handle("/_ssh/xterm.css", &server_proxy_xterm_file{s: &s, file: "xterm.css"})
 	s.pxy_mux.Handle("/_ssh/", &server_proxy_xterm_file{s: &s, file: "_forbidden"})
-
-	//cwd, _ = os.Getwd() // TODO:
-	//s.pxy_mux.Handle(s.ctl_prefix + "/ui/", http.StripPrefix(s.ctl_prefix, http.FileServer(http.Dir(cwd)))) // TODO: proper directory. it must not use the current working directory...
 
 	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}", &server_proxy_http_main{s: &s, prefix: "/_http"})
 	s.pxy_mux.Handle("/_init/{conn_id}/{route_id}/{trailer...}", &server_proxy_http_init{s: &s, prefix: "/_init"})
@@ -1021,6 +1022,28 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 			Addr: pxy_addrs[i],
 			Handler: s.pxy_mux,
 			TLSConfig: s.pxytlscfg,
+			ErrorLog: hs_log,
+			// TODO: more settings
+		}
+	}
+
+	// ---------------------------------------------------------
+
+	s.wpx_mux = http.NewServeMux()
+	s.wpx_mux.Handle("/{port_id}/{trailer...}", &server_proxy_http_main{s: &s, prefix: PORT_ID_MARKER})
+	s.wpx_mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	})
+
+	s.wpx_addr = make([]string, len(wpx_addrs))
+	s.wpx = make([]*http.Server, len(wpx_addrs))
+	copy(s.wpx_addr, wpx_addrs)
+
+	for i = 0; i < len(wpx_addrs); i++ {
+		s.wpx[i] = &http.Server{
+			Addr: wpx_addrs[i],
+			Handler: s.wpx_mux,
+			TLSConfig: s.wpxtlscfg,
 			ErrorLog: hs_log,
 			// TODO: more settings
 		}
@@ -1191,6 +1214,49 @@ func (s *Server) RunPxyTask(wg *sync.WaitGroup) {
 	l_wg.Wait()
 }
 
+func (s *Server) RunWpxTask(wg *sync.WaitGroup) {
+	var err error
+	var wpx *http.Server
+	var idx int
+	var l_wg sync.WaitGroup
+
+	defer wg.Done()
+
+	for idx, wpx = range s.wpx {
+		l_wg.Add(1)
+		go func(i int, cs *http.Server) {
+			var l net.Listener
+
+			s.log.Write("", LOG_INFO, "Wpx channel[%d] started on %s", i, s.wpx_addr[i])
+
+			if s.stop_req.Load() == false {
+				l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
+				if err == nil {
+					if s.stop_req.Load() == false {
+						if s.wpxtlscfg == nil { // TODO: change this
+							err = cs.Serve(l)
+						} else {
+							err = cs.ServeTLS(l, "", "") // s.wpxtlscfg must provide a certificate and a key
+						}
+					} else {
+						err = fmt.Errorf("stop requested")
+					}
+					l.Close()
+				}
+			} else {
+				err = fmt.Errorf("stop requested")
+			}
+			if errors.Is(err, http.ErrServerClosed) {
+				s.log.Write("", LOG_INFO, "Wpx channel[%d] ended", i)
+			} else {
+				s.log.Write("", LOG_ERROR, "Wpx channel[%d] error - %s", i, err.Error())
+			}
+			l_wg.Done()
+		}(idx, wpx)
+	}
+	l_wg.Wait()
+}
+
 func (s *Server) ReqStop() {
 	if s.stop_req.CompareAndSwap(false, true) {
 		var l *net.TCPListener
@@ -1210,16 +1276,19 @@ func (s *Server) ReqStop() {
 			hs.Shutdown(s.ctx) // to break s.pxy.Serve()
 		}
 
+		for _, hs = range s.wpx {
+			hs.Shutdown(s.ctx) // to break s.wpx.Serve()
+		}
+
 		//s.rpc_svr.GracefulStop()
 		//s.rpc_svr.Stop()
 		for _, l = range s.rpc {
 			l.Close()
 		}
 
+		// request to stop connections from/to peer held in the cts structure
 		s.cts_mtx.Lock()
-		for _, cts = range s.cts_map {
-			cts.ReqStop() // request to stop connections from/to peer held in the cts structure
-		}
+		for _, cts = range s.cts_map { cts.ReqStop() }
 		s.cts_mtx.Unlock()
 
 		s.stop_chan <- true
@@ -1279,13 +1348,9 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 
 func (s *Server) ReqStopAllServerConns() {
 	var cts *ServerConn
-
 	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
-
-	for _, cts = range s.cts_map {
-		cts.ReqStop()
-	}
+	for _, cts = range s.cts_map { cts.ReqStop() }
+	s.cts_mtx.Unlock()
 }
 
 func (s *Server) RemoveServerConn(cts *ServerConn) error {
@@ -1393,7 +1458,7 @@ func (s *Server) FindServerRouteByIdStr(conn_id string, route_id string) (*Serve
 	var r *ServerRoute
 	var err error
 
-	if route_id == "_" {
+	if route_id == PORT_ID_MARKER {
 		var port_nid uint64
 
 		port_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
@@ -1453,6 +1518,11 @@ func (s *Server) StartCtlService() {
 func (s *Server) StartPxyService() {
 	s.wg.Add(1)
 	go s.RunPxyTask(&s.wg)
+}
+
+func (s *Server) StartWpxService() {
+	s.wg.Add(1)
+	go s.RunWpxTask(&s.wg)
 }
 
 func (s *Server) StopServices() {

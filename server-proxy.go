@@ -5,7 +5,6 @@ import "context"
 import "crypto/tls"
 import _ "embed"
 import "encoding/json"
-import "errors"
 import "fmt"
 import "io"
 import "net"
@@ -40,6 +39,7 @@ type server_proxy_http_init struct {
 type server_proxy_http_main struct {
 	s *Server
 	prefix string
+	restore bool // restore URLs in response text
 }
 
 type server_proxy_ssh struct {
@@ -212,48 +212,6 @@ func prevent_follow_redirect (req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-func (pxy *server_proxy_http_main) serve_websocket(w http.ResponseWriter, req *http.Request, ws_url string, target *net.TCPAddr) {
-	pxy.s.log.Write("", LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), ws_url)
-
-	websocket.Handler(func(wc *websocket.Conn) {
-		var ws *websocket.Conn
-		var err_chan chan error
-		var err error
-
-		defer wc.Close()
-
-// TODO: timeout or cancellation
-// TODO: use DialConfig??
-		ws, err = websocket.Dial(ws_url, "", req.Header.Get("Origin"))
-		if err != nil {
-	// TODO: logging
-			return
-		}
-		defer ws.Close()
-
-		err_chan = make(chan error, 2)
-
-		go func() {
-			// client to server
-			var err error
-			_, err = io.Copy(ws, wc)
-			err_chan <- err
-		}()
-
-		go func() {
-			// server to client
-			var err error
-			_, err = io.Copy(wc, ws)
-			err_chan <- err
-		}()
-
-		err = <-err_chan
-		if err != nil && errors.Is(err, io.EOF) {
-	// TODO: logging
-		}
-	}).ServeHTTP(w, req)
-}
-
 func (pxy *server_proxy_http_main) get_route(req *http.Request) (*ServerRoute, string, string, string, error) {
 	var conn_id string
 	var route_id string
@@ -261,8 +219,13 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request) (*ServerRoute, s
 	var path_prefix string
 	var err error
 
-	conn_id = req.PathValue("conn_id")
-	route_id = req.PathValue("route_id")
+	if pxy.prefix == PORT_ID_MARKER { // for wpx
+		conn_id = req.PathValue("port_id")
+		route_id = pxy.prefix
+	} else {
+		conn_id = req.PathValue("conn_id")
+		route_id = req.PathValue("route_id")
+	}
 	if conn_id == "" && route_id == "" {
 		// it's not via  /_http/<<conn-id>>/<<route-id>>.
 		// get ids from the cookie.
@@ -283,18 +246,17 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request) (*ServerRoute, s
 		route_id = ids[1]
 		path_prefix = ""
 	} else {
-		path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
+		if pxy.prefix == PORT_ID_MARKER { // for wpx
+			path_prefix = fmt.Sprintf("/%s", conn_id)
+		} else {
+			path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
+		}
 	}
 
 	r, err = pxy.s.FindServerRouteByIdStr(conn_id, route_id)
 	if err != nil {	return nil, "", "", "", err	}
 
 	return r, path_prefix, conn_id, route_id, nil
-}
-
-func (pxy *server_proxy_http_main) get_upgrade_type(hdr http.Header) string {
-	if httpguts.HeaderValuesContainsToken(hdr["Connection"], "Upgrade") { return  hdr.Get("Upgrade") }
-	return ""
 }
 
 func (pxy *server_proxy_http_main) serve_upgraded(w http.ResponseWriter, req *http.Request, proxy_res *http.Response) error {
@@ -431,6 +393,14 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 		goto oops
 	}
 
+/*
+	if r.svc_option & (RouteOption(ROUTE_OPTION_HTTP) | RouteOption(ROUTE_OPTION_HTTPS)) == 0 {
+		status_code = http.StatusForbidden; w.WriteHeader(status_code)
+		err = fmt.Errorf("target not http/https")
+		goto oops
+	}
+*/
+
 	addr = svc_addr_to_dst_addr(r.svc_addr)
 	//transport, err = pxy.addr_to_transport(req.Context(), addr)
 	transport, err = pxy.addr_to_transport(s.ctx, addr)
@@ -535,7 +505,6 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 			var tmpl *template.Template
 			var conn_id string
 			var route_id string
-			//var r *ServerRoute
 
 			conn_id = req.PathValue("conn_id")
 			route_id = req.PathValue("route_id")
@@ -564,7 +533,6 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 		default:
 			status_code = http.StatusNotFound; w.WriteHeader(status_code)
 	}
-
 
 //done:
 	s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
@@ -622,7 +590,7 @@ func (pxy *server_proxy_ssh_ws) connect_ssh (ctx context.Context, username strin
 
 /* Is this protection needed?
 	if r.svc_option & RouteOption(ROUTE_OPTION_SSH) == 0 {
-		err = fmt.Errorf("peer not ssh")
+		err = fmt.Errorf("target not ssh")
 		goto oops
 	}
 */

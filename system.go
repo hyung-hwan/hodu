@@ -24,7 +24,7 @@ func monotonic_time() uint64 {
 		var r uintptr
 		var sts syscall.Timespec
 		r, _, _/*errno*/ = syscall.Syscall(syscall.SYS_CLOCK_GETTIME, unix.CLOCK_MONOTONIC, uintptr(unsafe.Pointer(&sts)), 0)
-		if r == ^uintptr(0) { return uint64(n) } // may be negative cast to unsigned. no other fall-back
+		if r == ^uintptr(0) { return uint64(n) } // may be a negative number cast to unsigned. no other fall-back
 		return uint64(sts.Nano())
 	}
 
