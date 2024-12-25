@@ -349,14 +349,20 @@ func (pxy *server_proxy_http_main) serve_upgraded(w http.ResponseWriter, req *ht
 }
 
 func (pxy *server_proxy_http_main) addr_to_transport (ctx context.Context, addr *net.TCPAddr) (*http.Transport, error) {
-	var err error
 	var dialer *net.Dialer
+	var waitctx context.Context
+	var cancel_wait context.CancelFunc
 	var conn net.Conn
+	var err error
 
+	// establish the connection.
 	dialer = &net.Dialer{}
-	conn, err = dialer.DialContext(ctx, "tcp", addr.String())
+	waitctx, cancel_wait = context.WithTimeout(ctx, 3 * time.Second) // TODO: make timeout configurable
+	conn, err = dialer.DialContext(waitctx, "tcp", addr.String())
+	cancel_wait()
 	if err != nil { return nil, err }
 
+	// create a transport that uses the connection
 	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return conn, nil
@@ -442,17 +448,15 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 		status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 		goto oops
 	}
-
 	upgrade_required = mutate_proxy_req_headers(req, proxy_req, path_prefix)
-fmt.Printf ("AAAAAAAAAAAAAAAAAAAAa\n")
+
 //fmt.Printf ("proxy NEW req [%+v]\n", proxy_req.Header)
 	client = &http.Client{
 		Transport: transport,
 		CheckRedirect: prevent_follow_redirect,
-		Timeout: 5 * time.Second,
+		Timeout: 4 * time.Second, // TODO: make this configurable....
 	}
 	resp, err = client.Do(proxy_req)
-fmt.Printf ("BBBBBBBBBBBBBBBBBBBBBBBB\n")
 	//resp, err = transport.RoundTrip(proxy_req)
 	if err != nil {
 		status_code = http.StatusInternalServerError; w.WriteHeader(status_code)

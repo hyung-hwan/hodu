@@ -325,8 +325,8 @@ func (r *ClientRoute) ConnectToPeer(pts_id PeerId, route_option RouteOption, pts
 	var real_conn_laddr string
 	var ptc *ClientPeerConn
 	var d net.Dialer
-	var ctx context.Context
-	var cancel context.CancelFunc
+	var waitctx context.Context
+	var cancel_wait context.CancelFunc
 	var tmout time.Duration
 	var ok bool
 
@@ -337,16 +337,17 @@ func (r *ClientRoute) ConnectToPeer(pts_id PeerId, route_option RouteOption, pts
 	defer wg.Done()
 
 	tmout = time.Duration(r.cts.cli.ptc_tmout)
-	if tmout <= 0 { tmout = 10 * time.Second}
-	ctx, cancel = context.WithTimeout(r.cts.cli.ctx, tmout)
+	if tmout <= 0 { tmout = 5 * time.Second} // TODO: make this configurable...
+	waitctx, cancel_wait = context.WithTimeout(r.cts.cli.ctx, tmout)
 	r.ptc_mtx.Lock()
-	r.ptc_cancel_map[pts_id] = cancel
+	r.ptc_cancel_map[pts_id] = cancel_wait
 	r.ptc_mtx.Unlock()
 
 	d.LocalAddr = nil // TOOD: use this if local address is specified
-	conn, err = d.DialContext(ctx, "tcp", r.peer_addr)
+	conn, err = d.DialContext(waitctx, "tcp", r.peer_addr)
 
 	r.ptc_mtx.Lock()
+	cancel_wait()
 	delete(r.ptc_cancel_map, pts_id)
 	r.ptc_mtx.Unlock()
 
@@ -412,9 +413,7 @@ func (r *ClientRoute) DisconnectFromPeer(ptc *ClientPeerConn) error {
 	p, ok = r.ptc_map[ptc.conn_id]
 	if ok && p == ptc {
 		cancel, ok = r.ptc_cancel_map[ptc.conn_id]
-		if ok {
-			cancel()
-		}
+		if ok { cancel() }
 	}
 	r.ptc_mtx.Unlock()
 
@@ -784,6 +783,7 @@ func timed_interceptor(tmout time.Duration) grpc.UnaryClientInterceptor {
 func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	var psc PacketStreamClient
 	var slpctx context.Context
+	var cancel_sleep context.CancelFunc
 	var c_seed Seed
 	var s_seed *Seed
 	var p *peer.Peer
@@ -1015,6 +1015,8 @@ start_over:
 
 done:
 	cts.cli.log.Write(cts.sid, LOG_INFO, "Disconnected from server[%d] %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
+
+req_stop_and_wait_for_termination:
 	//cts.RemoveClientRoutes() // this isn't needed as each task removes itself from cts upon its termination
 	cts.ReqStop()
 
@@ -1024,21 +1026,27 @@ wait_for_termination:
 	return
 
 reconnect_to_server:
+	if cts.conn != nil {
+		cts.cli.log.Write(cts.sid, LOG_INFO, "Disconnecting from server[%d] %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
+	}
 	cts.disconnect_from_server()
 
 	// wait for 2 seconds
-	slpctx, _ = context.WithTimeout(cts.cli.ctx, 2 * time.Second)
+	slpctx, cancel_sleep = context.WithTimeout(cts.cli.ctx, 2 * time.Second)
 	select {
 		case <-cts.cli.ctx.Done():
 			// need to log cts.cli.ctx.Err().Error()?
-			goto done
+			cancel_sleep()
+			goto req_stop_and_wait_for_termination
 		case <-cts.stop_chan:
 			// this signal indicates that ReqStop() has been called
 			// so jumt to the waiting label
+			cancel_sleep()
 			goto wait_for_termination
 		case <-slpctx.Done():
 			// do nothing
 	}
+	cancel_sleep()
 	goto start_over // and reconnect
 }
 

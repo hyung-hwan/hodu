@@ -1,5 +1,6 @@
 package hodu
 
+import "context"
 import "errors"
 import "io"
 import "net"
@@ -44,7 +45,8 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 	var pss *GuardedPacketStreamServer
 	var n int
 	var buf [4096]byte
-	var tmr *time.Timer
+	var waitctx context.Context
+	var cancel_wait context.CancelFunc
 	var status bool
 	var err error
 	var conn_raddr string
@@ -64,29 +66,30 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 		goto done_without_stop
 	}
 
-	tmr = time.NewTimer(4 * time.Second) // TODO: make this configurable...
+	// set up a timer to set waiting duration until the connection is
+	// actually established on the client side and it's informed...
+	waitctx, cancel_wait = context.WithTimeout(spc.route.cts.svr.ctx, 4 * time.Second)
 wait_for_started:
 	for {
 		select {
 			case status = <- spc.client_peer_status_chan:
-				if status {
-					break wait_for_started
-				} else {
+				if !status {
 					// the socket must have been closed too.
+					cancel_wait()
 					goto done
 				}
+				break wait_for_started
 
-			case <- tmr.C:
-				// connection failure, not in time
-				tmr.Stop()
+			case <- waitctx.Done():
+				cancel_wait()
 				goto done
 
 			case <-spc.stop_chan:
-				tmr.Stop()
+				cancel_wait()
 				goto done
 		}
 	}
-	tmr.Stop()
+	cancel_wait()
 
 	for {
 		n, err = spc.conn.Read(buf[:])
