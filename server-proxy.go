@@ -454,7 +454,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	client = &http.Client{
 		Transport: transport,
 		CheckRedirect: prevent_follow_redirect,
-		Timeout: 4 * time.Second, // TODO: make this configurable....
+		Timeout: 5 * time.Second, // TODO: make this configurable....
 	}
 	resp, err = client.Do(proxy_req)
 	//resp, err = transport.RoundTrip(proxy_req)
@@ -617,14 +617,15 @@ func (pxy *server_proxy_ssh_ws) connect_ssh (ctx context.Context, username strin
 		User: username,
 		Auth: []ssh.AuthMethod{ ssh.Password(password) },
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		// Timeout: 2 * time.Second ,
+		// Timeout: 5 * time.Second , // timeout is also set on the passed ctx. it may not been needed here.
 	}
 
-// CHECK OPTIONS
-	// if r.svc_option & RouteOption(ROUTE_OPTION_SSH) == 0 {
-	// REJECT??
-	//}
-// TODO: timeout...
+/* Is this protection needed?
+	if r.svc_option & RouteOption(ROUTE_OPTION_SSH) == 0 {
+		err = fmt.Errorf("peer not ssh")
+		goto oops
+	}
+*/
 
 	addr = svc_addr_to_dst_addr(r.svc_addr);
 
@@ -767,6 +768,7 @@ ws_recv_loop:
 										conn_ready_chan <- true
 									}
 								}
+								connect_ssh_cancel()
 								connect_ssh_cancel = nil
 							}()
 						}
