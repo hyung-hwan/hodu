@@ -38,30 +38,40 @@ type json_out_server_stats struct {
 
 // ------------------------------------
 
-type server_ctl_server_conns struct {
-	s *Server
-}
-
-type server_ctl_server_conns_id struct {
-	s *Server
-}
-
-type server_ctl_server_conns_id_routes struct {
-	s *Server
-}
-
-type server_ctl_server_conns_id_routes_id struct {
-	s *Server
-}
-
-type server_ctl_stats struct {
+type server_ctl struct {
 	s *Server
 	id string
 }
 
+type server_ctl_server_conns struct {
+	server_ctl
+}
+
+type server_ctl_server_conns_id struct {
+	server_ctl
+}
+
+type server_ctl_server_conns_id_routes struct {
+	server_ctl
+}
+
+type server_ctl_server_conns_id_routes_id struct {
+	server_ctl
+}
+
+type server_ctl_stats struct {
+	server_ctl
+}
+
 // ------------------------------------
 
-func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *server_ctl) GetId() string {
+	return ctl.id
+}
+
+// ------------------------------------
+
+func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
 	var err error
@@ -125,17 +135,15 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 	}
 
 //done:
-	s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
-func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
 	var err error
@@ -198,17 +206,15 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	}
 
 done:
-	s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
-	return
+	return status_code, nil
 
 oops:
-	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
-func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
 	var err error
@@ -264,17 +270,15 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	}
 
 done:
-	s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
-func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
 	var conn_id string
@@ -321,19 +325,13 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	}
 
 //done:
-	s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
-
-func (ctl *server_ctl_stats) GetId() string {
-	return ctl.id
-}
 
 func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server

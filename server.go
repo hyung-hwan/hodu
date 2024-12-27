@@ -934,9 +934,9 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 
 		if status_code > 0 {
 			if err == nil {
-				s.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %v", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken)
+				s.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
 			} else {
-				s.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %v - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken, err.Error())
+				s.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
 			}
 		}
 	})
@@ -1015,11 +1015,16 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.ctl_prefix = ctl_prefix
 	s.ctl_mux = http.NewServeMux()
 
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns", &server_ctl_server_conns{s: &s})
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}", &server_ctl_server_conns_id{s: &s})
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes", &server_ctl_server_conns_id_routes{s: &s})
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes/{route_id}", &server_ctl_server_conns_id_routes_id{s: &s})
-	s.ctl_mux.Handle(s.ctl_prefix + "/stats", s.wrap_http_handler(&server_ctl_stats{s: &s, id: "ctl-stat"}))
+	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns",
+		s.wrap_http_handler(&server_ctl_server_conns{server_ctl{s: &s, id: "ctl"}}))
+	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}",
+		s.wrap_http_handler(&server_ctl_server_conns_id{server_ctl{s: &s, id: "ctl"}}))
+	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes",
+		s.wrap_http_handler(&server_ctl_server_conns_id_routes{server_ctl{s: &s, id: "ctl"}}))
+	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes/{route_id}",
+		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: "ctl"}}))
+	s.ctl_mux.Handle(s.ctl_prefix + "/stats",
+		s.wrap_http_handler(&server_ctl_stats{server_ctl{s: &s, id: "ctl"}}))
 
 	s.ctl_addr = make([]string, len(ctl_addrs))
 	s.ctl = make([]*http.Server, len(ctl_addrs))
@@ -1041,16 +1046,25 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.pxy_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh_ws,_http configurable...
 	s.pxy_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
 		websocket.Handler(func(ws *websocket.Conn) { s.pxy_ws.ServeWebsocket(ws) }))
-	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}", &server_ctl_server_conns_id_routes_id{s: &s})
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/", s.wrap_http_handler(&server_proxy_xterm_file{s: &s, file: "xterm.html", id: "pxy-file"}))
-	s.pxy_mux.Handle("/_ssh/xterm.js", s.wrap_http_handler(&server_proxy_xterm_file{s: &s, file: "xterm.js", id: "pxy-file"}))
-	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js", s.wrap_http_handler(&server_proxy_xterm_file{s: &s, file: "xterm-addon-fit.js", id: "pxy-file"}))
-	s.pxy_mux.Handle("/_ssh/xterm.css", s.wrap_http_handler(&server_proxy_xterm_file{s: &s, file: "xterm.css", id: "pxy-file"}))
-	s.pxy_mux.Handle("/_ssh/", s.wrap_http_handler(&server_proxy_xterm_file{s: &s, file: "_forbidden", id: "pxy-file"}))
+	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
+		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: "pxy-ctl"}}))
+	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm.html"}))
+	s.pxy_mux.Handle("/_ssh/xterm.js",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm.js"}))
+	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm-addon-fit.js"}))
+	s.pxy_mux.Handle("/_ssh/xterm.css",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm.css"}))
+	s.pxy_mux.Handle("/_ssh/",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "_forbidden"}))
 
-	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}", s.wrap_http_handler(&server_proxy_http_main{s: &s, prefix: "/_http", id: "pxy-http"}))
-	s.pxy_mux.Handle("/_init/{conn_id}/{route_id}/{trailer...}", s.wrap_http_handler(&server_proxy_http_init{s: &s, prefix: "/_init", id: "pxy-http"}))
-	s.pxy_mux.Handle("/", s.wrap_http_handler(&server_proxy_http_main{s: &s, prefix: "", id: "pxy-http"}))
+	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}",
+		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "pxy-http"}, prefix: "/_http"}))
+	s.pxy_mux.Handle("/_init/{conn_id}/{route_id}/{trailer...}",
+		s.wrap_http_handler(&server_proxy_http_init{server_proxy: server_proxy{s: &s, id: "pxy-http"}, prefix: "/_init"}))
+	s.pxy_mux.Handle("/",
+		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "pxy-http"}, prefix: ""}))
 
 	s.pxy_addr = make([]string, len(pxy_addrs))
 	s.pxy = make([]*http.Server, len(pxy_addrs))
@@ -1069,7 +1083,8 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	// ---------------------------------------------------------
 
 	s.wpx_mux = http.NewServeMux()
-	s.wpx_mux.Handle("/{port_id}/{trailer...}", s.wrap_http_handler(&server_proxy_http_main{s: &s, prefix: PORT_ID_MARKER, id: "wpx"}))
+	s.wpx_mux.Handle("/{port_id}/{trailer...}",
+		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "wpx"}, prefix: PORT_ID_MARKER}))
 	s.wpx_mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	})

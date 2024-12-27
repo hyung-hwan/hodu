@@ -36,7 +36,7 @@ CMD_DATA=\
 CMD_SRCS=\
 	cmd/config.go \
 	cmd/logger.go \
-	cmd/main.go \
+	cmd/main.go
 
 all: $(NAME)
 
@@ -76,4 +76,4 @@ cmd/tls.crt:
 cmd/tls.key:
 	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=$(NAME)" --addext "subjectAltName=DNS:$(NAME),IP:10.0.0.1,IP:::1"
 
-.PHONY: clean certfiles
+.PHONY: clean

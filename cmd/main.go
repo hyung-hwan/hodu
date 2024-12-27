@@ -15,7 +15,6 @@ import "sync"
 import "syscall"
 import "time"
 
-
 // Don't change these items to 'const' as they can be overridden externally with a linker option
 var HODU_NAME string = "hodu"
 var HODU_VERSION string = "0.0.0"
@@ -375,7 +374,7 @@ func main() {
 
 		if flgs.NArg() > 0 { goto wrong_usage }
 
-		if (cfgfile != "") {
+		if cfgfile != "" {
 			cfg, err = load_server_config(cfgfile)
 			if err != nil {
 				fmt.Printf ("ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())

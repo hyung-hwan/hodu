@@ -31,22 +31,24 @@ var xterm_css []byte
 //go:embed xterm.html
 var xterm_html []byte
 
-type server_proxy_http_init struct {
+type server_proxy struct {
 	s *Server
-	prefix string
 	id string
+}
+
+type server_proxy_http_init struct {
+	server_proxy
+	prefix string
 }
 
 type server_proxy_http_main struct {
-	s *Server
+	server_proxy
 	prefix string
-	id string
 }
 
 type server_proxy_xterm_file struct {
-	s *Server
+	server_proxy
 	file string
-	id string
 }
 
 // ------------------------------------
@@ -168,11 +170,11 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 	return upgrade_required
 }
 
-// ------------------------------------
-
-func (pxy *server_proxy_http_init) GetId() string {
+func (pxy *server_proxy) GetId() string {
 	return pxy.id
 }
+
+// ------------------------------------
 
 func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
@@ -364,10 +366,6 @@ func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *Serve
 	}
 }
 
-func (pxy *server_proxy_http_main) GetId() string {
-	return pxy.id
-}
-
 func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var r *ServerRoute
@@ -487,10 +485,6 @@ oops:
 type server_proxy_xterm_session_info struct {
 	ConnId string
 	RouteId string
-}
-
-func (pxy *server_proxy_xterm_file) GetId() string {
-	return pxy.id
 }
 
 func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {

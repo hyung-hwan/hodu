@@ -51,6 +51,10 @@ type PXYServiceConfig struct {
 	Addrs  []string `yaml:"addresses"`
 }
 
+type WPXServiceConfig struct {
+	Addrs  []string `yaml:"addresses"`
+}
+
 type RPCServiceConfig struct { // rpc server-side configuration
 	Addrs     []string  `yaml:"addresses"`
 }
@@ -94,7 +98,7 @@ type ServerConfig struct {
 	} `yaml:"pxy"`
 
 	WPX struct {
-		Service PXYServiceConfig    `yaml:"service"`
+		Service WPXServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
 	} `yaml:"wpx"`
 

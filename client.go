@@ -1071,6 +1071,32 @@ func (hlw *client_ctl_log_writer) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+type ClientHttpHandler interface {
+	GetId() string
+	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
+}
+
+func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var status_code int
+		var err error
+		var start_time time.Time
+		var time_taken time.Duration
+
+		start_time = time.Now()
+		status_code, err = handler.ServeHTTP(w, req)
+		time_taken = time.Now().Sub(start_time)
+
+		if status_code > 0 {
+			if err == nil {
+				c.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
+			} else {
+				c.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+			}
+		}
+	})
+}
+
 func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, rpc_max int, peer_max int, peer_conn_tmout time.Duration) *Client {
 	var c Client
 	var i int
@@ -1091,13 +1117,21 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 	c.ctl_prefix = ctl_prefix
 
 	c.ctl_mux = http.NewServeMux()
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns", &client_ctl_client_conns{c: &c})
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}", &client_ctl_client_conns_id{c: &c})
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes", &client_ctl_client_conns_id_routes{c: &c})
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}", &client_ctl_client_conns_id_routes_id{c: &c})
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers", &client_ctl_client_conns_id_routes_id_peers{c: &c})
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}", &client_ctl_client_conns_id_routes_id_peers_id{c: &c})
-	c.ctl_mux.Handle(c.ctl_prefix + "/stats", &client_ctl_stats{c: &c})
+	//c.ctl_mux.Handle(c.ctl_prefix + "/client-conns", c.wrap_http_handler(&client_ctl_client_conns{c: &c, id: "ctl"}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns",
+		c.wrap_http_handler(&client_ctl_client_conns{client_ctl{c: &c, id: "ctl"}}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}",
+		c.wrap_http_handler(&client_ctl_client_conns_id{client_ctl{c: &c, id: "ctl"}}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes",
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes{client_ctl{c: &c, id: "ctl"}}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}",
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id{client_ctl{c: &c, id: "ctl"}}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers",
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers{client_ctl{c: &c, id: "ctl"}}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers_id{client_ctl{c: &c, id: "ctl"}}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/stats",
+		c.wrap_http_handler(&client_ctl_stats{client_ctl{c: &c, id: "ctl"}}))
 
 	c.ctl_addr = make([]string, len(ctl_addrs))
 	c.ctl = make([]*http.Server, len(ctl_addrs))

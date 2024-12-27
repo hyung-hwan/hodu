@@ -144,7 +144,7 @@ func (l *AppLogger) write(id string, level hodu.LogLevel, call_depth int, fmtstr
 	off_m = off_s / 60;
 	off_h = off_m / 60;
 	off_m = off_m % 60;
-	if (off_m < 0) { off_m = -off_m; }
+	if off_m < 0 { off_m = -off_m; }
 
 	sb.WriteString(
 		fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d %+03d%02d ",

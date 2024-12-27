@@ -88,36 +88,50 @@ type json_out_client_stats struct {
 }
 // ------------------------------------
 
-type client_ctl_client_conns struct {
+type client_ctl struct {
 	c *Client
+	id string
+}
+
+type client_ctl_client_conns struct {
+	client_ctl
+	//c *Client
+	//id string
 }
 
 type client_ctl_client_conns_id struct {
-	c *Client
+	client_ctl
 }
 
 type client_ctl_client_conns_id_routes struct {
-	c *Client
+	client_ctl
 }
 
 type client_ctl_client_conns_id_routes_id struct {
-	c *Client
+	client_ctl
 }
 
 type client_ctl_client_conns_id_routes_id_peers struct {
-	c *Client
+	client_ctl
 }
 
 type client_ctl_client_conns_id_routes_id_peers_id struct {
-	c *Client
+	client_ctl
 }
 
 type client_ctl_stats struct {
-	c *Client
+	client_ctl
 }
+
 // ------------------------------------
 
-func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *client_ctl) GetId() string {
+	return ctl.id
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
 	var err error
@@ -217,19 +231,16 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 	}
 
 done:
-	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
-	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
 // client-conns/{conn_id}
-func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
 	var err error
@@ -303,18 +314,15 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	}
 
 done:
-	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
-	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
-func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
 	var err error
@@ -422,18 +430,15 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	}
 
 done:
-	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
-	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
-func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
 	var err error
@@ -505,18 +510,15 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	}
 
 done:
-	// TODO: need to handle x-forwarded-for and other stuff? this is not a real web service, though
-	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
-func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
 	var err error
@@ -586,18 +588,17 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 		default:
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 	}
+
 done:
-	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
-func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
 	var err error
@@ -672,17 +673,15 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 	}
 
 done:
-	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
 
-func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
 	var err error
@@ -718,10 +717,8 @@ func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	}
 
 //done:
-	c.log.Write("", LOG_DEBUG, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
-	return
+	return status_code, nil
 
 oops:
-	c.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	return
+	return status_code, err
 }
