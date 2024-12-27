@@ -20,7 +20,8 @@ SRCS=\
 	server-ctl.go \
 	server-peer.go \
 	server-proxy.go \
-	system.go
+	system.go \
+	transform.go \
 
 DATA = \
 	xterm.css \
@@ -40,7 +41,10 @@ CMD_SRCS=\
 all: $(NAME)
 
 $(NAME): $(DATA) $(SRCS) $(CMD_DATA) $(CMD_SRCS)
-	CGO_ENABLED=0 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)'" -o $@ $(CMD_SRCS)
+	##go build -buildmode=plugin -o modres.so hook/modres.go
+	##CGO_ENABLED=0 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)'" -o $@ $(CMD_SRCS)
+	CGO_ENABLED=1 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)'" -o $@ $(CMD_SRCS)
+	##CGO_ENABLED=1 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)' -linkmode external -extldflags=-static" -o $@ $(CMD_SRCS)
 
 clean:
 	go clean -x -i

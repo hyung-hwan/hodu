@@ -16,7 +16,7 @@ func monotonic_time() uint64 {
 	var uts unix.Timespec
 
 	n = nanotime() // hopefully it's faster than a system call. say, vdso is utilized.
-	if (n >= 0) { return uint64(n) }
+	if n >= 0 { return uint64(n) }
 
 	err = unix.ClockGettime(unix.CLOCK_MONOTONIC, &uts)
 	if err != nil {

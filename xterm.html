@@ -106,7 +106,11 @@ window.onload = function(event) {
 	const username_field = document.getElementById('username');
 	const password_field= document.getElementById('password');
 
-	const term = new window.Terminal();
+	const term = new window.Terminal({
+		lineHeight: 1.2,
+		//fontSize: 14,
+		fontFamily: 'Ubuntu Mono, Consolas, SF Mono, courier-new, courier, monospace'
+	});
 	const fit_addon = new window.FitAddon.FitAddon();
 	const text_decoder = new TextDecoder();
 

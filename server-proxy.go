@@ -34,21 +34,25 @@ var xterm_html []byte
 type server_proxy_http_init struct {
 	s *Server
 	prefix string
+	id string
 }
 
 type server_proxy_http_main struct {
 	s *Server
 	prefix string
-	restore bool // restore URLs in response text
+	id string
 }
 
-type server_proxy_ssh struct {
+type server_proxy_xterm_file struct {
 	s *Server
+	file string
+	id string
 }
+
 // ------------------------------------
 
 //Copied from net/http/httputil/reverseproxy.go
-var hopHeaders = []string{
+var hop_headers = []string{
 	"Connection",
 	"Proxy-Connection", // non-standard but still sent by libcurl and rejected by e.g. google
 	"Keep-Alive",
@@ -75,12 +79,12 @@ func copy_headers(dst http.Header, src http.Header) {
 func delete_hop_by_hop_headers(header http.Header) {
 	var h string
 
-	for _, h = range hopHeaders {
+	for _, h = range hop_headers {
 		header.Del(h)
 	}
 }
 
-func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_prefix string) bool {
+func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_prefix string, in_wpx_mode bool) bool {
 	var hdr http.Header
 	var newhdr http.Header
 	var remote_addr string
@@ -143,7 +147,7 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 		newhdr.Set("X-Forwarded-Host", req.Host)
 	}
 
-	if path_prefix != "" {
+	if !in_wpx_mode && path_prefix != "" {
 		var v []string
 
 		_, ok = newhdr["X-Forwarded-Path"]
@@ -166,7 +170,11 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 
 // ------------------------------------
 
-func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (pxy *server_proxy_http_init) GetId() string {
+	return pxy.id
+}
+
+func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
 	var conn_id string
@@ -198,12 +206,10 @@ func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Re
 	status_code = http.StatusFound; w.WriteHeader(status_code)
 
 //done:
-	s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
-	return
+	return status_code, nil
 
 oops:
-	s.log.Write("", LOG_ERROR, "[%s] %s %s %d - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
@@ -212,14 +218,14 @@ func prevent_follow_redirect (req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-func (pxy *server_proxy_http_main) get_route(req *http.Request) (*ServerRoute, string, string, string, error) {
+func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool) (*ServerRoute, string, string, string, error) {
 	var conn_id string
 	var route_id string
 	var r *ServerRoute
 	var path_prefix string
 	var err error
 
-	if pxy.prefix == PORT_ID_MARKER { // for wpx
+	if in_wpx_mode { // for wpx
 		conn_id = req.PathValue("port_id")
 		route_id = pxy.prefix
 	} else {
@@ -238,7 +244,7 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request) (*ServerRoute, s
 		}
 
 		ids = strings.Split(id.Value, "-")
-		if (len(ids) != 2) {
+		if len(ids) != 2 {
 			return nil, "", "", "", fmt.Errorf("invalid proxy id cookie value - %s", id.Value)
 		}
 
@@ -246,7 +252,7 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request) (*ServerRoute, s
 		route_id = ids[1]
 		path_prefix = ""
 	} else {
-		if pxy.prefix == PORT_ID_MARKER { // for wpx
+		if in_wpx_mode { // for wpx
 			path_prefix = fmt.Sprintf("/%s", conn_id)
 		} else {
 			path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
@@ -358,7 +364,11 @@ func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *Serve
 	}
 }
 
-func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (pxy *server_proxy_http_main) GetId() string {
+	return pxy.id
+}
+
+func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var r *ServerRoute
 	var status_code int
@@ -366,6 +376,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	var route_id string
 	var path_prefix string
 	var resp *http.Response
+	var in_wpx_mode bool
 	var transport *http.Transport
 	var client *http.Client
 	var addr *net.TCPAddr
@@ -380,14 +391,9 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}()
 
 	s = pxy.s
+	in_wpx_mode = pxy.prefix == PORT_ID_MARKER
 
-/*
-	ctx := req.Context()
-	if ctx.Done() != nil {
-	}
-*/
-
-	r, path_prefix, conn_id, route_id, err = pxy.get_route(req)
+	r, path_prefix, conn_id, route_id, err = pxy.get_route(req, in_wpx_mode)
 	if err != nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		goto oops
@@ -400,9 +406,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 		goto oops
 	}
 */
-
 	addr = svc_addr_to_dst_addr(r.svc_addr)
-	//transport, err = pxy.addr_to_transport(req.Context(), addr)
 	transport, err = pxy.addr_to_transport(s.ctx, addr)
 	if err != nil {
 		status_code = http.StatusBadGateway; w.WriteHeader(status_code)
@@ -410,72 +414,86 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 	proxy_url = pxy.req_to_proxy_url(req, r, path_prefix)
 
-	s.log.Write("", LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
+	s.log.Write(pxy.id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
 
-	//proxy_req, err = http.NewRequestWithContext(req.Context(), req.Method, proxy_url.String(), req.Body)
 	proxy_req, err = http.NewRequestWithContext(s.ctx, req.Method, proxy_url.String(), req.Body)
 	if err != nil {
 		status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 		goto oops
 	}
-	upgrade_required = mutate_proxy_req_headers(req, proxy_req, path_prefix)
+	upgrade_required = mutate_proxy_req_headers(req, proxy_req, path_prefix, in_wpx_mode)
 
-//fmt.Printf ("proxy NEW req [%+v]\n", proxy_req.Header)
+	if in_wpx_mode {
+		proxy_req.Header.Set("Accept-Encoding", "")
+	}
+
 	client = &http.Client{
 		Transport: transport,
 		CheckRedirect: prevent_follow_redirect,
-		Timeout: 5 * time.Second, // TODO: make this configurable....
+		// don't specify Timeout for this here or make it configurable...
 	}
 	resp, err = client.Do(proxy_req)
-	//resp, err = transport.RoundTrip(proxy_req)
+	//resp, err = transport.RoundTrip(proxy_req) // any advantage if using RoundTrip instead?
 	if err != nil {
 		status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 		goto oops
 	} else {
 		status_code = resp.StatusCode
 		if upgrade_required && resp.StatusCode == http.StatusSwitchingProtocols {
-			s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
+			s.log.Write(pxy.id, LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
 			err = pxy.serve_upgraded(w, req, resp)
 			if err != nil { goto oops }
-			return // print the log mesage before calling serve_upgraded() and exit here
+			return 0, nil// print the log mesage before calling serve_upgraded() and exit here
 		} else {
-			var hdr http.Header
-			defer resp.Body.Close()
+			var outhdr http.Header
+			var resp_hdr http.Header
+			var resp_body io.Reader
 
-			hdr = w.Header()
-			copy_headers(hdr, resp.Header)
-			delete_hop_by_hop_headers(hdr)
+			defer resp.Body.Close()
+			resp_hdr = resp.Header
+			resp_body = resp.Body
+
+			if in_wpx_mode && s.wpx_resp_tf != nil {
+				resp_body = s.wpx_resp_tf(path_prefix, resp)
+			}
+
+			outhdr = w.Header()
+			copy_headers(outhdr, resp_hdr)
+			delete_hop_by_hop_headers(outhdr)
 
 			if path_prefix == "" {
-				hdr.Add("Set-Cookie", fmt.Sprintf("%s=%s-%s; Path=/; HttpOnly", SERVER_PROXY_ID_COOKIE, conn_id, route_id))
+				outhdr.Add("Set-Cookie", fmt.Sprintf("%s=%s-%s; Path=/; HttpOnly", SERVER_PROXY_ID_COOKIE, conn_id, route_id))
 			}
 			w.WriteHeader(status_code)
-			io.Copy(w, resp.Body)
+
+			_, err = io.Copy(w, resp_body)
+			if err != nil {
+				s.log.Write(pxy.id, LOG_WARN, "[%s] %s %s %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+			}
+
 			// TODO: handle trailers
 		}
 	}
 
 //done:
-	s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
-	return
+	return status_code, nil
 
 oops:
-	s.log.Write("", LOG_ERROR, "[%s] %s %s %d - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
-type server_proxy_xterm_file struct {
-	s *Server
-	file string
-}
 
 type server_proxy_xterm_session_info struct {
 	ConnId string
 	RouteId string
 }
 
-func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (pxy *server_proxy_xterm_file) GetId() string {
+	return pxy.id
+}
+
+func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
 	var err error
@@ -535,12 +553,10 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 	}
 
 //done:
-	s.log.Write("", LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
-	return
+	return status_code, nil
 
 oops:
-	s.log.Write("", LOG_ERROR, "[%s] %s %s %d - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, err.Error())
-	return
+	return status_code, err
 }
 
 // ------------------------------------
@@ -548,6 +564,7 @@ oops:
 type server_proxy_ssh_ws struct {
 	s *Server
 	ws *websocket.Conn
+	id string
 }
 
 type json_ssh_ws_event struct {
@@ -683,14 +700,14 @@ func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
 				n, err = out.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						s.log.Write("", LOG_ERROR, "Read from SSH stdout error - %s", err.Error())
+						s.log.Write(pxy.id, LOG_ERROR, "Read from SSH stdout error - %s", err.Error())
 					}
 					break
 				}
 				if n > 0 {
 					err = pxy.send_ws_data(ws, "iov", string(buf[:n]))
 					if err != nil {
-						s.log.Write("", LOG_ERROR, "Failed to send to websocket - %s", err.Error())
+						s.log.Write(pxy.id, LOG_ERROR, "Failed to send to websocket - %s", err.Error())
 						break
 					}
 				}
@@ -724,13 +741,13 @@ ws_recv_loop:
 								defer wg.Done()
 								c, sess, in, out, err = pxy.connect_ssh(connect_ssh_ctx, username, password, r)
 								if err != nil {
-									s.log.Write("", LOG_ERROR, "failed to connect ssh - %s", err.Error())
+									s.log.Write(pxy.id, LOG_ERROR, "failed to connect ssh - %s", err.Error())
 									pxy.send_ws_data(ws, "error", err.Error())
 									ws.Close() // dirty way to flag out the error
 								} else {
 									err = pxy.send_ws_data(ws, "status", "opened")
 									if err != nil {
-										s.log.Write("", LOG_ERROR, "Failed to write opened event to websocket - %s", err.Error())
+										s.log.Write(pxy.id, LOG_ERROR, "Failed to write opened event to websocket - %s", err.Error())
 										ws.Close() // dirty way to flag out the error
 									} else {
 										conn_ready_chan <- true
@@ -762,7 +779,7 @@ ws_recv_loop:
 							rows, _ = strconv.Atoi(ev.Data[0])
 							cols, _ = strconv.Atoi(ev.Data[1])
 							sess.WindowChange(rows, cols)
-							s.log.Write("", LOG_DEBUG, "Resized terminal to %d,%d", rows, cols)
+							s.log.Write(pxy.id, LOG_DEBUG, "Resized terminal to %d,%d", rows, cols)
 							// ignore error
 						}
 				}
@@ -782,8 +799,8 @@ done:
 	if c != nil { c.Close() }
 	wg.Wait()
 	if err != nil {
-		s.log.Write("", LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+		s.log.Write(pxy.id, LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
 	} else {
-		s.log.Write("", LOG_DEBUG, "[%s] %s %s - ended", req.RemoteAddr, req.Method, req.URL.String())
+		s.log.Write(pxy.id, LOG_DEBUG, "[%s] %s %s - ended", req.RemoteAddr, req.Method, req.URL.String())
 	}
 }
