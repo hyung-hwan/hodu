@@ -59,7 +59,6 @@ type Server struct {
 	wpx_addr        []string
 	wpx_mux         *http.ServeMux
 	wpx             []*http.Server // proxy server than handles http/https only
-	wpx_resp_tf     ServerWpxResponseTransformer
 
 	ctl_addr        []string
 	ctl_prefix      string
@@ -89,6 +88,9 @@ type Server struct {
 		peers atomic.Int64
 		ssh_proxy_sessions atomic.Int64
 	}
+
+	wpx_resp_tf     ServerWpxResponseTransformer
+	xterm_html      string
 
 	UnimplementedHoduServer
 }
@@ -1121,6 +1123,14 @@ func (s *Server) SetWpxResponseTransformer(tf ServerWpxResponseTransformer) {
 
 func (s *Server) GetWpxResponseTransformer() ServerWpxResponseTransformer {
 	return s.wpx_resp_tf
+}
+
+func (s *Server) SetXtermHtml(html string) {
+	s.xterm_html = html
+}
+
+func (s *Server) GetXtermHtml() string {
+	return s.xterm_html
 }
 
 func (s *Server) run_grpc_server(idx int, wg *sync.WaitGroup) error {

@@ -29,7 +29,7 @@ var xterm_addon_fit_js []byte
 //go:embed xterm.css
 var xterm_css []byte
 //go:embed xterm.html
-var xterm_html []byte
+var xterm_html string
 
 type server_proxy struct {
 	s *Server
@@ -547,7 +547,11 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 			}
 
 			tmpl = template.New("")
-			_, err = tmpl.Parse(string(xterm_html))
+			if s.xterm_html !=  "" {
+				_, err = tmpl.Parse(s.xterm_html)
+			} else {
+				_, err = tmpl.Parse(xterm_html)
+			}
 			if err != nil {
 				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 				goto oops
