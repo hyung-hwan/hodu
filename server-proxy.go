@@ -352,7 +352,7 @@ func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *Serve
 	// HTTP or HTTPS is actually a hint to the client-side peer
 	// Use the hint to compose the URL to the client via the server-side
 	// listening socket as if it connects to the client-side peer
-	if r.svc_option & RouteOption(ROUTE_OPTION_HTTPS) != 0 {
+	if r.SvcOption & RouteOption(ROUTE_OPTION_HTTPS) != 0 {
 		proxy_proto = "https"
 	} else {
 		proxy_proto = "http"
@@ -363,7 +363,7 @@ func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *Serve
 
 	return &url.URL{
 		Scheme:   proxy_proto,
-		Host:     r.ptc_addr,
+		Host:     r.PtcAddr,
 		Path:     proxy_url_path,
 		RawQuery: req.URL.RawQuery,
 		Fragment: req.URL.Fragment,
@@ -402,13 +402,13 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 
 /*
-	if r.svc_option & (RouteOption(ROUTE_OPTION_HTTP) | RouteOption(ROUTE_OPTION_HTTPS)) == 0 {
+	if r.SvcOption & (RouteOption(ROUTE_OPTION_HTTP) | RouteOption(ROUTE_OPTION_HTTPS)) == 0 {
 		status_code = http.StatusForbidden; w.WriteHeader(status_code)
 		err = fmt.Errorf("target not http/https")
 		goto oops
 	}
 */
-	addr = svc_addr_to_dst_addr(r.svc_addr)
+	addr = svc_addr_to_dst_addr(r.SvcAddr)
 	transport, err = pxy.addr_to_transport(s.ctx, addr)
 	if err != nil {
 		status_code = http.StatusBadGateway; w.WriteHeader(status_code)
@@ -456,7 +456,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 			resp_body = resp.Body
 
 			if in_wpx_mode && s.wpx_resp_tf != nil {
-				resp_body = s.wpx_resp_tf(path_prefix, resp)
+				resp_body = s.wpx_resp_tf(r, path_prefix, resp)
 			}
 
 			outhdr = w.Header()
@@ -620,13 +620,13 @@ func (pxy *server_proxy_ssh_ws) connect_ssh (ctx context.Context, username strin
 	}
 
 /* Is this protection needed?
-	if r.svc_option & RouteOption(ROUTE_OPTION_SSH) == 0 {
+	if r.SvcOption & RouteOption(ROUTE_OPTION_SSH) == 0 {
 		err = fmt.Errorf("target not ssh")
 		goto oops
 	}
 */
 
-	addr = svc_addr_to_dst_addr(r.svc_addr);
+	addr = svc_addr_to_dst_addr(r.SvcAddr);
 
 	dialer = &net.Dialer{}
 	conn, err = dialer.DialContext(ctx, "tcp", addr.String())

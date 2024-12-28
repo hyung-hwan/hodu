@@ -105,18 +105,18 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				cts.route_mtx.Lock()
 				for _, r = range cts.route_map {
 					jsp = append(jsp, json_out_server_route{
-						Id: r.id,
-						ClientPeerAddr: r.ptc_addr,
-						ClientPeerName: r.ptc_name,
-						ServerPeerServiceAddr: r.svc_addr.String(),
-						ServerPeerServiceNet: r.svc_permitted_net.String(),
-						ServerPeerOption: r.svc_option.string(),
+						Id: r.Id,
+						ClientPeerAddr: r.PtcAddr,
+						ClientPeerName: r.PtcName,
+						ServerPeerServiceAddr: r.SvcAddr.String(),
+						ServerPeerServiceNet: r.SvcPermNet.String(),
+						ServerPeerOption: r.SvcOption.string(),
 					})
 				}
 				js = append(js, json_out_server_conn{
-					Id: cts.id,
-					ClientAddr: cts.remote_addr.String(),
-					ServerAddr: cts.local_addr.String(),
+					Id: cts.Id,
+					ClientAddr: cts.RemoteAddr.String(),
+					ServerAddr: cts.LocalAddr.String(),
 					Routes: jsp,
 				})
 				cts.route_mtx.Unlock()
@@ -177,18 +177,18 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			cts.route_mtx.Lock()
 			for _, r = range cts.route_map {
 				jsp = append(jsp, json_out_server_route{
-					Id: r.id,
-					ClientPeerAddr: r.ptc_addr,
-					ClientPeerName: r.ptc_name,
-					ServerPeerServiceAddr: r.svc_addr.String(),
-					ServerPeerServiceNet: r.svc_permitted_net.String(),
-					ServerPeerOption: r.svc_option.string(),
+					Id: r.Id,
+					ClientPeerAddr: r.PtcAddr,
+					ClientPeerName: r.PtcName,
+					ServerPeerServiceAddr: r.SvcAddr.String(),
+					ServerPeerServiceNet: r.SvcPermNet.String(),
+					ServerPeerOption: r.SvcOption.string(),
 				})
 			}
 			js = &json_out_server_conn{
-				Id: cts.id,
-				ClientAddr: cts.remote_addr.String(),
-				ServerAddr: cts.local_addr.String(),
+				Id: cts.Id,
+				ClientAddr: cts.RemoteAddr.String(),
+				ServerAddr: cts.LocalAddr.String(),
 				Routes: jsp,
 			}
 			cts.route_mtx.Unlock()
@@ -247,12 +247,12 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			cts.route_mtx.Lock()
 			for _, r = range cts.route_map {
 				jsp = append(jsp, json_out_server_route{
-					Id: r.id,
-					ClientPeerAddr: r.ptc_addr,
-					ClientPeerName: r.ptc_name,
-					ServerPeerServiceAddr: r.svc_addr.String(),
-					ServerPeerServiceNet: r.svc_permitted_net.String(),
-					ServerPeerOption: r.svc_option.string(),
+					Id: r.Id,
+					ClientPeerAddr: r.PtcAddr,
+					ClientPeerName: r.PtcName,
+					ServerPeerServiceAddr: r.SvcAddr.String(),
+					ServerPeerServiceNet: r.SvcPermNet.String(),
+					ServerPeerOption: r.SvcOption.string(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -307,12 +307,12 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		case http.MethodGet:
 			status_code = http.StatusOK; w.WriteHeader(status_code)
 			err = je.Encode(json_out_server_route{
-				Id: r.id,
-				ClientPeerAddr: r.ptc_addr,
-				ClientPeerName: r.ptc_name,
-				ServerPeerServiceAddr: r.svc_addr.String(),
-				ServerPeerServiceNet: r.svc_permitted_net.String(),
-				ServerPeerOption: r.svc_option.string(),
+				Id: r.Id,
+				ClientPeerAddr: r.PtcAddr,
+				ClientPeerName: r.PtcName,
+				ServerPeerServiceAddr: r.SvcAddr.String(),
+				ServerPeerServiceNet: r.SvcPermNet.String(),
+				ServerPeerOption: r.SvcOption.string(),
 			})
 			if err != nil { goto oops }
 
