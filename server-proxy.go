@@ -51,6 +51,10 @@ type server_proxy_xterm_file struct {
 	file string
 }
 
+type server_proxy_http_wpx struct {
+	server_proxy
+}
+
 // ------------------------------------
 
 //Copied from net/http/httputil/reverseproxy.go
@@ -480,6 +484,22 @@ oops:
 	return status_code, err
 }
 
+// ------------------------------------
+
+func (pxy *server_proxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var status_code int
+	var err error
+
+
+	status_code = http.StatusForbidden; w.WriteHeader(status_code)
+
+// TODO: show the list of services running...
+//done:
+	return status_code, nil
+
+//oops:
+	return status_code, err
+}
 // ------------------------------------
 
 type server_proxy_xterm_session_info struct {

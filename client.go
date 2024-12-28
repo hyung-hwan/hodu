@@ -1084,7 +1084,14 @@ func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
 		var time_taken time.Duration
 
 		start_time = time.Now()
+
+		// TODO: some kind of authorization, especially for ctl
+		//req.BasicAuth()
+		//req.Header.Get("Authorization")
+
 		status_code, err = handler.ServeHTTP(w, req)
+
+		// TODO: statistics by status_code and end point types.
 		time_taken = time.Now().Sub(start_time)
 
 		if status_code > 0 {

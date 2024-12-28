@@ -9,7 +9,6 @@ import "log"
 import "net"
 import "net/http"
 import "net/netip"
-import "plugin"
 import "strconv"
 import "sync"
 import "sync/atomic"
@@ -951,8 +950,6 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	var i int
 	var hs_log *log.Logger
 	var opts []grpc.ServerOption
-	var plgin *plugin.Plugin
-	var plgsym plugin.Symbol
 	var err error
 
 	if len(rpc_addrs) <= 0 {
@@ -1085,9 +1082,8 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.wpx_mux = http.NewServeMux()
 	s.wpx_mux.Handle("/{port_id}/{trailer...}",
 		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "wpx"}, prefix: PORT_ID_MARKER}))
-	s.wpx_mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	})
+	s.wpx_mux.Handle("/",
+		s.wrap_http_handler(&server_proxy_http_wpx{server_proxy: server_proxy{s: &s, id: "wpx"}}))
 
 	s.wpx_addr = make([]string, len(wpx_addrs))
 	s.wpx = make([]*http.Server, len(wpx_addrs))
@@ -1108,36 +1104,6 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.stats.routes.Store(0)
 	s.stats.peers.Store(0)
 	s.stats.ssh_proxy_sessions.Store(0)
-
-	// ---------------------------------------------------------
-	plgin, err = plugin.Open("modres.so")
-	if err == nil {
-		plgsym, err = plgin.Lookup("Plugin")
-		if err == nil {
-			var plg ServerPluginInterface
-			var ok bool
-
-			switch plgsym.(type) {
-				case *ServerPluginInterface:
-					var tmp *ServerPluginInterface
-					tmp, ok = plgsym.(*ServerPluginInterface)
-					if ok { plg = *tmp }
-				case ServerPluginInterface:
-					plg, ok = plgsym.(ServerPluginInterface)
-			}
-			//plg, ok = plgsym.(*ServerPluginInterface)
-			if ok {
-				plg.Init(&s)
-				plg.Cleanup()
-			} else {
-fmt.Printf ("YYYYYYYYYYYYYYY NOT OK\n")
-			}
-		} else {
-fmt.Printf ("YYYYYYYYYYYYYYY[%v]\n", err)
-		}
-	} else {
-fmt.Printf ("XXXXXX[%v]\n", err)
-	}
 
 	return &s, nil
 
