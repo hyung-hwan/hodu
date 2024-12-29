@@ -22,7 +22,7 @@ var HODU_VERSION string = "0.0.0"
 //go:embed tls.crt
 var hodu_tls_cert_text []byte
 //go:embed tls.key
-var hodul_tls_key_text []byte
+var hodu_tls_key_text []byte
 
 // --------------------------------------------------------------------
 type signal_handler struct {
@@ -103,6 +103,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 	var logfile_rotate int
 	var max_rpc_conns int
 	var max_peers int
+	var xterm_html_file string
+	var xterm_html string
 	var err error
 
 	log_mask = hodu.LOG_ALL
@@ -129,6 +131,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		logfile_rotate = cfg.APP.LogRotate
 		max_rpc_conns = cfg.APP.MaxRpcConns
 		max_peers = cfg.APP.MaxPeers
+		xterm_html_file = cfg.APP.XtermHtmlFile
 	}
 
 	if len(rpc_addrs) <= 0 {
@@ -142,6 +145,15 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
+	}
+
+	if xterm_html_file != "" {
+		var tmp []byte
+		tmp, err = os.ReadFile(xterm_html_file)
+		if err != nil {
+			return fmt.Errorf("failed to read %s - %s", xterm_html_file, err.Error())
+		}
+		xterm_html = string(tmp)
 	}
 
 	s, err = hodu.NewServer(
@@ -161,6 +173,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 	if err != nil {
 		return fmt.Errorf("failed to create new server - %s", err.Error())
 	}
+
+	if xterm_html != "" { s.SetXtermHtml(xterm_html) }
 
 	s.StartService(nil)
 	s.StartCtlService()

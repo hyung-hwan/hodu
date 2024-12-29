@@ -66,12 +66,13 @@ type RPCEndpointConfig struct { // rpc client-side configuration
 }
 
 type ServerAppConfig  struct {
-	LogMask     []string  `yaml:"log-mask"`
-	LogFile     string    `yaml:"log-file"`
-	LogMaxSize  int64     `yaml:"log-max-size"`
-	LogRotate   int       `yaml:"log-rotate"`
-	MaxPeers    int       `yaml:"max-peer-conns"` // maximum number of connections from peers
-	MaxRpcConns int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
+	LogMask       []string  `yaml:"log-mask"`
+	LogFile       string    `yaml:"log-file"`
+	LogMaxSize    int64     `yaml:"log-max-size"`
+	LogRotate     int       `yaml:"log-rotate"`
+	MaxPeers      int       `yaml:"max-peer-conns"` // maximum number of connections from peers
+	MaxRpcConns   int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
+	XtermHtmlFile string    `yaml:"xterm-html-file"`
 }
 
 type ClientAppConfig  struct {
@@ -233,7 +234,7 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 			cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		} else {
 			// use the embedded certificate
-			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodul_tls_key_text)
+			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodu_tls_key_text)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to load key pair - %s", err)
@@ -291,7 +292,7 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 			cert, err = tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		} else {
 			// use the embedded certificate
-			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodul_tls_key_text)
+			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodu_tls_key_text)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to load key pair - %s", err)
