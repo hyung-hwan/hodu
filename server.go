@@ -1015,15 +1015,15 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.ctl_prefix = ctl_prefix
 	s.ctl_mux = http.NewServeMux()
 
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns",
+	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/server-conns",
 		s.wrap_http_handler(&server_ctl_server_conns{server_ctl{s: &s, id: "ctl"}}))
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}",
+	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/server-conns/{conn_id}",
 		s.wrap_http_handler(&server_ctl_server_conns_id{server_ctl{s: &s, id: "ctl"}}))
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes",
+	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/server-conns/{conn_id}/routes",
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes{server_ctl{s: &s, id: "ctl"}}))
-	s.ctl_mux.Handle(s.ctl_prefix + "/server-conns/{conn_id}/routes/{route_id}",
+	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}",
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: "ctl"}}))
-	s.ctl_mux.Handle(s.ctl_prefix + "/stats",
+	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/stats",
 		s.wrap_http_handler(&server_ctl_stats{server_ctl{s: &s, id: "ctl"}}))
 
 	s.ctl_addr = make([]string, len(ctl_addrs))
@@ -1061,10 +1061,6 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 
 	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}",
 		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "pxy-http"}, prefix: "/_http"}))
-	s.pxy_mux.Handle("/_init/{conn_id}/{route_id}/{trailer...}",
-		s.wrap_http_handler(&server_proxy_http_init{server_proxy: server_proxy{s: &s, id: "pxy-http"}, prefix: "/_init"}))
-	s.pxy_mux.Handle("/",
-		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "pxy-http"}, prefix: ""}))
 
 	s.pxy_addr = make([]string, len(pxy_addrs))
 	s.pxy = make([]*http.Server, len(pxy_addrs))

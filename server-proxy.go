@@ -20,8 +20,6 @@ import "golang.org/x/crypto/ssh"
 import "golang.org/x/net/http/httpguts"
 import "golang.org/x/net/websocket"
 
-const SERVER_PROXY_ID_COOKIE string = "hodu-proxy-id"
-
 //go:embed xterm.js
 var xterm_js []byte
 //go:embed xterm-addon-fit.js
@@ -34,11 +32,6 @@ var xterm_html string
 type server_proxy struct {
 	s *Server
 	id string
-}
-
-type server_proxy_http_init struct {
-	server_proxy
-	prefix string
 }
 
 type server_proxy_http_main struct {
@@ -180,46 +173,6 @@ func (pxy *server_proxy) GetId() string {
 
 // ------------------------------------
 
-func (pxy *server_proxy_http_init) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
-	var s *Server
-	var status_code int
-	var conn_id string
-	var route_id string
-	var hdr http.Header
-	var path_prefix string
-	var err error
-
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(pxy.s.log, req, err) }
-	}()
-
-	s = pxy.s
-
-	conn_id = req.PathValue("conn_id")
-	route_id = req.PathValue("route_id")
-	path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
-
-	_, err = s.FindServerRouteByIdStr(conn_id, route_id)
-	if err != nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
-		goto oops
-	}
-
-	hdr = w.Header()
-	hdr.Add("Set-Cookie", fmt.Sprintf("%s=%s-%s; Path=/; HttpOnly", SERVER_PROXY_ID_COOKIE, conn_id, route_id)) // use numeric id
-	hdr.Set("Location", strings.TrimPrefix(req.URL.Path, path_prefix)) // use the original ids as in the request
-	status_code = http.StatusFound; w.WriteHeader(status_code)
-
-//done:
-	return status_code, nil
-
-oops:
-	return status_code, err
-}
-
-// ------------------------------------
-
 func prevent_follow_redirect (req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
@@ -238,31 +191,10 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool
 		conn_id = req.PathValue("conn_id")
 		route_id = req.PathValue("route_id")
 	}
-	if conn_id == "" && route_id == "" {
-		// it's not via  /_http/<<conn-id>>/<<route-id>>.
-		// get ids from the cookie.
-		var id *http.Cookie
-		var ids []string
-
-		id, err = req.Cookie(SERVER_PROXY_ID_COOKIE)
-		if err != nil {
-			return nil, "", "", "", fmt.Errorf("%s cookie not found - %s", SERVER_PROXY_ID_COOKIE, err.Error())
-		}
-
-		ids = strings.Split(id.Value, "-")
-		if len(ids) != 2 {
-			return nil, "", "", "", fmt.Errorf("invalid proxy id cookie value - %s", id.Value)
-		}
-
-		conn_id = ids[0]
-		route_id = ids[1]
-		path_prefix = ""
+	if in_wpx_mode { // for wpx
+		path_prefix = fmt.Sprintf("/%s", conn_id)
 	} else {
-		if in_wpx_mode { // for wpx
-			path_prefix = fmt.Sprintf("/%s", conn_id)
-		} else {
-			path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
-		}
+		path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
 	}
 
 	r, err = pxy.s.FindServerRouteByIdStr(conn_id, route_id)
@@ -374,8 +306,6 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	var s *Server
 	var r *ServerRoute
 	var status_code int
-	var conn_id string
-	var route_id string
 	var path_prefix string
 	var resp *http.Response
 	var in_wpx_mode bool
@@ -395,7 +325,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	s = pxy.s
 	in_wpx_mode = pxy.prefix == PORT_ID_MARKER
 
-	r, path_prefix, conn_id, route_id, err = pxy.get_route(req, in_wpx_mode)
+	r, path_prefix, _, _, err = pxy.get_route(req, in_wpx_mode)
 	if err != nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		goto oops
@@ -463,9 +393,6 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 			copy_headers(outhdr, resp_hdr)
 			delete_hop_by_hop_headers(outhdr)
 
-			if path_prefix == "" {
-				outhdr.Add("Set-Cookie", fmt.Sprintf("%s=%s-%s; Path=/; HttpOnly", SERVER_PROXY_ID_COOKIE, conn_id, route_id))
-			}
 			w.WriteHeader(status_code)
 
 			_, err = io.Copy(w, resp_body)

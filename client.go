@@ -1124,20 +1124,20 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 	c.ctl_prefix = ctl_prefix
 
 	c.ctl_mux = http.NewServeMux()
-	//c.ctl_mux.Handle(c.ctl_prefix + "/client-conns", c.wrap_http_handler(&client_ctl_client_conns{c: &c, id: "ctl"}))
+	//c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns", c.wrap_http_handler(&client_ctl_client_conns{c: &c, id: "ctl"}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns",
 		c.wrap_http_handler(&client_ctl_client_conns{client_ctl{c: &c, id: "ctl"}}))
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}",
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}",
 		c.wrap_http_handler(&client_ctl_client_conns_id{client_ctl{c: &c, id: "ctl"}}))
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes",
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes",
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes{client_ctl{c: &c, id: "ctl"}}))
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}",
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}",
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id{client_ctl{c: &c, id: "ctl"}}))
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers",
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers",
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers{client_ctl{c: &c, id: "ctl"}}))
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers_id{client_ctl{c: &c, id: "ctl"}}))
-	c.ctl_mux.Handle(c.ctl_prefix + "/stats",
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/stats",
 		c.wrap_http_handler(&client_ctl_stats{client_ctl{c: &c, id: "ctl"}}))
 
 	c.ctl_addr = make([]string, len(ctl_addrs))
