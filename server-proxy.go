@@ -491,6 +491,12 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 						RouteId: route_id,
 					})
 			}
+		case "_redirect":
+			// shorthand for /_ssh/{conn_id}/_/
+			// don't care about parameters following the path
+			status_code = http.StatusMovedPermanently;
+			w.Header().Set("Location", req.URL.Path + "_/");
+			w.WriteHeader(status_code)
 		case "_forbidden":
 			status_code = http.StatusForbidden; w.WriteHeader(status_code)
 		default:

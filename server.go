@@ -1048,6 +1048,8 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 		websocket.Handler(func(ws *websocket.Conn) { s.pxy_ws.ServeWebsocket(ws) }))
 	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: "pxy-ctl"}}))
+	s.pxy_mux.Handle("/_ssh/{conn_id}/",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "_redirect"}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/",
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm.html"}))
 	s.pxy_mux.Handle("/_ssh/xterm.js",
