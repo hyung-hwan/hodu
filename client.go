@@ -1124,8 +1124,7 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 	c.ctl_prefix = ctl_prefix
 
 	c.ctl_mux = http.NewServeMux()
-	//c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns", c.wrap_http_handler(&client_ctl_client_conns{c: &c, id: "ctl"}))
-	c.ctl_mux.Handle(c.ctl_prefix + "/client-conns",
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns",
 		c.wrap_http_handler(&client_ctl_client_conns{client_ctl{c: &c, id: "ctl"}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}",
 		c.wrap_http_handler(&client_ctl_client_conns_id{client_ctl{c: &c, id: "ctl"}}))
