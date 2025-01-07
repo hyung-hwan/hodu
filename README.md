@@ -1,6 +1,6 @@
 
 ## normal operation
-- ./hodu server --rcp-on=0.0.0.0:9999 --ctl-on=0.0.0.0:8888 --pxy-on=0.0.0.0:9998 --wpx-on=0.0.0.0:9997
+- ./hodu server --rpc-on=0.0.0.0:9999 --ctl-on=0.0.0.0:8888 --pxy-on=0.0.0.0:9998 --wpx-on=0.0.0.0:9997
 - ./hodu client --rpc-to=127.0.0.1:9999 --ctl-on=127.0.0.1:7777 192.168.1.130:8000
 
 ## server.json
@@ -25,6 +25,7 @@
 
 ```
 {
+    "id": 0,
     "client-peer-addr": "192.168.1.104:22",
     "client-peer-name": "Star gate",
     "server-peer-option": "tcp4 ssh",

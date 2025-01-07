@@ -33,6 +33,7 @@ type json_in_client_conn struct {
 }
 
 type json_in_client_route struct {
+	Id RouteId `json:"id"` // 0 for auto-assignement.
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
@@ -426,6 +427,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			}
 
 			rc = &ClientRouteConfig{
+				Id: jcr.Id,
 				PeerAddr: jcr.ClientPeerAddr,
 				PeerName: jcr.ClientPeerName,
 				Option: server_peer_option,

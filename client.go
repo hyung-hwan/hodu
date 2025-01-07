@@ -28,6 +28,7 @@ type ClientPeerCancelFuncMap = map[PeerId]context.CancelFunc
 
 // --------------------------------------------------------------------
 type ClientRouteConfig struct {
+	Id          RouteId // requested id to be assigned. 0 for automatic assignment
 	PeerAddr    string
 	PeerName    string
 	Option      RouteOption
@@ -638,7 +639,7 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 
 	cts.cli = c
 	cts.route_map = make(ClientRouteMap)
-	cts.route_next_id = 0
+	cts.route_next_id = 1
 	cts.cfg.ClientConfig = *cfg
 	cts.stop_req.Store(false)
 	cts.stop_chan = make(chan bool, 8)
@@ -651,25 +652,43 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 
 func (cts *ClientConn) AddNewClientRoute(rc *ClientRouteConfig) (*ClientRoute, error) {
 	var r *ClientRoute
-	var start_id RouteId
+	var assigned_id RouteId
 
 	cts.route_mtx.Lock()
-	//start_id = RouteId(rand.Uint64())
-	start_id = cts.route_next_id
-	for {
-		var ok bool
-		_, ok = cts.route_map[cts.route_next_id]
-		if !ok { break }
-		cts.route_next_id++
-		if cts.route_next_id == start_id {
-			cts.route_mtx.Unlock()
-			return nil, fmt.Errorf("unable to assign id")
+	if rc.Id <= 0 {
+		// perform automatic assignemnt
+		var start_id RouteId
+
+		//start_id = RouteId(rand.Uint64())
+		start_id = cts.route_next_id
+		for {
+			var ok bool
+			_, ok = cts.route_map[cts.route_next_id]
+			if !ok {
+				assigned_id = cts.route_next_id
+				cts.route_next_id++
+				if cts.route_next_id == 0 { cts.route_next_id++ }
+				break
+			}
+			cts.route_next_id++
+			if cts.route_next_id == 0 { cts.route_next_id++ } // skip 0 as it is a marker for auto-assignment
+			if cts.route_next_id == start_id {
+				cts.route_mtx.Unlock()
+				return nil, fmt.Errorf("unable to assign id")
+			}
 		}
+	} else {
+		var ok bool
+		_, ok = cts.route_map[rc.Id]
+		if ok {
+			cts.route_mtx.Unlock()
+			return nil, fmt.Errorf("id(%d) unavailable", rc.Id)
+		}
+		assigned_id = rc.Id
 	}
 
-	r = NewClientRoute(cts, cts.route_next_id, rc.PeerAddr, rc.PeerName, rc.ServiceAddr, rc.ServiceNet, rc.Option, rc.Lifetime)
+	r = NewClientRoute(cts, assigned_id, rc.PeerAddr, rc.PeerName, rc.ServiceAddr, rc.ServiceNet, rc.Option, rc.Lifetime)
 	cts.route_map[r.id] = r
-	cts.route_next_id++
 	cts.cli.stats.routes.Add(1)
 	cts.route_mtx.Unlock()
 
@@ -872,7 +891,7 @@ start_over:
 	}
 	cts.s_seed = *s_seed
 	cts.c_seed = c_seed
-	cts.route_next_id = 0 // reset this whenever a new connection is made. the number of routes must be zero.
+	cts.route_next_id = 1 // reset this whenever a new connection is made. the number of routes must be zero.
 
 	cts.cli.log.Write(cts.sid, LOG_INFO, "Got seed from server[%d] %s - ver=%#x", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], cts.s_seed.Version)
 
@@ -1165,7 +1184,7 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 	c.ptc_tmout = peer_conn_tmout
 	c.ptc_limit = peer_max
 	c.cts_limit = rpc_max
-	c.cts_next_id = 0
+	c.cts_next_id = 1
 	c.cts_map = make(ClientConnMap)
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
@@ -1215,6 +1234,7 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 	var cts *ClientConn
 	var ok bool
 	var start_id ConnId
+	var assigned_id ConnId
 
 	if len(cfg.ServerAddrs) <= 0 {
 		return nil, fmt.Errorf("no server rpc address specified")
@@ -1234,18 +1254,24 @@ func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
 	start_id = c.cts_next_id
 	for {
 		_, ok = c.cts_map[c.cts_next_id]
-		if !ok { break }
+		if !ok {
+			assigned_id = c.cts_next_id
+			c.cts_next_id++
+			if c.cts_next_id == 0 { c.cts_next_id++ }
+			break
+		}
 		c.cts_next_id++
+		if c.cts_next_id == 0 { c.cts_next_id++ }
 		if c.cts_next_id == start_id {
 			c.cts_mtx.Lock()
 			return nil, fmt.Errorf("unable to assign id")
 		}
 	}
-	cts.id = c.cts_next_id
+
+	cts.id = assigned_id
 	cts.sid = fmt.Sprintf("%d", cts.id) // id in string used for logging
 
 	c.cts_map[cts.id] = cts
-	c.cts_next_id++
 	c.stats.conns.Add(1)
 	c.cts_mtx.Unlock()
 
