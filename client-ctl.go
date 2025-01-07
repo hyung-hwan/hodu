@@ -41,6 +41,10 @@ type json_in_client_route struct {
 	Lifetime string `json:"lifetime"`
 }
 
+type json_in_client_route_update struct {
+	Lifetime string `sjon:"lifetime"`
+}
+
 type json_out_client_conn_id struct {
 	Id ConnId `json:"id"`
 }
@@ -55,7 +59,8 @@ type json_out_client_conn struct {
 }
 
 type json_out_client_route_id struct {
-	Id RouteId `json:"id"`
+	Id    RouteId `json:"id"`
+	CtsId ConnId  `json:"conn-id"`
 }
 
 type json_out_client_route struct {
@@ -66,6 +71,7 @@ type json_out_client_route struct {
 	ServerPeerListenAddr string `json:"server-peer-service-addr"`
 	ServerPeerNet string `json:"server-peer-service-net"`
 	Lifetime string `json:"lifetime"`
+	LifetimeStart int64 `json:"lifetime-start"`
 }
 
 type json_out_client_peer struct {
@@ -176,7 +182,8 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 						ServerPeerNet: r.server_peer_net,
 						ServerPeerOption: r.server_peer_option.string(),
-						Lifetime: r.lifetime.String(),
+						Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
+						LifetimeStart: r.lifetime_start.Unix(),
 					})
 				}
 				js = append(js, json_out_client_conn{
@@ -293,7 +300,8 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
 					ServerPeerOption: r.server_peer_option.string(),
-					Lifetime: r.lifetime.String(),
+					Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
+					LifetimeStart: r.lifetime_start.Unix(),
 				})
 			}
 			js = &json_out_client_conn{
@@ -375,7 +383,8 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
 					ServerPeerOption: r.server_peer_option.string(),
-					Lifetime: r.lifetime.String(),
+					Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
+					LifetimeStart: r.lifetime_start.Unix(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -409,13 +418,11 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				goto oops
 			}
 
-			if jcr.Lifetime != "" {
-				lifetime, err = time.ParseDuration(jcr.Lifetime)
-				if err != nil {
-					status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-					err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
-					goto oops
-				}
+			lifetime, err = parse_duration_string(jcr.Lifetime)
+			if err != nil {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
+				goto oops
 			}
 
 			rc = &ClientRouteConfig{
@@ -434,7 +441,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
 				status_code = http.StatusCreated; w.WriteHeader(status_code)
-				if err = je.Encode(json_out_client_route_id{Id: r.id}); err != nil { goto oops }
+				if err = je.Encode(json_out_client_route_id{Id: r.id, CtsId: r.cts.id}); err != nil { goto oops }
 			}
 
 		case http.MethodDelete:
@@ -517,6 +524,27 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ServerPeerOption: r.server_peer_option.string(),
 				Lifetime: r.lifetime.String(),
 			})
+			if err != nil { goto oops }
+
+		case http.MethodPut:
+			var jcr json_in_client_route_update
+			var lifetime time.Duration
+
+			err = json.NewDecoder(req.Body).Decode(&jcr)
+			if err != nil {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				goto oops
+			}
+
+			lifetime, err = parse_duration_string(jcr.Lifetime)
+			if err != nil {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
+				goto oops
+			}
+
+
+			err = r.ResetLifetime(lifetime)
 			if err != nil { goto oops }
 
 		case http.MethodDelete:

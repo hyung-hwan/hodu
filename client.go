@@ -125,7 +125,9 @@ type ClientRoute struct {
 	ptc_wg         sync.WaitGroup
 
 	lifetime time.Duration
+	lifetime_start time.Time
 	lifetime_timer *time.Timer
+	lifetime_mtx sync.Mutex
 
 	stop_req atomic.Bool
 	stop_chan chan bool
@@ -183,6 +185,7 @@ func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, client
 	r.server_peer_addr = server_peer_svc_addr
 	r.server_peer_net = server_peer_svc_net // permitted network for server-side peer
 	r.server_peer_option = server_peer_option
+	r.lifetime_start = time.Now()
 	r.lifetime = lifetime
 	r.stop_req.Store(false)
 	r.stop_chan = make(chan bool, 8)
@@ -262,6 +265,22 @@ func (r *ClientRoute) FindClientPeerConnById(conn_id PeerId) *ClientPeerConn {
 	return c
 }
 
+func (r *ClientRoute) ResetLifetime(lifetime time.Duration) error {
+	r.lifetime_mtx.Lock()
+	defer r.lifetime_mtx.Unlock()
+	if r.lifetime_timer == nil {
+		// let's not support timer reset if route was not
+		// first started with lifetime enabled
+		return fmt.Errorf("prohibited operation")
+	} else {
+		r.lifetime_timer.Stop()
+		r.lifetime = lifetime
+		r.lifetime_start = time.Now()
+		r.lifetime_timer.Reset(lifetime)
+		return nil
+	}
+}
+
 func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	var err error
 
@@ -282,7 +301,12 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 			r.id, r.peer_addr, r.server_peer_option, r.server_peer_net, r.cts.remote_addr)
 	}
 
-	if r.lifetime > 0 { r.lifetime_timer = time.NewTimer(r.lifetime) }
+	r.lifetime_mtx.Lock()
+	if r.lifetime > 0 {
+		r.lifetime_start = time.Now()
+		r.lifetime_timer = time.NewTimer(r.lifetime)
+	}
+	r.lifetime_mtx.Unlock()
 
 main_loop:
 	for {
@@ -304,7 +328,12 @@ main_loop:
 		}
 	}
 
-	if r.lifetime_timer != nil { r.lifetime_timer.Stop() }
+	r.lifetime_mtx.Lock()
+	if r.lifetime_timer != nil {
+		r.lifetime_timer.Stop()
+		r.lifetime_timer = nil
+	}
+	r.lifetime_mtx.Unlock()
 
 done:
 	r.ReqStop()

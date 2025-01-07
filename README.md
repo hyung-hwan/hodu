@@ -30,7 +30,7 @@
     "server-peer-option": "tcp4 ssh",
     "server-peer-service-addr": "0.0.0.0:0",
     "server-peer-service-net": "",
-    "lifetime": "0s"
+    "lifetime": "0"
 }
 ```
 

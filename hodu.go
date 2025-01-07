@@ -7,6 +7,7 @@ import "os"
 import "runtime"
 import "strings"
 import "sync"
+import "time"
 
 
 const HODU_RPC_VERSION uint32 = 0x010000
@@ -129,4 +130,28 @@ func svc_addr_to_dst_addr (svc_addr *net.TCPAddr) *net.TCPAddr {
 	}
 
 	return &addr
+}
+
+func is_digit_or_period(r rune) bool {
+	return (r >= '0' && r <= '9') || r == '.'
+}
+
+func get_last_rune_of_non_empty_string(s string) rune {
+	var tmp []rune
+	// the string must not be blank for this to work
+	tmp = []rune(s)
+	return tmp[len(tmp) - 1]
+}
+
+func parse_duration_string(dur string) (time.Duration, error) {
+	// i want the input to be in seconds with resolution of 9 digits after
+	// the decimal point. For example, 0.05 to mean 500ms.
+	// however, i don't care if a unit is part of the input.
+	var tmp string
+
+	if dur == "" { return 0, nil }
+
+	tmp = dur
+	if is_digit_or_period(get_last_rune_of_non_empty_string(tmp)) { tmp = tmp + "s" }
+	return time.ParseDuration(tmp)
 }
