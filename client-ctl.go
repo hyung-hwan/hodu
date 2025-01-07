@@ -6,6 +6,7 @@ import "net/http"
 import "net/url"
 import "runtime"
 import "strconv"
+import "time"
 import "unsafe"
 
 /*
@@ -37,6 +38,7 @@ type json_in_client_route struct {
 	ServerPeerOption string `json:"server-peer-option"`
 	ServerPeerServiceAddr string `json:"server-peer-service-addr"` // desired listening address on the server side
 	ServerPeerServiceNet string `json:"server-peer-service-net"` // permitted network in prefix notation
+	Lifetime string `json:"lifetime"`
 }
 
 type json_out_client_conn_id struct {
@@ -63,6 +65,7 @@ type json_out_client_route struct {
 	ServerPeerOption string `json:"server-peer-option"`
 	ServerPeerListenAddr string `json:"server-peer-service-addr"`
 	ServerPeerNet string `json:"server-peer-service-net"`
+	Lifetime string `json:"lifetime"`
 }
 
 type json_out_client_peer struct {
@@ -173,6 +176,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 						ServerPeerNet: r.server_peer_net,
 						ServerPeerOption: r.server_peer_option.string(),
+						Lifetime: r.lifetime.String(),
 					})
 				}
 				js = append(js, json_out_client_conn{
@@ -289,6 +293,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
 					ServerPeerOption: r.server_peer_option.string(),
+					Lifetime: r.lifetime.String(),
 				})
 			}
 			js = &json_out_client_conn{
@@ -370,6 +375,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
 					ServerPeerOption: r.server_peer_option.string(),
+					Lifetime: r.lifetime.String(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -382,6 +388,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			var r *ClientRoute
 			var rc *ClientRouteConfig
 			var server_peer_option RouteOption
+			var lifetime time.Duration
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
 			if err != nil {
@@ -398,8 +405,17 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			server_peer_option = string_to_route_option(jcr.ServerPeerOption)
 			if server_peer_option == RouteOption(ROUTE_OPTION_UNSPEC) {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
-				err = fmt.Errorf("wrong server-peer-option value - %d", server_peer_option)
+				err = fmt.Errorf("wrong server-peer-option value - %s", server_peer_option)
 				goto oops
+			}
+
+			if jcr.Lifetime != "" {
+				lifetime, err = time.ParseDuration(jcr.Lifetime)
+				if err != nil {
+					status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+					err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
+					goto oops
+				}
 			}
 
 			rc = &ClientRouteConfig{
@@ -408,6 +424,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				Option: server_peer_option,
 				ServiceAddr: jcr.ServerPeerServiceAddr,
 				ServiceNet: jcr.ServerPeerServiceNet,
+				Lifetime: lifetime,
 			}
 
 			//cts.AddClientRouteConfig(rc) // TODO: this is to remember... but how to delete it?
@@ -498,6 +515,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				ServerPeerNet: r.server_peer_net,
 				ServerPeerOption: r.server_peer_option.string(),
+				Lifetime: r.lifetime.String(),
 			})
 			if err != nil { goto oops }
 

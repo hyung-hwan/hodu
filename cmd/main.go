@@ -417,7 +417,7 @@ func main() {
 			ctl_addrs = append(ctl_addrs, v)
 			return nil
 		})
-		flgs.Func("rpc-server", "specify a rpc server address", func(v string) error {
+		flgs.Func("rpc-to", "specify a rpc server address to connect to", func(v string) error {
 			rpc_addrs = append(rpc_addrs, v)
 			return nil
 		})
@@ -462,7 +462,7 @@ func main() {
 
 wrong_usage:
 	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-server=addr:port --ctl-on=addr:port [--config-file=file] [peer-addr:peer-port ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [peer-addr:peer-port ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
 
