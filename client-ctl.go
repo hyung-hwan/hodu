@@ -409,7 +409,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			if jcr.ClientPeerAddr == "" {
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				err = fmt.Errorf("blank client-peer-addr")
-				goto oops;
+				goto oops
 			}
 
 			server_peer_option = string_to_route_option(jcr.ServerPeerOption)

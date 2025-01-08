@@ -1015,7 +1015,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 
 	// ---------------------------------------------------------
 
-	hs_log = log.New(&server_http_log_writer{svr: &s}, "", 0);
+	hs_log = log.New(&server_http_log_writer{svr: &s}, "", 0)
 
 	// ---------------------------------------------------------
 
@@ -1212,7 +1212,7 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 				// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
 				//  err = cs.ListenAndServe()
 				//  err = cs.ListenAndServeTLS("", "")
-				l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
+				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
 				if err == nil {
 					if s.stop_req.Load() == false {
 						if s.ctltlscfg == nil {
@@ -1255,7 +1255,7 @@ func (s *Server) RunPxyTask(wg *sync.WaitGroup) {
 			s.log.Write("", LOG_INFO, "Proxy channel[%d] started on %s", i, s.pxy_addr[i])
 
 			if s.stop_req.Load() == false {
-				l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
+				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
 				if err == nil {
 					if s.stop_req.Load() == false {
 						if s.pxytlscfg == nil { // TODO: change this
@@ -1298,7 +1298,7 @@ func (s *Server) RunWpxTask(wg *sync.WaitGroup) {
 			s.log.Write("", LOG_INFO, "Wpx channel[%d] started on %s", i, s.wpx_addr[i])
 
 			if s.stop_req.Load() == false {
-				l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
+				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
 				if err == nil {
 					if s.stop_req.Load() == false {
 						if s.wpxtlscfg == nil { // TODO: change this
@@ -1392,7 +1392,7 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 		_, ok = s.cts_map[s.cts_next_id]
 		if !ok {
 			assigned_id = s.cts_next_id
-			s.cts_next_id++;
+			s.cts_next_id++
 			if s.cts_next_id == 0 { s.cts_next_id++ }
 			break
 		}
@@ -1412,7 +1412,7 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 		return nil, fmt.Errorf("existing client - %s", cts.RemoteAddr.String())
 	}
 	s.cts_map_by_addr[cts.RemoteAddr] = &cts
-	s.cts_map[cts.Id] = &cts;
+	s.cts_map[cts.Id] = &cts
 	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.cts_mtx.Unlock()
 

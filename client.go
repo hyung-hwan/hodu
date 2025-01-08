@@ -181,7 +181,7 @@ func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, client
 	r.peer_addr = client_peer_addr // client-side peer
 	r.peer_name = client_peer_name
 	// if the client_peer_addr is a domain name, it can't tell between tcp4 and tcp6
-	r.peer_option = string_to_route_option(tcp_addr_str_class(client_peer_addr))
+	r.peer_option = string_to_route_option(TcpAddrStrClass(client_peer_addr))
 
 	r.server_peer_addr = server_peer_svc_addr
 	r.server_peer_net = server_peer_svc_net // permitted network for server-side peer
@@ -1211,7 +1211,7 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 	c.ctl = make([]*http.Server, len(ctl_addrs))
 	copy(c.ctl_addr, ctl_addrs)
 
-	hs_log = log.New(&client_ctl_log_writer{cli: &c}, "", 0);
+	hs_log = log.New(&client_ctl_log_writer{cli: &c}, "", 0)
 
 	for i = 0; i < len(ctl_addrs); i++ {
 		c.ctl[i] = &http.Server{
@@ -1449,7 +1449,7 @@ func (c *Client) RunCtlTask(wg *sync.WaitGroup) {
 			if c.stop_req.Load() == false {
 				// this guard has a flaw in that the stop request can be made
 				// between the check above and net.Listen() below.
-				l, err = net.Listen(tcp_addr_str_class(cs.Addr), cs.Addr)
+				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
 				if err == nil {
 					if c.stop_req.Load() == false {
 						// check it again to make the guard slightly more stable

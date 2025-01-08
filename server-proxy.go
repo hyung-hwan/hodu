@@ -494,8 +494,8 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 		case "_redirect":
 			// shorthand for /_ssh/{conn_id}/_/
 			// don't care about parameters following the path
-			status_code = http.StatusMovedPermanently;
-			w.Header().Set("Location", req.URL.Path + "_/");
+			status_code = http.StatusMovedPermanently
+			w.Header().Set("Location", req.URL.Path + "_/")
 			w.WriteHeader(status_code)
 		case "_forbidden":
 			status_code = http.StatusForbidden; w.WriteHeader(status_code)
@@ -563,7 +563,7 @@ func (pxy *server_proxy_ssh_ws) connect_ssh (ctx context.Context, username strin
 	}
 */
 
-	addr = svc_addr_to_dst_addr(r.SvcAddr);
+	addr = svc_addr_to_dst_addr(r.SvcAddr)
 
 	dialer = &net.Dialer{}
 	conn, err = dialer.DialContext(ctx, "tcp", addr.String())

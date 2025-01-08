@@ -43,7 +43,7 @@ type Service interface {
 	WriteLog(id string, level LogLevel, fmtstr string, args ...interface{})
 }
 
-func tcp_addr_str_class(addr string) string {
+func TcpAddrStrClass(addr string) string {
 	// the string is supposed to be addr:port
 
 	if len(addr) > 0 {
