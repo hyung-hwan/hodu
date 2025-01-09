@@ -6,6 +6,7 @@ import "net/http"
 import "net/url"
 import "runtime"
 import "strconv"
+import "strings"
 import "time"
 import "unsafe"
 
@@ -549,8 +550,11 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				goto oops
 			}
 
-
-			err = r.ResetLifetime(lifetime)
+			if strings.HasPrefix(jcr.Lifetime, "+") {
+				err = r.ExtendLifetime(lifetime)
+			} else {
+				err = r.ResetLifetime(lifetime)
+			}
 			if err != nil { goto oops }
 
 		case http.MethodDelete:
@@ -649,9 +653,17 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
 				goto oops
+			} else if lifetime < 0 {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				err = fmt.Errorf("negative lifetime value %s", jcr.Lifetime)
+				goto oops
 			}
 
-			err = r.ResetLifetime(lifetime)
+			if strings.HasPrefix(jcr.Lifetime, "+") {
+				err = r.ExtendLifetime(lifetime)
+			} else {
+				err = r.ResetLifetime(lifetime)
+			}
 			if err != nil { goto oops }
 
 		case http.MethodDelete:

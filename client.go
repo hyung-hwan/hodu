@@ -266,6 +266,23 @@ func (r *ClientRoute) FindClientPeerConnById(conn_id PeerId) *ClientPeerConn {
 	return c
 }
 
+func (r *ClientRoute) ExtendLifetime(lifetime time.Duration) error {
+	r.lifetime_mtx.Lock()
+	defer r.lifetime_mtx.Unlock()
+	if r.lifetime_timer == nil {
+		// let's not support timer extend if route was not
+		// first started with lifetime enabled
+		return fmt.Errorf("prohibited operation")
+	} else {
+		var expiry time.Time
+		r.lifetime_timer.Stop()
+		r.lifetime = r.lifetime + lifetime
+		expiry = r.lifetime_start.Add(r.lifetime)
+		r.lifetime_timer.Reset(expiry.Sub(time.Now()))
+		return nil
+	}
+}
+
 func (r *ClientRoute) ResetLifetime(lifetime time.Duration) error {
 	r.lifetime_mtx.Lock()
 	defer r.lifetime_mtx.Unlock()
