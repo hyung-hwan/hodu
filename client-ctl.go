@@ -515,7 +515,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	r = cts.FindClientRouteById(RouteId(route_nid))
 	if r == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
-		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 
@@ -555,7 +555,11 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			} else {
 				err = r.ResetLifetime(lifetime)
 			}
-			if err != nil { goto oops }
+			if err != nil {
+				status_code = http.StatusForbidden; w.WriteHeader(status_code)
+				goto oops
+			}
+			status_code = http.StatusOK; w.WriteHeader(status_code)
 
 		case http.MethodDelete:
 			r.ReqStop()
@@ -620,7 +624,7 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 	r = cts.FindClientRouteByServerPeerSvcPortId(PortId(port_nid))
 	if r == nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
-		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(json_errmsg{Text: "non-existent server peer port id - " + port_id}); err != nil { goto oops }
 		goto done
 	}
 
