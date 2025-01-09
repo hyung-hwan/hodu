@@ -57,6 +57,7 @@ type Server struct {
 	pxy             []*http.Server // proxy server
 
 	wpx_addr        []string
+	wpx_ws          *server_proxy_ssh_ws
 	wpx_mux         *http.ServeMux
 	wpx             []*http.Server // proxy server than handles http/https only
 
@@ -1088,6 +1089,25 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	// ---------------------------------------------------------
 
 	s.wpx_mux = http.NewServeMux()
+
+	s.wpx_ws = &server_proxy_ssh_ws{s: &s, id: "wpx-ssh"}
+	s.wpx_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh_ws,_http configurable...
+	s.wpx_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
+		websocket.Handler(func(ws *websocket.Conn) { s.wpx_ws.ServeWebsocket(ws) }))
+
+	s.wpx_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
+		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: "wpx"}}))
+	s.wpx_mux.Handle("/_ssh/xterm.js",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "wpx"}, file: "xterm.js"}))
+	s.wpx_mux.Handle("/_ssh/xterm-addon-fit.js",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "wpx"}, file: "xterm-addon-fit.js"}))
+	s.wpx_mux.Handle("/_ssh/xterm.css",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "wpx"}, file: "xterm.css"}))
+	s.wpx_mux.Handle("/_ssh/{port_id}",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "wpx"}, file: "xterm.html"}))
+	s.pxy_mux.Handle("/_ssh/",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "wpx"}, file: "_forbidden"}))
+
 	s.wpx_mux.Handle("/{port_id}/{trailer...}",
 		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "wpx"}, prefix: PORT_ID_MARKER}))
 	s.wpx_mux.Handle("/",

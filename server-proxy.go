@@ -467,7 +467,13 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 
 			conn_id = req.PathValue("conn_id")
 			route_id = req.PathValue("route_id")
-			_, err = s.FindServerRouteByIdStr(conn_id, route_id)
+			if conn_id == "" && route_id == "" {
+				conn_id = req.PathValue("port_id")
+				route_id = PORT_ID_MARKER
+				_, err = s.FindServerRouteByIdStr(conn_id, PORT_ID_MARKER)
+			} else {
+				_, err = s.FindServerRouteByIdStr(conn_id, route_id)
+			}
 			if err != nil {
 				status_code = http.StatusNotFound; w.WriteHeader(status_code)
 				goto oops

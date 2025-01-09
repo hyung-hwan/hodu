@@ -1,7 +1,7 @@
 
 ## normal operation
 - ./hodu server --rpc-on=0.0.0.0:9999 --ctl-on=0.0.0.0:8888 --pxy-on=0.0.0.0:9998 --wpx-on=0.0.0.0:9997
-- ./hodu client --rpc-to=127.0.0.1:9999 --ctl-on=127.0.0.1:7777 192.168.1.130:8000
+- ./hodu client --rpc-to=127.0.0.1:9999 --ctl-on=127.0.0.1:7777 "127.0.0.2:22,0.0.0.0:12345,ssh,Access SSH Server"
 
 ## server.json
 ```
