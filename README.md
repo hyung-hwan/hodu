@@ -37,5 +37,5 @@
 
 Run this command:
 ```
-curl -X POST --data-binary @client-route.json http://127.0.0.1:7777/_ctl/client-conns/0/routes
+curl -X POST --data-binary @client-route.json http://127.0.0.1:7777/_ctl/client-conns/1/routes
 ```

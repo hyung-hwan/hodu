@@ -1105,7 +1105,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "wpx"}, file: "xterm.css"}))
 	s.wpx_mux.Handle("/_ssh/{port_id}",
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "wpx"}, file: "xterm.html"}))
-	s.pxy_mux.Handle("/_ssh/",
+	s.wpx_mux.Handle("/_ssh/",
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "wpx"}, file: "_forbidden"}))
 
 	s.wpx_mux.Handle("/{port_id}/{trailer...}",

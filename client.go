@@ -764,6 +764,28 @@ func (cts *ClientConn) RemoveClientRouteById(route_id RouteId) error {
 	return nil
 }
 
+func (cts *ClientConn) RemoveClientRouteByServerPeerSvcPortId(port_id PortId) error {
+	var r *ClientRoute
+
+	// this is slow as there is no indexing by the service side port id
+	// the use of this function is not really recommended. the best is to
+	// use the actual route id for finding.
+	cts.route_mtx.Lock()
+	for _, r = range cts.route_map {
+		if r.server_peer_listen_addr.Port == int(port_id) {
+			delete(cts.route_map, r.id)
+			cts.cli.stats.routes.Add(-1)
+			cts.route_mtx.Unlock()
+			cts.cli.log.Write(cts.sid, LOG_INFO, "Removed route(%d,%s)", r.id, r.peer_addr)
+			r.ReqStop()
+			return nil
+		}
+	}
+	cts.route_mtx.Unlock()
+
+	return fmt.Errorf("non-existent server peer service port id - %d", port_id)
+}
+
 func (cts *ClientConn) FindClientRouteById(route_id RouteId) *ClientRoute {
 	var r *ClientRoute
 	var ok bool
@@ -777,6 +799,24 @@ func (cts *ClientConn) FindClientRouteById(route_id RouteId) *ClientRoute {
 	cts.route_mtx.Unlock()
 
 	return r
+}
+
+func (cts *ClientConn) FindClientRouteByServerPeerSvcPortId(port_id PortId) *ClientRoute {
+	var r *ClientRoute
+
+	// this is slow as there is no indexing by the service side port id
+	// the use of this function is not really recommended. the best is to
+	// use the actual route id for finding.
+	cts.route_mtx.Lock()
+	for _, r = range cts.route_map {
+		if r.server_peer_listen_addr.Port == int(port_id) {
+			cts.route_mtx.Unlock()
+			return r; // return the first match
+		}
+	}
+	cts.route_mtx.Unlock()
+
+	return nil
 }
 
 func (cts *ClientConn) AddClientRouteConfig (route *ClientRouteConfig) {
@@ -1200,6 +1240,8 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes{client_ctl{c: &c, id: "ctl"}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}",
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id{client_ctl{c: &c, id: "ctl"}}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes-spsp/{port_id}",
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes_spsp{client_ctl{c: &c, id: "ctl"}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers",
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers{client_ctl{c: &c, id: "ctl"}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
@@ -1379,6 +1421,21 @@ func (c *Client) FindClientRouteById(conn_id ConnId, route_id RouteId) *ClientRo
 	}
 
 	return cts.FindClientRouteById(route_id)
+}
+
+func (c *Client) FindClientRouteByServerPeerSvcPortId(conn_id ConnId, port_id PortId) *ClientRoute {
+	var cts *ClientConn
+	var ok bool
+
+	c.cts_mtx.Lock()
+	defer c.cts_mtx.Unlock()
+
+	cts, ok = c.cts_map[conn_id]
+	if !ok {
+		return nil
+	}
+
+	return cts.FindClientRouteByServerPeerSvcPortId(port_id)
 }
 
 func (c *Client) FindClientPeerConnById(conn_id ConnId, route_id RouteId, peer_id PeerId) *ClientPeerConn {

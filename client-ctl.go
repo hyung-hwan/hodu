@@ -121,6 +121,10 @@ type client_ctl_client_conns_id_routes_id struct {
 	client_ctl
 }
 
+type client_ctl_client_conns_id_routes_spsp struct {
+	client_ctl
+}
+
 type client_ctl_client_conns_id_routes_id_peers struct {
 	client_ctl
 }
@@ -545,6 +549,107 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				goto oops
 			}
 
+
+			err = r.ResetLifetime(lifetime)
+			if err != nil { goto oops }
+
+		case http.MethodDelete:
+			r.ReqStop()
+			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+
+		default:
+			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+	}
+
+done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var c *Client
+	var status_code int
+	var err error
+	var conn_id string
+	var port_id string
+	var conn_nid uint64
+	var port_nid uint64
+	var je *json.Encoder
+	var cts *ClientConn
+	var r *ClientRoute
+
+	defer func() {
+		var err interface{} = recover()
+		if err != nil { dump_call_frame_and_exit(ctl.c.log, req, err) }
+	}()
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	port_id = req.PathValue("port_id")
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+	port_nid, err = strconv.ParseUint(port_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
+	if err != nil {
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "wrong route id - " + port_id}); err != nil { goto oops }
+		goto done
+	}
+
+	cts = c.FindClientConnById(ConnId(conn_nid))
+	if cts == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	r = cts.FindClientRouteByServerPeerSvcPortId(PortId(port_nid))
+	if r == nil {
+		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + conn_id}); err != nil { goto oops }
+		goto done
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			status_code = http.StatusOK; w.WriteHeader(status_code)
+			err = je.Encode(json_out_client_route{
+				Id: r.id,
+				ClientPeerAddr: r.peer_addr,
+				ClientPeerName: r.peer_name,
+				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+				ServerPeerNet: r.server_peer_net,
+				ServerPeerOption: r.server_peer_option.string(),
+				Lifetime: r.lifetime.String(),
+			})
+			if err != nil { goto oops }
+
+		case http.MethodPut:
+			var jcr json_in_client_route_update
+			var lifetime time.Duration
+
+			err = json.NewDecoder(req.Body).Decode(&jcr)
+			if err != nil {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				goto oops
+			}
+
+			lifetime, err = parse_duration_string(jcr.Lifetime)
+			if err != nil {
+				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
+				goto oops
+			}
 
 			err = r.ResetLifetime(lifetime)
 			if err != nil { goto oops }
