@@ -32,6 +32,7 @@ type Logger interface {
 	Write(id string, level LogLevel, fmtstr string, args ...interface{})
 	WriteWithCallDepth(id string, level LogLevel, call_depth int, fmtstr string, args ...interface{})
 	Rotate()
+	Close()
 }
 
 type Service interface {
@@ -112,6 +113,7 @@ func dump_call_frame_and_exit(log Logger, req *http.Request, err interface{}) {
 	var buf []byte
 	buf = make([]byte, 65536); buf = buf[:min(65536, runtime.Stack(buf, false))]
 	log.Write("", LOG_ERROR, "[%s] %s %s - %v\n%s", req.RemoteAddr, req.Method, req.URL.String(), err, string(buf))
+	log.Close()
 	os.Exit(99) // fatal error. treat panic() as a fatal runtime error
 }
 

@@ -77,16 +77,6 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 	var err error
 	var je *json.Encoder
 
-	// this deferred function is to overcome the recovering implemenation
-	// from panic done in go's http server. in that implemenation, panic
-	// is isolated to a single gorountine. however, i want this program
-	// to exit immediately once a panic condition is caught. (e.g. nil
-	// pointer dererence)
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
-	}()
-
 	s = ctl.s
 	je = json.NewEncoder(w)
 
@@ -150,11 +140,6 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	var je *json.Encoder
 	var conn_id string
 	var cts *ServerConn
-
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
-	}()
 
 	s = ctl.s
 	je = json.NewEncoder(w)
@@ -222,11 +207,6 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	var je *json.Encoder
 	var cts *ServerConn
 
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
-	}()
-
 	s = ctl.s
 	je = json.NewEncoder(w)
 
@@ -287,11 +267,6 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	var r *ServerRoute
 	var err error
 
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
-	}()
-
 	s = ctl.s
 	je = json.NewEncoder(w)
 
@@ -338,11 +313,6 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	var status_code int
 	var err error
 	var je *json.Encoder
-
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(ctl.s.log, req, err) }
-	}()
 
 	s = ctl.s
 	je = json.NewEncoder(w)

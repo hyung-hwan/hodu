@@ -34,7 +34,8 @@ type ServerRouteMap = map[RouteId]*ServerRoute
 type ServerPeerConnMap = map[PeerId]*ServerPeerConn
 type ServerSvcPortMap = map[PortId]ConnRouteId
 
-type ServerWpxResponseTransformer func(r *ServerRoute, path_prefix string, resp *http.Response) io.Reader
+type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
+type ServerWpxForeignPortProxyMaker func(port_id string) (*ServerRouteProxyInfo, error)
 
 type Server struct {
 	ctx             context.Context
@@ -91,6 +92,7 @@ type Server struct {
 	}
 
 	wpx_resp_tf     ServerWpxResponseTransformer
+	wpx_foreign_port_proxy_maker ServerWpxForeignPortProxyMaker
 	xterm_html      string
 
 	UnimplementedHoduServer
@@ -938,6 +940,16 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 		var start_time time.Time
 		var time_taken time.Duration
 
+		// this deferred function is to overcome the recovering implemenation
+		// from panic done in go's http server. in that implemenation, panic
+		// is isolated to a single gorountine. however, i want this program
+		// to exit immediately once a panic condition is caught. (e.g. nil
+		// pointer dererence)
+		defer func() {
+			var err interface{} = recover()
+			if err != nil { dump_call_frame_and_exit(s.log, req, err) }
+		}()
+
 		start_time = time.Now()
 		status_code, err = handler.ServeHTTP(w, req)
 		time_taken = time.Now().Sub(start_time)
@@ -1149,6 +1161,15 @@ func (s *Server) SetWpxResponseTransformer(tf ServerWpxResponseTransformer) {
 func (s *Server) GetWpxResponseTransformer() ServerWpxResponseTransformer {
 	return s.wpx_resp_tf
 }
+
+func (s *Server) SetWpxForeignPortProxyMaker(pm ServerWpxForeignPortProxyMaker) {
+	s.wpx_foreign_port_proxy_maker = pm
+}
+
+func (s *Server) GetWpxForeignPortProxyMaker() ServerWpxForeignPortProxyMaker {
+	return s.wpx_foreign_port_proxy_maker
+}
+
 
 func (s *Server) SetXtermHtml(html string) {
 	s.xterm_html = html

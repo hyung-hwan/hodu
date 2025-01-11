@@ -1208,6 +1208,16 @@ func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
 		var start_time time.Time
 		var time_taken time.Duration
 
+		// this deferred function is to overcome the recovering implemenation
+		// from panic done in go's http server. in that implemenation, panic
+		// is isolated to a single gorountine. however, i want this program
+		// to exit immediately once a panic condition is caught. (e.g. nil
+		// pointer dererence)
+		defer func() {
+			var err interface{} = recover()
+			if err != nil { dump_call_frame_and_exit(c.log, req, err) }
+		}()
+
 		start_time = time.Now()
 
 		// TODO: some kind of authorization, especially for ctl

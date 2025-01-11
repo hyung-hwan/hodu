@@ -8,6 +8,7 @@ import "path/filepath"
 import "runtime"
 import "strings"
 import "sync"
+import "sync/atomic"
 import "time"
 
 type app_logger_msg_t struct {
@@ -26,6 +27,8 @@ type AppLogger struct {
 	file_max_size   int64
 	msg_chan        chan app_logger_msg_t
 	wg              sync.WaitGroup
+
+	closed          atomic.Bool
 }
 
 func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
@@ -36,6 +39,7 @@ func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
 		mask: mask,
 		msg_chan: make(chan app_logger_msg_t, 256),
 	}
+	l.closed.Store(false)
 	l.wg.Add(1)
 	go l.logger_task()
 	return l
@@ -70,15 +74,18 @@ func NewAppLoggerToFile (id string, file_name string, max_size int64, rotate int
 		file_rotate: rotate,
 		msg_chan: make(chan app_logger_msg_t, 256),
 	}
+	l.closed.Store(false)
 	l.wg.Add(1)
 	go l.logger_task()
 	return l, nil
 }
 
 func (l *AppLogger) Close() {
-	l.msg_chan <- app_logger_msg_t{code: 1}
-	l.wg.Wait()
-	if l.file != nil { l.file.Close() }
+	if l.closed.CompareAndSwap(false, true) {
+		l.msg_chan <- app_logger_msg_t{code: 1}
+		l.wg.Wait()
+		if l.file != nil { l.file.Close() }
+	}
 }
 
 func (l *AppLogger) Rotate() {

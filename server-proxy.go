@@ -48,6 +48,19 @@ type server_proxy_http_wpx struct {
 	server_proxy
 }
 
+// this is minimal information for wpx to work
+type ServerRouteProxyInfo struct {
+	SvcOption   RouteOption
+	PtcAddr     string
+	PtcName     string
+	SvcAddr     *net.TCPAddr
+
+	PathPrefix  string
+	ConnId      string
+	RouteId     string
+	IsForeign   bool
+}
+
 // ------------------------------------
 
 //Copied from net/http/httputil/reverseproxy.go
@@ -177,11 +190,13 @@ func prevent_follow_redirect (req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool) (*ServerRoute, string, string, string, error) {
+func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool) (*ServerRouteProxyInfo, error) {
 	var conn_id string
 	var route_id string
 	var r *ServerRoute
+	var pi *ServerRouteProxyInfo
 	var path_prefix string
+	var is_foreign bool
 	var err error
 
 	if in_wpx_mode { // for wpx
@@ -198,9 +213,31 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool
 	}
 
 	r, err = pxy.s.FindServerRouteByIdStr(conn_id, route_id)
-	if err != nil {	return nil, "", "", "", err	}
+	if err != nil {
+		if !in_wpx_mode || pxy.s.wpx_foreign_port_proxy_maker == nil { return nil, err }
 
-	return r, path_prefix, conn_id, route_id, nil
+		// call this callback only in the wpx mode
+		pi, err = pxy.s.wpx_foreign_port_proxy_maker(conn_id)
+		if err != nil { return nil, err }
+
+		pi.PathPrefix = path_prefix
+		pi.ConnId = conn_id
+		pi.RouteId = conn_id
+		pi.IsForeign = true // just to ensure this
+	} else {
+		pi = &ServerRouteProxyInfo{
+			SvcOption: r.SvcOption,
+			PtcAddr: r.PtcAddr,
+			PtcName: r.PtcName,
+			SvcAddr: r.SvcAddr,
+			PathPrefix: path_prefix,
+			ConnId: conn_id,
+			RouteId: route_id,
+			IsForeign: is_foreign,
+		}
+	}
+
+	return pi, nil
 }
 
 func (pxy *server_proxy_http_main) serve_upgraded(w http.ResponseWriter, req *http.Request, proxy_res *http.Response) error {
@@ -277,7 +314,7 @@ func (pxy *server_proxy_http_main) addr_to_transport (ctx context.Context, addr 
 	}, nil
 }
 
-func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *ServerRoute, path_prefix string) *url.URL {
+func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *ServerRouteProxyInfo) *url.URL {
 	var proxy_proto string
 	var proxy_url_path string
 
@@ -291,7 +328,7 @@ func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *Serve
 	}
 
 	proxy_url_path = req.URL.Path
-	if path_prefix != "" { proxy_url_path = strings.TrimPrefix(proxy_url_path, path_prefix) }
+	if r.PathPrefix != "" { proxy_url_path = strings.TrimPrefix(proxy_url_path, r.PathPrefix) }
 
 	return &url.URL{
 		Scheme:   proxy_proto,
@@ -304,9 +341,8 @@ func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *Serve
 
 func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
-	var r *ServerRoute
+	var r *ServerRouteProxyInfo
 	var status_code int
-	var path_prefix string
 	var resp *http.Response
 	var in_wpx_mode bool
 	var transport *http.Transport
@@ -317,15 +353,10 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	var upgrade_required bool
 	var err error
 
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(pxy.s.log, req, err) }
-	}()
-
 	s = pxy.s
-	in_wpx_mode = pxy.prefix == PORT_ID_MARKER
+	in_wpx_mode = (pxy.prefix == PORT_ID_MARKER)
 
-	r, path_prefix, _, _, err = pxy.get_route(req, in_wpx_mode)
+	r, err = pxy.get_route(req, in_wpx_mode)
 	if err != nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		goto oops
@@ -344,7 +375,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 		status_code = http.StatusBadGateway; w.WriteHeader(status_code)
 		goto oops
 	}
-	proxy_url = pxy.req_to_proxy_url(req, r, path_prefix)
+	proxy_url = pxy.req_to_proxy_url(req, r)
 
 	s.log.Write(pxy.id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
 
@@ -353,7 +384,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 		status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
 		goto oops
 	}
-	upgrade_required = mutate_proxy_req_headers(req, proxy_req, path_prefix, in_wpx_mode)
+	upgrade_required = mutate_proxy_req_headers(req, proxy_req, r.PathPrefix, in_wpx_mode)
 
 	if in_wpx_mode {
 		proxy_req.Header.Set("Accept-Encoding", "")
@@ -386,7 +417,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 			resp_body = resp.Body
 
 			if in_wpx_mode && s.wpx_resp_tf != nil {
-				resp_body = s.wpx_resp_tf(r, path_prefix, resp)
+				resp_body = s.wpx_resp_tf(r, resp)
 			}
 
 			outhdr = w.Header()
@@ -415,17 +446,17 @@ oops:
 
 func (pxy *server_proxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var status_code int
-	var err error
-
+//	var err error
 
 	status_code = http.StatusForbidden; w.WriteHeader(status_code)
 
-// TODO: show the list of services running...
+// TODO: show the list of services running instead if enabled?
+
 //done:
 	return status_code, nil
 
 //oops:
-	return status_code, err
+//	return status_code, err
 }
 // ------------------------------------
 
@@ -438,11 +469,6 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 	var s *Server
 	var status_code int
 	var err error
-
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(pxy.s.log, req, err) }
-	}()
 
 	s = pxy.s
 
@@ -624,11 +650,6 @@ func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
 	s = pxy.s
 	req = ws.Request()
 	conn_ready_chan = make(chan bool, 3)
-
-	defer func() {
-		var err interface{} = recover()
-		if err != nil { dump_call_frame_and_exit(s.log, req, err) }
-	}()
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
