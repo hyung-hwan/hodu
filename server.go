@@ -35,7 +35,7 @@ type ServerPeerConnMap = map[PeerId]*ServerPeerConn
 type ServerSvcPortMap = map[PortId]ConnRouteId
 
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
-type ServerWpxForeignPortProxyMaker func(port_id string) (*ServerRouteProxyInfo, error)
+type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
 type Server struct {
 	ctx             context.Context
@@ -1062,27 +1062,27 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 
 	// ---------------------------------------------------------
 
-	s.pxy_ws = &server_proxy_ssh_ws{s: &s, id: "pxy-ssh"}
+	s.pxy_ws = &server_proxy_ssh_ws{s: &s, id: "pxy-ws"}
 	s.pxy_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh_ws,_http configurable...
 	s.pxy_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
 		websocket.Handler(func(ws *websocket.Conn) { s.pxy_ws.ServeWebsocket(ws) }))
 	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
-		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: "pxy-ctl"}}))
+		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: "pxy"}}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/",
-		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "_redirect"}))
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "_redirect"}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/",
-		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm.html"}))
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "xterm.html"}))
 	s.pxy_mux.Handle("/_ssh/xterm.js",
-		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm.js"}))
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "xterm.js"}))
 	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js",
-		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm-addon-fit.js"}))
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "xterm-addon-fit.js"}))
 	s.pxy_mux.Handle("/_ssh/xterm.css",
-		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "xterm.css"}))
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "xterm.css"}))
 	s.pxy_mux.Handle("/_ssh/",
-		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy-file"}, file: "_forbidden"}))
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "_forbidden"}))
 
 	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}",
-		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "pxy-http"}, prefix: "/_http"}))
+		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "pxy"}, prefix: "/_http"}))
 
 	s.pxy_addr = make([]string, len(pxy_addrs))
 	s.pxy = make([]*http.Server, len(pxy_addrs))

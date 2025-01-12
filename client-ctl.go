@@ -3,7 +3,7 @@ package hodu
 import "encoding/json"
 import "fmt"
 import "net/http"
-import "net/url"
+//import "net/url"
 import "runtime"
 import "strconv"
 import "strings"
@@ -159,13 +159,13 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 		case http.MethodGet:
 			var cts *ClientConn
 			var js []json_out_client_conn
-			var q url.Values
+//			var q url.Values
 
-			q = req.URL.Query()
+//			q = req.URL.Query()
 
 // TODO: brief listing vs full listing
-			if q.Get("brief") == "true" {
-			}
+//			if q.Get("brief") == "true" {
+//			}
 
 			js = make([]json_out_client_conn, 0)
 			c.cts_mtx.Lock()

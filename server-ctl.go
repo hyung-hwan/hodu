@@ -270,12 +270,35 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	s = ctl.s
 	je = json.NewEncoder(w)
 
+	if ctl.id == "wpx" && req.Method != http.MethodGet {
+		// support the get method only, if invoked via the wpx endpoint
+		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		goto done
+	}
+
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
+	if err != nil && ctl.id == "wpx" && route_id == PORT_ID_MARKER && ctl.s.wpx_foreign_port_proxy_maker != nil {
+		var pi *ServerRouteProxyInfo
+		// currenly, this is invoked via wpx only for ssh from xterm.html
+		// ugly, but hard-code the type to "ssh" here for now...
+		pi, err = ctl.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+		if err == nil {
+			// fake route
+			r = &ServerRoute{
+				SvcOption: pi.SvcOption,
+				PtcName: pi.PtcName,
+				PtcAddr: pi.PtcAddr,
+				SvcAddr: pi.SvcAddr,
+			}
+		}
+	}
+
 	if err != nil {
 		status_code = http.StatusNotFound; w.WriteHeader(status_code)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
+		goto done
 	}
 
 	switch req.Method {
@@ -299,7 +322,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
 	}
 
-//done:
+done:
 	return status_code, nil
 
 oops:

@@ -217,7 +217,7 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool
 		if !in_wpx_mode || pxy.s.wpx_foreign_port_proxy_maker == nil { return nil, err }
 
 		// call this callback only in the wpx mode
-		pi, err = pxy.s.wpx_foreign_port_proxy_maker(conn_id)
+		pi, err = pxy.s.wpx_foreign_port_proxy_maker("http", conn_id)
 		if err != nil { return nil, err }
 
 		pi.PathPrefix = path_prefix
@@ -472,7 +472,6 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 
 	s = pxy.s
 
-// TODO: logging
 	switch pxy.file {
 		case "xterm.js":
 			w.Header().Set("Content-Type", "text/javascript")
@@ -491,13 +490,18 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 			var conn_id string
 			var route_id string
 
-			conn_id = req.PathValue("conn_id")
-			route_id = req.PathValue("route_id")
-			if conn_id == "" && route_id == "" {
+			// this endpoint is registered for /_ssh/{conn_id}/{route_id}/ under pxy.
+			// and for /_ssh/{port_id} under wpx.
+			if pxy.id == "wpx" {
 				conn_id = req.PathValue("port_id")
 				route_id = PORT_ID_MARKER
-				_, err = s.FindServerRouteByIdStr(conn_id, PORT_ID_MARKER)
-			} else {
+				_, err = s.FindServerRouteByIdStr(conn_id, route_id)
+				if err != nil && pxy.s.wpx_foreign_port_proxy_maker != nil {
+                         _, err = pxy.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+                    }
+			} else  {
+				conn_id = req.PathValue("conn_id")
+				route_id = req.PathValue("route_id")
 				_, err = s.FindServerRouteByIdStr(conn_id, route_id)
 			}
 			if err != nil {
@@ -594,7 +598,6 @@ func (pxy *server_proxy_ssh_ws) connect_ssh (ctx context.Context, username strin
 		goto oops
 	}
 */
-
 	addr = svc_addr_to_dst_addr(r.SvcAddr)
 
 	dialer = &net.Dialer{}
@@ -654,6 +657,26 @@ func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
+	if err != nil && route_id == PORT_ID_MARKER && pxy.s.wpx_foreign_port_proxy_maker != nil {
+		var pi *ServerRouteProxyInfo
+		pi, err = pxy.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+		if err != nil {
+			pxy.send_ws_data(ws, "error", err.Error())
+			goto done
+		}
+
+		// [SUPER-IMPORTANT!!]
+		// create a fake server route. this is not a compleete structure.
+		// some pointer fields are nil. extra care needs to be taken
+		// below to ensure it doesn't access undesired fields when exitending
+		// code further
+		r = &ServerRoute{
+			SvcOption: pi.SvcOption,
+			PtcName: pi.PtcName,
+			PtcAddr: pi.PtcAddr,
+			SvcAddr: pi.SvcAddr,
+		}
+	}
 	if err != nil {
 		pxy.send_ws_data(ws, "error", err.Error())
 		goto done
