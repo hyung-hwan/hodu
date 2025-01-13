@@ -358,13 +358,13 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	r, err = pxy.get_route(req, in_wpx_mode)
 	if err != nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_empty_resp_header(w, http.StatusNotFound)
 		goto oops
 	}
 
 /*
 	if r.SvcOption & (RouteOption(ROUTE_OPTION_HTTP) | RouteOption(ROUTE_OPTION_HTTPS)) == 0 {
-		status_code = http.StatusForbidden; w.WriteHeader(status_code)
+		status_code = write_empty_resp_header(w, http.StatusForbidden)
 		err = fmt.Errorf("target not http/https")
 		goto oops
 	}
@@ -372,7 +372,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	addr = svc_addr_to_dst_addr(r.SvcAddr)
 	transport, err = pxy.addr_to_transport(s.ctx, addr)
 	if err != nil {
-		status_code = http.StatusBadGateway; w.WriteHeader(status_code)
+		status_code = write_empty_resp_header(w, http.StatusBadGateway)
 		goto oops
 	}
 	proxy_url = pxy.req_to_proxy_url(req, r)
@@ -381,7 +381,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	proxy_req, err = http.NewRequestWithContext(s.ctx, req.Method, proxy_url.String(), req.Body)
 	if err != nil {
-		status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
+		status_code = write_empty_resp_header(w, http.StatusInternalServerError)
 		goto oops
 	}
 	upgrade_required = mutate_proxy_req_headers(req, proxy_req, r.PathPrefix, in_wpx_mode)
@@ -398,7 +398,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	resp, err = client.Do(proxy_req)
 	//resp, err = transport.RoundTrip(proxy_req) // any advantage if using RoundTrip instead?
 	if err != nil {
-		status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
+		status_code = write_empty_resp_header(w, http.StatusInternalServerError)
 		goto oops
 	} else {
 		status_code = resp.StatusCode
@@ -448,7 +448,7 @@ func (pxy *server_proxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Req
 	var status_code int
 //	var err error
 
-	status_code = http.StatusForbidden; w.WriteHeader(status_code)
+	status_code = write_empty_resp_header(w, http.StatusForbidden)
 
 // TODO: show the list of services running instead if enabled?
 
@@ -474,16 +474,13 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 
 	switch pxy.file {
 		case "xterm.js":
-			w.Header().Set("Content-Type", "text/javascript")
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_js_resp_header(w, http.StatusOK)
 			w.Write(xterm_js)
 		case "xterm-addon-fit.js":
-			w.Header().Set("Content-Type", "text/javascript")
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_js_resp_header(w, http.StatusOK)
 			w.Write(xterm_addon_fit_js)
 		case "xterm.css":
-			w.Header().Set("Content-Type", "text/css")
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_css_resp_header(w, http.StatusOK)
 			w.Write(xterm_css)
 		case "xterm.html":
 			var tmpl *template.Template
@@ -505,7 +502,7 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 				_, err = s.FindServerRouteByIdStr(conn_id, route_id)
 			}
 			if err != nil {
-				status_code = http.StatusNotFound; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusNotFound)
 				goto oops
 			}
 
@@ -516,27 +513,29 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 				_, err = tmpl.Parse(xterm_html)
 			}
 			if err != nil {
-				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusInternalServerError)
 				goto oops
 			} else {
-				w.Header().Set("Content-Type", "text/html")
-				w.WriteHeader(http.StatusOK)
+				status_code = write_html_resp_header(w, http.StatusOK)
 				tmpl.Execute(w,
 					&server_proxy_xterm_session_info{
 						ConnId: conn_id,
 						RouteId: route_id,
 					})
 			}
+
 		case "_redirect":
 			// shorthand for /_ssh/{conn_id}/_/
 			// don't care about parameters following the path
 			status_code = http.StatusMovedPermanently
 			w.Header().Set("Location", req.URL.Path + "_/")
 			w.WriteHeader(status_code)
+
 		case "_forbidden":
-			status_code = http.StatusForbidden; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusForbidden)
+
 		default:
-			status_code = http.StatusNotFound; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNotFound)
 	}
 
 //done:

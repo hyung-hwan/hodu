@@ -115,15 +115,15 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			}
 			s.cts_mtx.Unlock()
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodDelete:
 			s.ReqStopAllServerConns()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 //done:
@@ -149,7 +149,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	conn_id = req.PathValue("conn_id")
 	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 		goto done
 	}
@@ -180,16 +180,16 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			}
 			cts.route_mtx.Unlock()
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodDelete:
 			//s.RemoveServerConn(cts)
 			cts.ReqStop()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -215,7 +215,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	conn_id = req.PathValue("conn_id")
 	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 		goto done
 	}
@@ -239,16 +239,16 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			}
 			cts.route_mtx.Unlock()
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(jsp); err != nil { goto oops }
 
 		case http.MethodDelete:
 			//cts.RemoveAllServerRoutes()
 			cts.ReqStopAllServerRoutes()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -274,7 +274,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 	if ctl.id == "wpx" && req.Method != http.MethodGet {
 		// support the get method only, if invoked via the wpx endpoint
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_empty_resp_header(w, http.StatusBadRequest)
 		goto done
 	}
 
@@ -298,14 +298,14 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	}
 
 	if err != nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 		goto done
 	}
 
 	switch req.Method {
 		case http.MethodGet:
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			err = je.Encode(json_out_server_route{
 				Id: r.Id,
 				ClientPeerAddr: r.PtcAddr,
@@ -318,10 +318,10 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 		case http.MethodDelete:
 			r.ReqStop()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -363,11 +363,11 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.Extra = make(map[string]int64, len(s.stats.extra))
 			for k, v = range s.stats.extra { stats.Extra[k] = v }
 			s.stats.extra_mtx.Unlock()
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(stats); err != nil { goto oops }
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 //done:

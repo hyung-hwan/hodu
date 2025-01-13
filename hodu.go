@@ -157,3 +157,32 @@ func parse_duration_string(dur string) (time.Duration, error) {
 	if is_digit_or_period(get_last_rune_of_non_empty_string(tmp)) { tmp = tmp + "s" }
 	return time.ParseDuration(tmp)
 }
+
+func write_json_resp_header(w http.ResponseWriter, status_code int) int {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status_code)
+	return status_code
+}
+
+func write_js_resp_header(w http.ResponseWriter, status_code int) int {
+	w.Header().Set("Content-Type", "application/javascript")
+	w.WriteHeader(status_code)
+	return status_code
+}
+
+func write_css_resp_header(w http.ResponseWriter, status_code int) int {
+	w.Header().Set("Content-Type", "text/css")
+	w.WriteHeader(status_code)
+	return status_code
+}
+
+func write_html_resp_header(w http.ResponseWriter, status_code int) int {
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(status_code)
+	return status_code
+}
+
+func write_empty_resp_header(w http.ResponseWriter, status_code int) int {
+	w.WriteHeader(status_code)
+	return status_code
+}

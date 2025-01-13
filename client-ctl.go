@@ -199,7 +199,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			}
 			c.cts_mtx.Unlock()
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodPost:
@@ -215,7 +215,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 
 			err = json.NewDecoder(req.Body).Decode(&s)
 			if err != nil || len(s.ServerAddrs) <= 0 {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				goto done
 			}
 
@@ -223,10 +223,10 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			//cc.PeerAddrs = s.PeerAddrs
 			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
 			if err != nil {
-				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
+				status_code = write_json_resp_header(w, http.StatusInternalServerError)
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
-				status_code = http.StatusCreated; w.WriteHeader(status_code)
+				status_code = write_json_resp_header(w, http.StatusCreated)
 				if err = je.Encode(json_out_client_conn_id{Id: cts.id}); err != nil { goto oops }
 			}
 
@@ -236,10 +236,10 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			// we do passive deletion rather than doing active deletion by calling
 			// c.RemoveAllClientConns()
 			c.ReqStopAllClientConns()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -268,14 +268,14 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
 	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
@@ -310,16 +310,16 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			}
 			cts.route_mtx.Unlock()
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodDelete:
 			//c.RemoveClientConn(cts)
 			cts.ReqStop()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -347,14 +347,14 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id }); err != nil { goto oops }
 		goto done
 	}
 
 	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
@@ -380,7 +380,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			}
 			cts.route_mtx.Unlock()
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(jsp); err != nil { goto oops }
 
 		case http.MethodPost:
@@ -392,26 +392,26 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
 			if err != nil {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				goto oops
 			}
 
 			if jcr.ClientPeerAddr == "" {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				err = fmt.Errorf("blank client-peer-addr")
 				goto oops
 			}
 
 			server_peer_option = string_to_route_option(jcr.ServerPeerOption)
 			if server_peer_option == RouteOption(ROUTE_OPTION_UNSPEC) {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				err = fmt.Errorf("wrong server-peer-option value - %s", server_peer_option)
 				goto oops
 			}
 
 			lifetime, err = parse_duration_string(jcr.Lifetime)
 			if err != nil {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
 				goto oops
 			}
@@ -429,20 +429,20 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			//cts.AddClientRouteConfig(rc) // TODO: this is to remember... but how to delete it?
 			r, err = cts.AddNewClientRoute(rc)
 			if err != nil {
-				status_code = http.StatusInternalServerError; w.WriteHeader(status_code)
+				status_code = write_json_resp_header(w, http.StatusInternalServerError)
 				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
-				status_code = http.StatusCreated; w.WriteHeader(status_code)
+				status_code = write_json_resp_header(w, http.StatusCreated)
 				if err = je.Encode(json_out_client_route_id{Id: r.id, CtsId: r.cts.id}); err != nil { goto oops }
 			}
 
 		case http.MethodDelete:
 			//cts.RemoveAllClientRoutes()
 			cts.ReqStopAllClientRoutes()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -474,34 +474,34 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 
 	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
 	r = cts.FindClientRouteById(RouteId(route_nid))
 	if r == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 
 	switch req.Method {
 		case http.MethodGet:
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			err = je.Encode(json_out_client_route{
 				Id: r.id,
 				ClientPeerAddr: r.peer_addr,
@@ -519,13 +519,13 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
 			if err != nil {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				goto oops
 			}
 
 			lifetime, err = parse_duration_string(jcr.Lifetime)
 			if err != nil {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
 				goto oops
 			}
@@ -536,17 +536,18 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				err = r.ResetLifetime(lifetime)
 			}
 			if err != nil {
-				status_code = http.StatusForbidden; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusForbidden)
 				goto oops
 			}
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+
+			status_code = write_empty_resp_header(w, http.StatusOK)
 
 		case http.MethodDelete:
 			r.ReqStop()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -578,34 +579,34 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 	port_nid, err = strconv.ParseUint(port_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + port_id}); err != nil { goto oops }
 		goto done
 	}
 
 	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
 	r = cts.FindClientRouteByServerPeerSvcPortId(PortId(port_nid))
 	if r == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: "non-existent server peer port id - " + port_id}); err != nil { goto oops }
 		goto done
 	}
 
 	switch req.Method {
 		case http.MethodGet:
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			err = je.Encode(json_out_client_route{
 				Id: r.id,
 				ClientPeerAddr: r.peer_addr,
@@ -623,17 +624,17 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 
 			err = json.NewDecoder(req.Body).Decode(&jcr)
 			if err != nil {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				goto oops
 			}
 
 			lifetime, err = parse_duration_string(jcr.Lifetime)
 			if err != nil {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
 				goto oops
 			} else if lifetime < 0 {
-				status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+				status_code = write_empty_resp_header(w, http.StatusBadRequest)
 				err = fmt.Errorf("negative lifetime value %s", jcr.Lifetime)
 				goto oops
 			}
@@ -647,10 +648,10 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 
 		case http.MethodDelete:
 			r.ReqStop()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -681,20 +682,20 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 
 	r = c.FindClientRouteById(ConnId(conn_nid), RouteId(route_nid))
 	if r == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection/route id - " + conn_id + "/" + route_id}); err != nil { goto oops }
 		goto done
 	}
@@ -717,15 +718,15 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 			}
 			r.ptc_mtx.Unlock()
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(jcp); err != nil { goto oops }
 
 		case http.MethodDelete:
 			r.ReqStopAllClientPeerConns()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -759,26 +760,26 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 	peer_nid, err = strconv.ParseUint(peer_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusBadRequest)
 		if err = je.Encode(json_errmsg{Text: "wrong peer id - " + peer_id}); err != nil { goto oops }
 		goto done
 	}
 
 	p = c.FindClientPeerConnById(ConnId(conn_nid), RouteId(route_nid), PeerId(peer_nid))
 	if p == nil {
-		status_code = http.StatusNotFound; w.WriteHeader(status_code)
+		status_code = write_json_resp_header(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: "non-existent connection/route/peer id - " + conn_id + "/" + route_id + "/" + peer_id}); err != nil { goto oops }
 		goto done
 	}
@@ -795,15 +796,15 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 				ServerLocalAddr: p.pts_laddr,
 			}
 
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(jcp); err != nil { goto oops }
 
 		case http.MethodDelete:
 			p.ReqStop()
-			status_code = http.StatusNoContent; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusNoContent)
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 done:
@@ -838,11 +839,11 @@ func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.ClientConns = c.stats.conns.Load()
 			stats.ClientRoutes = c.stats.routes.Load()
 			stats.ClientPeers = c.stats.peers.Load()
-			status_code = http.StatusOK; w.WriteHeader(status_code)
+			status_code = write_json_resp_header(w, http.StatusOK)
 			if err = je.Encode(stats); err != nil { goto oops }
 
 		default:
-			status_code = http.StatusBadRequest; w.WriteHeader(status_code)
+			status_code = write_empty_resp_header(w, http.StatusBadRequest)
 	}
 
 //done:
