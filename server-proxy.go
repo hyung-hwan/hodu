@@ -9,6 +9,7 @@ import "fmt"
 import "io"
 import "net"
 import "net/http"
+import "net/netip"
 import "net/url"
 import "strconv"
 import "strings"
@@ -54,6 +55,7 @@ type ServerRouteProxyInfo struct {
 	PtcAddr     string
 	PtcName     string
 	SvcAddr     *net.TCPAddr
+	SvcPermNet  netip.Prefix
 
 	PathPrefix  string
 	ConnId      string
@@ -230,6 +232,7 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool
 			PtcAddr: r.PtcAddr,
 			PtcName: r.PtcName,
 			SvcAddr: r.SvcAddr,
+			SvcPermNet: r.SvcPermNet,
 			PathPrefix: path_prefix,
 			ConnId: conn_id,
 			RouteId: route_id,
@@ -674,6 +677,7 @@ func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
 			PtcName: pi.PtcName,
 			PtcAddr: pi.PtcAddr,
 			SvcAddr: pi.SvcAddr,
+			SvcPermNet: pi.SvcPermNet,
 		}
 	}
 	if err != nil {

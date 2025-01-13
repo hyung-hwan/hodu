@@ -293,6 +293,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				PtcName: pi.PtcName,
 				PtcAddr: pi.PtcAddr,
 				SvcAddr: pi.SvcAddr,
+				SvcPermNet: pi.SvcPermNet,
 			}
 		}
 	}
