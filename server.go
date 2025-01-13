@@ -1080,6 +1080,8 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "xterm.css"}))
 	s.pxy_mux.Handle("/_ssh/",
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "_forbidden"}))
+	s.pxy_mux.Handle("/favicon.ico",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: "pxy"}, file: "_forbidden"}))
 
 	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}",
 		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: "pxy"}, prefix: "/_http"}))
