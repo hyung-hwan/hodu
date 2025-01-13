@@ -34,6 +34,8 @@ type json_out_server_stats struct {
 	ServerPeers int64 `json:"server-peers"`
 
 	SshProxySessions int64 `json:"ssh-proxy-session"`
+
+	Extra map[string]int64 `json:"extra"`
 }
 
 // ------------------------------------
@@ -344,6 +346,8 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 		case http.MethodGet:
 			var stats json_out_server_stats
 			var mstat runtime.MemStats
+			var k string
+			var v int64
 			runtime.ReadMemStats(&mstat)
 			stats.CPUs = runtime.NumCPU()
 			stats.Goroutines = runtime.NumGoroutine()
@@ -355,6 +359,10 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.ServerRoutes = s.stats.routes.Load()
 			stats.ServerPeers = s.stats.peers.Load()
 			stats.SshProxySessions = s.stats.ssh_proxy_sessions.Load()
+			s.stats.extra_mtx.Lock()
+			stats.Extra = make(map[string]int64, len(s.stats.extra))
+			for k, v = range s.stats.extra { stats.Extra[k] = v }
+			s.stats.extra_mtx.Unlock()
 			status_code = http.StatusOK; w.WriteHeader(status_code)
 			if err = je.Encode(stats); err != nil { goto oops }
 

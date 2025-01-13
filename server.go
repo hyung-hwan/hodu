@@ -89,6 +89,9 @@ type Server struct {
 		routes atomic.Int64
 		peers atomic.Int64
 		ssh_proxy_sessions atomic.Int64
+
+		extra_mtx sync.Mutex
+		extra map[string]int64
 	}
 
 	wpx_resp_tf     ServerWpxResponseTransformer
@@ -1146,6 +1149,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	s.stats.routes.Store(0)
 	s.stats.peers.Store(0)
 	s.stats.ssh_proxy_sessions.Store(0)
+	s.stats.extra = make(map[string]int64, 64)
 
 	return &s, nil
 
@@ -1659,4 +1663,10 @@ func (s *Server) WaitForTermination() {
 
 func (s *Server) WriteLog(id string, level LogLevel, fmtstr string, args ...interface{}) {
 	s.log.Write(id, level, fmtstr, args...)
+}
+
+func (s *Server) SetExtraStat(key string, val int64) {
+	s.stats.extra_mtx.Lock()
+	s.stats.extra[key] = val
+	s.stats.extra_mtx.Unlock()
 }
