@@ -142,12 +142,6 @@ type ServerRoute struct {
 	stop_req    atomic.Bool
 }
 
-type ServerPluginInterface interface {
-	ModifyResponse(w http.ResponseWriter, r *http.Request)
-	Init(server *Server)
-	Cleanup()
-}
-
 type GuardedPacketStreamServer struct {
 	mtx sync.Mutex
 	//pss Hodu_PacketStreamServer
