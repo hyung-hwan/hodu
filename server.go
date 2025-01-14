@@ -188,9 +188,7 @@ func NewServerRoute(cts *ServerConn, id RouteId, option RouteOption, ptc_addr st
 	}
 
 	l, svcaddr, err = cts.make_route_listener(id, option, svc_requested_addr)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 
 	if svc_permitted_net == "" {
 		if svcaddr.IP.To4() != nil {
@@ -363,34 +361,36 @@ func (cts *ServerConn) make_route_listener(id RouteId, option RouteOption, svc_r
 	}
 
 	if option & RouteOption(ROUTE_OPTION_TCP) != 0 {
-			nw = "tcp"
-			if svcaddr == nil {
-				svcaddr = &net.TCPAddr{Port: 0} // port 0 for automatic assignment.
-			}
+		nw = "tcp"
+		if svcaddr == nil {
+			// port 0 for automatic assignment.
+			svcaddr = &net.TCPAddr{Port: 0}
+		}
 	} else if option & RouteOption(ROUTE_OPTION_TCP4) != 0 {
-			nw = "tcp4"
-			if svcaddr == nil {
-				svcaddr = &net.TCPAddr{IP: net.IPv4zero, Port: 0} // port 0 for automatic assignment.
-			}
+		nw = "tcp4"
+		if svcaddr == nil {
+			svcaddr = &net.TCPAddr{IP: net.IPv4zero, Port: 0}
+		}
 	} else if option & RouteOption(ROUTE_OPTION_TCP6) != 0 {
-			nw = "tcp6"
-			if svcaddr == nil {
-				svcaddr = &net.TCPAddr{IP: net.IPv6zero, Port: 0} // port 0 for automatic assignment.
-			}
+		nw = "tcp6"
+		if svcaddr == nil {
+			svcaddr = &net.TCPAddr{IP: net.IPv6zero, Port: 0}
+		}
 	} else {
-			return nil, nil, fmt.Errorf("invalid route option value %d(%s)", option, option.string())
+		return nil, nil, fmt.Errorf("invalid route option value %d(%s)", option, option.string())
 	}
 
 	l, err = net.ListenTCP(nw, svcaddr) // make the binding address configurable. support multiple binding addresses???
-	if err != nil {
-		return nil, nil, err
-	}
+	if err != nil { return nil, nil, err }
 
 	svcaddr = l.Addr().(*net.TCPAddr)
 
+	// uniqueness by port id can be checked after listener creation,
+	// especially when automatic assignment is requested.
 	cts.svr.svc_port_mtx.Lock()
 	prev_cri, ok = cts.svr.svc_port_map[PortId(svcaddr.Port)]
 	if ok {
+		cts.svr.svc_port_mtx.Unlock()
 		cts.svr.log.Write(cts.sid, LOG_ERROR,
 			"Route(%d,%d) on %s not unique by port number - existing route(%d,%d)",
 			cts.Id, id, prev_cri.conn_id, prev_cri.route_id, svcaddr.String())
@@ -1134,7 +1134,6 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 			Handler: s.wpx_mux,
 			TLSConfig: s.wpxtlscfg,
 			ErrorLog: hs_log,
-			// TODO: more settings
 		}
 	}
 	// ---------------------------------------------------------

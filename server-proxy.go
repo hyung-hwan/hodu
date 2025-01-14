@@ -51,12 +51,14 @@ type server_proxy_http_wpx struct {
 
 // this is minimal information for wpx to work
 type ServerRouteProxyInfo struct {
+	// command fields with ServerRoute
 	SvcOption   RouteOption
 	PtcAddr     string
 	PtcName     string
 	SvcAddr     *net.TCPAddr
 	SvcPermNet  netip.Prefix
 
+	// extra fields added after proessing
 	PathPrefix  string
 	ConnId      string
 	RouteId     string
@@ -192,7 +194,7 @@ func prevent_follow_redirect (req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool) (*ServerRouteProxyInfo, error) {
+func (pxy *server_proxy_http_main) get_route_proxy_info(req *http.Request, in_wpx_mode bool) (*ServerRouteProxyInfo, error) {
 	var conn_id string
 	var route_id string
 	var r *ServerRoute
@@ -202,7 +204,7 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool
 
 	if in_wpx_mode { // for wpx
 		conn_id = req.PathValue("port_id")
-		route_id = pxy.prefix
+		route_id = pxy.prefix // this is PORT_ID_MARKER
 	} else {
 		conn_id = req.PathValue("conn_id")
 		route_id = req.PathValue("route_id")
@@ -348,7 +350,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	s = pxy.s
 	in_wpx_mode = (pxy.prefix == PORT_ID_MARKER)
 
-	pi, err = pxy.get_route(req, in_wpx_mode)
+	pi, err = pxy.get_route_proxy_info(req, in_wpx_mode)
 	if err != nil {
 		status_code = write_empty_resp_header(w, http.StatusNotFound)
 		goto oops
