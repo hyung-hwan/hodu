@@ -60,6 +60,14 @@ func TcpAddrStrClass(addr string) string {
 	return "tcp"
 }
 
+func TcpAddrClass(addr *net.TCPAddr) string {
+	if addr.AddrPort().Addr().Is4() {
+		return "tcp4"
+	} else {
+		return "tcp6"
+	}
+}
+
 func word_to_route_option(word string) RouteOption {
 	switch word {
 		case "tcp4":
@@ -158,7 +166,7 @@ func parse_duration_string(dur string) (time.Duration, error) {
 	return time.ParseDuration(tmp)
 }
 
-func write_json_resp_header(w http.ResponseWriter, status_code int) int {
+func WriteJsonRespHeader(w http.ResponseWriter, status_code int) int {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status_code)
 	return status_code
@@ -170,19 +178,19 @@ func write_js_resp_header(w http.ResponseWriter, status_code int) int {
 	return status_code
 }
 
-func write_css_resp_header(w http.ResponseWriter, status_code int) int {
+func WriteCssRespHeader(w http.ResponseWriter, status_code int) int {
 	w.Header().Set("Content-Type", "text/css")
 	w.WriteHeader(status_code)
 	return status_code
 }
 
-func write_html_resp_header(w http.ResponseWriter, status_code int) int {
+func WriteHtmlRespHeader(w http.ResponseWriter, status_code int) int {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(status_code)
 	return status_code
 }
 
-func write_empty_resp_header(w http.ResponseWriter, status_code int) int {
+func WriteEmptyRespHeader(w http.ResponseWriter, status_code int) int {
 	w.WriteHeader(status_code)
 	return status_code
 }

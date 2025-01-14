@@ -115,15 +115,15 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			}
 			s.cts_mtx.Unlock()
 
-			status_code = write_json_resp_header(w, http.StatusOK)
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodDelete:
 			s.ReqStopAllServerConns()
-			status_code = write_empty_resp_header(w, http.StatusNoContent)
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
-			status_code = write_empty_resp_header(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 	}
 
 //done:
@@ -149,7 +149,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	conn_id = req.PathValue("conn_id")
 	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
-		status_code = write_json_resp_header(w, http.StatusNotFound)
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 		goto done
 	}
@@ -180,16 +180,16 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			}
 			cts.route_mtx.Unlock()
 
-			status_code = write_json_resp_header(w, http.StatusOK)
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(js); err != nil { goto oops }
 
 		case http.MethodDelete:
 			//s.RemoveServerConn(cts)
 			cts.ReqStop()
-			status_code = write_empty_resp_header(w, http.StatusNoContent)
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
-			status_code = write_empty_resp_header(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 	}
 
 done:
@@ -215,7 +215,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	conn_id = req.PathValue("conn_id")
 	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
-		status_code = write_json_resp_header(w, http.StatusNotFound)
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 		goto done
 	}
@@ -239,16 +239,16 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			}
 			cts.route_mtx.Unlock()
 
-			status_code = write_json_resp_header(w, http.StatusOK)
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(jsp); err != nil { goto oops }
 
 		case http.MethodDelete:
 			//cts.RemoveAllServerRoutes()
 			cts.ReqStopAllServerRoutes()
-			status_code = write_empty_resp_header(w, http.StatusNoContent)
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
-			status_code = write_empty_resp_header(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 	}
 
 done:
@@ -272,32 +272,47 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	s = ctl.s
 	je = json.NewEncoder(w)
 
-	if ctl.id == "wpx" && req.Method != http.MethodGet {
+	if ctl.id == HS_ID_WPX && req.Method != http.MethodGet {
 		// support the get method only, if invoked via the wpx endpoint
-		status_code = write_empty_resp_header(w, http.StatusBadRequest)
+		status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 		goto done
 	}
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
-	if err != nil && ctl.id == "wpx" && route_id == PORT_ID_MARKER && ctl.s.wpx_foreign_port_proxy_maker != nil {
-		var pi *ServerRouteProxyInfo
-		// currenly, this is invoked via wpx only for ssh from xterm.html
-		// ugly, but hard-code the type to "ssh" here for now...
-		pi, err = ctl.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
-		if err == nil { r = proxy_info_to_server_route(pi) } // fake route
+	if err != nil {
+		/*
+		if route_id == PORT_ID_MARKER && ctl.s.wpx_foreign_port_proxy_marker != nil {
+			// don't care if the ctl call is from wpx or not. if the request
+			// is by the port number(noted by route being PORT_ID_MARKER),
+			// check if it's a foreign port
+			var pi *ServerRouteProxyInfo
+			// currenly, this is invoked via wpx only for ssh from xterm.html
+			// ugly, but hard-code the type to "ssh" here for now...
+			pi, err = ctl.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+			if err == nil { r = proxy_info_to_server_route(pi) } // fake route
+		}
+		*/
+
+		if ctl.id == HS_ID_WPX && route_id == PORT_ID_MARKER && ctl.s.wpx_foreign_port_proxy_maker != nil {
+			var pi *ServerRouteProxyInfo
+			// currenly, this is invoked via wpx only for ssh from xterm.html
+			// ugly, but hard-code the type to "ssh" here for now...
+			pi, err = ctl.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+			if err == nil { r = proxy_info_to_server_route(pi) } // fake route
+		}
 	}
 
 	if err != nil {
-		status_code = write_json_resp_header(w, http.StatusNotFound)
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
 		if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
 		goto done
 	}
 
 	switch req.Method {
 		case http.MethodGet:
-			status_code = write_json_resp_header(w, http.StatusOK)
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			err = je.Encode(json_out_server_route{
 				Id: r.Id,
 				ClientPeerAddr: r.PtcAddr,
@@ -309,11 +324,17 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			if err != nil { goto oops }
 
 		case http.MethodDelete:
-			r.ReqStop()
-			status_code = write_empty_resp_header(w, http.StatusNoContent)
+			/*if r is foreign {
+				// foreign route
+				ctl.s.wpx_foreign_port_proxy_stopper(conn_id)
+			} else {*/
+				// native route
+				r.ReqStop()
+			//}
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
-			status_code = write_empty_resp_header(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 	}
 
 done:
@@ -355,11 +376,11 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.Extra = make(map[string]int64, len(s.stats.extra))
 			for k, v = range s.stats.extra { stats.Extra[k] = v }
 			s.stats.extra_mtx.Unlock()
-			status_code = write_json_resp_header(w, http.StatusOK)
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(stats); err != nil { goto oops }
 
 		default:
-			status_code = write_empty_resp_header(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 	}
 
 //done:

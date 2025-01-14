@@ -410,7 +410,7 @@ func (r *ClientRoute) ConnectToPeer(pts_id PeerId, route_option RouteOption, pts
 	r.ptc_mtx.Unlock()
 
 	d.LocalAddr = nil // TOOD: use this if local address is specified
-	conn, err = d.DialContext(waitctx, "tcp", r.peer_addr)
+	conn, err = d.DialContext(waitctx, TcpAddrStrClass(r.peer_addr), r.peer_addr)
 
 	r.ptc_mtx.Lock()
 	cancel_wait()
@@ -500,7 +500,7 @@ func (r *ClientRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_d
 				r.ReqStop()
 			} else {
 				var addr *net.TCPAddr
-				addr, err = net.ResolveTCPAddr("tcp", rd.TargetAddrStr)
+				addr, err = net.ResolveTCPAddr(TcpAddrStrClass(rd.TargetAddrStr), rd.TargetAddrStr)
 				if err != nil {
 					r.cts.cli.log.Write(r.cts.sid, LOG_ERROR, "Protocol error - invalid service address(%s) for server peer in route_started event(%d)", rd.TargetAddrStr, r.id)
 					r.ReqStop()
@@ -1260,21 +1260,21 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 
 	c.ctl_mux = http.NewServeMux()
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns",
-		c.wrap_http_handler(&client_ctl_client_conns{client_ctl{c: &c, id: "ctl"}}))
+		c.wrap_http_handler(&client_ctl_client_conns{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}",
-		c.wrap_http_handler(&client_ctl_client_conns_id{client_ctl{c: &c, id: "ctl"}}))
+		c.wrap_http_handler(&client_ctl_client_conns_id{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes{client_ctl{c: &c, id: "ctl"}}))
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id{client_ctl{c: &c, id: "ctl"}}))
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes-spsp/{port_id}",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes_spsp{client_ctl{c: &c, id: "ctl"}}))
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes_spsp{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers{client_ctl{c: &c, id: "ctl"}}))
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers_id{client_ctl{c: &c, id: "ctl"}}))
+		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers_id{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/stats",
-		c.wrap_http_handler(&client_ctl_stats{client_ctl{c: &c, id: "ctl"}}))
+		c.wrap_http_handler(&client_ctl_stats{client_ctl{c: &c, id: HS_ID_CTL}}))
 
 	c.ctl_addr = make([]string, len(ctl_addrs))
 	c.ctl = make([]*http.Server, len(ctl_addrs))

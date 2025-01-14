@@ -295,7 +295,7 @@ func (pxy *server_proxy_http_main) addr_to_transport (ctx context.Context, addr 
 	// establish the connection.
 	dialer = &net.Dialer{}
 	waitctx, cancel_wait = context.WithTimeout(ctx, 3 * time.Second) // TODO: make timeout configurable
-	conn, err = dialer.DialContext(waitctx, "tcp", addr.String())
+	conn, err = dialer.DialContext(waitctx, TcpAddrClass(addr), addr.String())
 	cancel_wait()
 	if err != nil { return nil, err }
 
@@ -352,13 +352,13 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	pi, err = pxy.get_route_proxy_info(req, in_wpx_mode)
 	if err != nil {
-		status_code = write_empty_resp_header(w, http.StatusNotFound)
+		status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
 		goto oops
 	}
 
 /*
 	if pi.SvcOption & (RouteOption(ROUTE_OPTION_HTTP) | RouteOption(ROUTE_OPTION_HTTPS)) == 0 {
-		status_code = write_empty_resp_header(w, http.StatusForbidden)
+		status_code = WriteEmptyRespHeader(w, http.StatusForbidden)
 		err = fmt.Errorf("target not http/https")
 		goto oops
 	}
@@ -366,7 +366,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	addr = svc_addr_to_dst_addr(pi.SvcAddr)
 	transport, err = pxy.addr_to_transport(s.ctx, addr)
 	if err != nil {
-		status_code = write_empty_resp_header(w, http.StatusBadGateway)
+		status_code = WriteEmptyRespHeader(w, http.StatusBadGateway)
 		goto oops
 	}
 	proxy_url = pxy.req_to_proxy_url(req, pi)
@@ -375,7 +375,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	proxy_req, err = http.NewRequestWithContext(s.ctx, req.Method, proxy_url.String(), req.Body)
 	if err != nil {
-		status_code = write_empty_resp_header(w, http.StatusInternalServerError)
+		status_code = WriteEmptyRespHeader(w, http.StatusInternalServerError)
 		goto oops
 	}
 	upgrade_required = mutate_proxy_req_headers(req, proxy_req, pi.PathPrefix, in_wpx_mode)
@@ -392,7 +392,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	resp, err = client.Do(proxy_req)
 	//resp, err = transport.RoundTrip(proxy_req) // any advantage if using RoundTrip instead?
 	if err != nil {
-		status_code = write_empty_resp_header(w, http.StatusInternalServerError)
+		status_code = WriteEmptyRespHeader(w, http.StatusInternalServerError)
 		goto oops
 	} else {
 		status_code = resp.StatusCode
@@ -442,7 +442,7 @@ func (pxy *server_proxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Req
 	var status_code int
 //	var err error
 
-	status_code = write_empty_resp_header(w, http.StatusForbidden)
+	status_code = WriteEmptyRespHeader(w, http.StatusForbidden)
 
 // TODO: show the list of services running instead if enabled?
 
@@ -474,7 +474,7 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 			status_code = write_js_resp_header(w, http.StatusOK)
 			w.Write(xterm_addon_fit_js)
 		case "xterm.css":
-			status_code = write_css_resp_header(w, http.StatusOK)
+			status_code = WriteCssRespHeader(w, http.StatusOK)
 			w.Write(xterm_css)
 		case "xterm.html":
 			var tmpl *template.Template
@@ -483,7 +483,7 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 
 			// this endpoint is registered for /_ssh/{conn_id}/{route_id}/ under pxy.
 			// and for /_ssh/{port_id} under wpx.
-			if pxy.id == "wpx" {
+			if pxy.id == HS_ID_WPX {
 				conn_id = req.PathValue("port_id")
 				route_id = PORT_ID_MARKER
 				_, err = s.FindServerRouteByIdStr(conn_id, route_id)
@@ -496,7 +496,7 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 				_, err = s.FindServerRouteByIdStr(conn_id, route_id)
 			}
 			if err != nil {
-				status_code = write_empty_resp_header(w, http.StatusNotFound)
+				status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
 				goto oops
 			}
 
@@ -507,10 +507,10 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 				_, err = tmpl.Parse(xterm_html)
 			}
 			if err != nil {
-				status_code = write_empty_resp_header(w, http.StatusInternalServerError)
+				status_code = WriteEmptyRespHeader(w, http.StatusInternalServerError)
 				goto oops
 			} else {
-				status_code = write_html_resp_header(w, http.StatusOK)
+				status_code = WriteHtmlRespHeader(w, http.StatusOK)
 				tmpl.Execute(w,
 					&server_proxy_xterm_session_info{
 						ConnId: conn_id,
@@ -526,10 +526,10 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 			w.WriteHeader(status_code)
 
 		case "_forbidden":
-			status_code = write_empty_resp_header(w, http.StatusForbidden)
+			status_code = WriteEmptyRespHeader(w, http.StatusForbidden)
 
 		default:
-			status_code = write_empty_resp_header(w, http.StatusNotFound)
+			status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
 	}
 
 //done:
@@ -594,7 +594,7 @@ func (pxy *server_proxy_ssh_ws) connect_ssh (ctx context.Context, username strin
 	addr = svc_addr_to_dst_addr(r.SvcAddr)
 
 	dialer = &net.Dialer{}
-	conn, err = dialer.DialContext(ctx, "tcp", addr.String())
+	conn, err = dialer.DialContext(ctx, TcpAddrClass(addr), addr.String())
 	if err != nil { goto oops }
 
 	ssh_conn, chans, reqs, err = ssh.NewClientConn(conn, addr.String(), cc)
