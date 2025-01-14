@@ -286,16 +286,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		// currenly, this is invoked via wpx only for ssh from xterm.html
 		// ugly, but hard-code the type to "ssh" here for now...
 		pi, err = ctl.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
-		if err == nil {
-			// fake route
-			r = &ServerRoute{
-				SvcOption: pi.SvcOption,
-				PtcName: pi.PtcName,
-				PtcAddr: pi.PtcAddr,
-				SvcAddr: pi.SvcAddr,
-				SvcPermNet: pi.SvcPermNet,
-			}
-		}
+		if err == nil { r = proxy_info_to_server_route(pi) } // fake route
 	}
 
 	if err != nil {

@@ -198,7 +198,6 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool
 	var r *ServerRoute
 	var pi *ServerRouteProxyInfo
 	var path_prefix string
-	var is_foreign bool
 	var err error
 
 	if in_wpx_mode { // for wpx
@@ -221,24 +220,14 @@ func (pxy *server_proxy_http_main) get_route(req *http.Request, in_wpx_mode bool
 		// call this callback only in the wpx mode
 		pi, err = pxy.s.wpx_foreign_port_proxy_maker("http", conn_id)
 		if err != nil { return nil, err }
-
-		pi.PathPrefix = path_prefix
-		pi.ConnId = conn_id
-		pi.RouteId = conn_id
 		pi.IsForeign = true // just to ensure this
 	} else {
-		pi = &ServerRouteProxyInfo{
-			SvcOption: r.SvcOption,
-			PtcAddr: r.PtcAddr,
-			PtcName: r.PtcName,
-			SvcAddr: r.SvcAddr,
-			SvcPermNet: r.SvcPermNet,
-			PathPrefix: path_prefix,
-			ConnId: conn_id,
-			RouteId: route_id,
-			IsForeign: is_foreign,
-		}
+		pi = server_route_to_proxy_info(r)
+		pi.IsForeign = false
 	}
+	pi.PathPrefix = path_prefix
+	pi.ConnId = conn_id
+	pi.RouteId = route_id
 
 	return pi, nil
 }
@@ -344,7 +333,7 @@ func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *Serve
 
 func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
-	var r *ServerRouteProxyInfo
+	var pi *ServerRouteProxyInfo
 	var status_code int
 	var resp *http.Response
 	var in_wpx_mode bool
@@ -359,26 +348,26 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	s = pxy.s
 	in_wpx_mode = (pxy.prefix == PORT_ID_MARKER)
 
-	r, err = pxy.get_route(req, in_wpx_mode)
+	pi, err = pxy.get_route(req, in_wpx_mode)
 	if err != nil {
 		status_code = write_empty_resp_header(w, http.StatusNotFound)
 		goto oops
 	}
 
 /*
-	if r.SvcOption & (RouteOption(ROUTE_OPTION_HTTP) | RouteOption(ROUTE_OPTION_HTTPS)) == 0 {
+	if pi.SvcOption & (RouteOption(ROUTE_OPTION_HTTP) | RouteOption(ROUTE_OPTION_HTTPS)) == 0 {
 		status_code = write_empty_resp_header(w, http.StatusForbidden)
 		err = fmt.Errorf("target not http/https")
 		goto oops
 	}
 */
-	addr = svc_addr_to_dst_addr(r.SvcAddr)
+	addr = svc_addr_to_dst_addr(pi.SvcAddr)
 	transport, err = pxy.addr_to_transport(s.ctx, addr)
 	if err != nil {
 		status_code = write_empty_resp_header(w, http.StatusBadGateway)
 		goto oops
 	}
-	proxy_url = pxy.req_to_proxy_url(req, r)
+	proxy_url = pxy.req_to_proxy_url(req, pi)
 
 	s.log.Write(pxy.id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
 
@@ -387,7 +376,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 		status_code = write_empty_resp_header(w, http.StatusInternalServerError)
 		goto oops
 	}
-	upgrade_required = mutate_proxy_req_headers(req, proxy_req, r.PathPrefix, in_wpx_mode)
+	upgrade_required = mutate_proxy_req_headers(req, proxy_req, pi.PathPrefix, in_wpx_mode)
 
 	if in_wpx_mode {
 		proxy_req.Header.Set("Accept-Encoding", "")
@@ -420,7 +409,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 			resp_body = resp.Body
 
 			if in_wpx_mode && s.wpx_resp_tf != nil {
-				resp_body = s.wpx_resp_tf(r, resp)
+				resp_body = s.wpx_resp_tf(pi, resp)
 			}
 
 			outhdr = w.Header()
@@ -672,13 +661,7 @@ func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
 		// some pointer fields are nil. extra care needs to be taken
 		// below to ensure it doesn't access undesired fields when exitending
 		// code further
-		r = &ServerRoute{
-			SvcOption: pi.SvcOption,
-			PtcName: pi.PtcName,
-			PtcAddr: pi.PtcAddr,
-			SvcAddr: pi.SvcAddr,
-			SvcPermNet: pi.SvcPermNet,
-		}
+		r = proxy_info_to_server_route(pi)
 	}
 	if err != nil {
 		pxy.send_ws_data(ws, "error", err.Error())

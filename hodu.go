@@ -186,3 +186,23 @@ func write_empty_resp_header(w http.ResponseWriter, status_code int) int {
 	w.WriteHeader(status_code)
 	return status_code
 }
+
+func server_route_to_proxy_info(r *ServerRoute) *ServerRouteProxyInfo {
+	return &ServerRouteProxyInfo{
+		SvcOption: r.SvcOption,
+		PtcName: r.PtcName,
+		PtcAddr: r.PtcAddr,
+		SvcAddr: r.SvcAddr,
+		SvcPermNet: r.SvcPermNet,
+	}
+}
+
+func proxy_info_to_server_route(pi *ServerRouteProxyInfo) *ServerRoute {
+	return &ServerRoute{
+		SvcOption: pi.SvcOption,
+		PtcName: pi.PtcName,
+		PtcAddr: pi.PtcAddr,
+		SvcAddr: pi.SvcAddr,
+		SvcPermNet: pi.SvcPermNet,
+	}
+}
