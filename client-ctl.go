@@ -182,7 +182,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ClientPeerName: r.peer_name,
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 						ServerPeerNet: r.server_peer_net,
-						ServerPeerOption: r.server_peer_option.string(),
+						ServerPeerOption: r.server_peer_option.String(),
 						Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
 						LifetimeStart: r.lifetime_start.Unix(),
 					})
@@ -295,7 +295,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ClientPeerName: r.peer_name,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
-					ServerPeerOption: r.server_peer_option.string(),
+					ServerPeerOption: r.server_peer_option.String(),
 					Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
 					LifetimeStart: r.lifetime_start.Unix(),
 				})
@@ -373,7 +373,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ClientPeerName: r.peer_name,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.server_peer_net,
-					ServerPeerOption: r.server_peer_option.string(),
+					ServerPeerOption: r.server_peer_option.String(),
 					Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
 					LifetimeStart: r.lifetime_start.Unix(),
 				})
@@ -508,7 +508,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ClientPeerName: r.peer_name,
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				ServerPeerNet: r.server_peer_net,
-				ServerPeerOption: r.server_peer_option.string(),
+				ServerPeerOption: r.server_peer_option.String(),
 				Lifetime: r.lifetime.String(),
 			})
 			if err != nil { goto oops }
@@ -613,7 +613,7 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 				ClientPeerName: r.peer_name,
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				ServerPeerNet: r.server_peer_net,
-				ServerPeerOption: r.server_peer_option.string(),
+				ServerPeerOption: r.server_peer_option.String(),
 				Lifetime: r.lifetime.String(),
 			})
 			if err != nil { goto oops }

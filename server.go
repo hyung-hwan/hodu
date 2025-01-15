@@ -381,7 +381,7 @@ func (cts *ServerConn) make_route_listener(id RouteId, option RouteOption, svc_r
 			svcaddr = &net.TCPAddr{IP: net.IPv6zero, Port: 0}
 		}
 	} else {
-		return nil, nil, fmt.Errorf("invalid route option value %d(%s)", option, option.string())
+		return nil, nil, fmt.Errorf("invalid route option value %d(%s)", option, option.String())
 	}
 
 	l, err = net.ListenTCP(nw, svcaddr) // make the binding address configurable. support multiple binding addresses???

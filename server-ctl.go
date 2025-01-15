@@ -102,7 +102,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ClientPeerName: r.PtcName,
 						ServerPeerServiceAddr: r.SvcAddr.String(),
 						ServerPeerServiceNet: r.SvcPermNet.String(),
-						ServerPeerOption: r.SvcOption.string(),
+						ServerPeerOption: r.SvcOption.String(),
 					})
 				}
 				js = append(js, json_out_server_conn{
@@ -169,7 +169,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ClientPeerName: r.PtcName,
 					ServerPeerServiceAddr: r.SvcAddr.String(),
 					ServerPeerServiceNet: r.SvcPermNet.String(),
-					ServerPeerOption: r.SvcOption.string(),
+					ServerPeerOption: r.SvcOption.String(),
 				})
 			}
 			js = &json_out_server_conn{
@@ -234,7 +234,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ClientPeerName: r.PtcName,
 					ServerPeerServiceAddr: r.SvcAddr.String(),
 					ServerPeerServiceNet: r.SvcPermNet.String(),
-					ServerPeerOption: r.SvcOption.string(),
+					ServerPeerOption: r.SvcOption.String(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -319,7 +319,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ClientPeerName: r.PtcName,
 				ServerPeerServiceAddr: r.SvcAddr.String(),
 				ServerPeerServiceNet: r.SvcPermNet.String(),
-				ServerPeerOption: r.SvcOption.string(),
+				ServerPeerOption: r.SvcOption.String(),
 			})
 			if err != nil { goto oops }
 

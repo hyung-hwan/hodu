@@ -53,7 +53,7 @@ func TcpAddrStrClass(addr string) string {
 		ap, err = netip.ParseAddrPort(addr)
 		if err == nil {
 			if ap.Addr().Is6() { return "tcp6" }
-			if ap.Addr().Is4() { return "tcp4" }
+			if ap.Addr().Is4() || ap.Addr().Is4In6() { return "tcp4" }
 		}
 	}
 
@@ -61,7 +61,9 @@ func TcpAddrStrClass(addr string) string {
 }
 
 func TcpAddrClass(addr *net.TCPAddr) string {
-	if addr.AddrPort().Addr().Is4() {
+	var netip_addr netip.Addr
+	netip_addr = addr.AddrPort().Addr()
+	if netip_addr.Is4() || netip_addr.Is4In6() {
 		return "tcp4"
 	} else {
 		return "tcp6"
@@ -103,7 +105,7 @@ func string_to_route_option(desc string) RouteOption {
 	return option
 }
 
-func (option RouteOption) string() string {
+func (option RouteOption) String() string {
 	var str string
 	str = ""
 	if option & RouteOption(ROUTE_OPTION_TCP6)  != 0 { str += " tcp6" }
