@@ -25,7 +25,7 @@ import "unsafe"
  *   GET get info
  */
 
-type json_errmsg struct {
+type JsonErrmsg struct {
 	Text string `json:"error-text"`
 }
 
@@ -224,7 +224,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
-				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
+				if err = je.Encode(JsonErrmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
 				status_code = WriteJsonRespHeader(w, http.StatusCreated)
 				if err = je.Encode(json_out_client_conn_id{Id: cts.id}); err != nil { goto oops }
@@ -269,14 +269,14 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
 	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
@@ -348,14 +348,14 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id }); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id }); err != nil { goto oops }
 		goto done
 	}
 
 	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
@@ -430,7 +430,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			r, err = cts.AddNewClientRoute(rc)
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
-				if err = je.Encode(json_errmsg{Text: err.Error()}); err != nil { goto oops }
+				if err = je.Encode(JsonErrmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
 				status_code = WriteJsonRespHeader(w, http.StatusCreated)
 				if err = je.Encode(json_out_client_route_id{Id: r.id, CtsId: r.cts.id}); err != nil { goto oops }
@@ -475,27 +475,27 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 
 	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
 	r = cts.FindClientRouteById(RouteId(route_nid))
 	if r == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(json_errmsg{Text: "non-existent route id - " + route_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "non-existent route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 
@@ -580,27 +580,27 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 	port_nid, err = strconv.ParseUint(port_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong route id - " + port_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong route id - " + port_id}); err != nil { goto oops }
 		goto done
 	}
 
 	cts = c.FindClientConnById(ConnId(conn_nid))
 	if cts == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "non-existent connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 
 	r = cts.FindClientRouteByServerPeerSvcPortId(PortId(port_nid))
 	if r == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(json_errmsg{Text: "non-existent server peer port id - " + port_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "non-existent server peer port id - " + port_id}); err != nil { goto oops }
 		goto done
 	}
 
@@ -683,20 +683,20 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 
 	r = c.FindClientRouteById(ConnId(conn_nid), RouteId(route_nid))
 	if r == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection/route id - " + conn_id + "/" + route_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "non-existent connection/route id - " + conn_id + "/" + route_id}); err != nil { goto oops }
 		goto done
 	}
 
@@ -761,26 +761,26 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id}); err != nil { goto oops }
 		goto done
 	}
 	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong route id - " + route_id}); err != nil { goto oops }
 		goto done
 	}
 	peer_nid, err = strconv.ParseUint(peer_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		if err = je.Encode(json_errmsg{Text: "wrong peer id - " + peer_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "wrong peer id - " + peer_id}); err != nil { goto oops }
 		goto done
 	}
 
 	p = c.FindClientPeerConnById(ConnId(conn_nid), RouteId(route_nid), PeerId(peer_nid))
 	if p == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(json_errmsg{Text: "non-existent connection/route/peer id - " + conn_id + "/" + route_id + "/" + peer_id}); err != nil { goto oops }
+		if err = je.Encode(JsonErrmsg{Text: "non-existent connection/route/peer id - " + conn_id + "/" + route_id + "/" + peer_id}); err != nil { goto oops }
 		goto done
 	}
 
