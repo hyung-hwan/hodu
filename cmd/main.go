@@ -306,9 +306,9 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	}
 
 	if logfile == "" {
-		logger = NewAppLogger("server", os.Stderr, log_mask)
+		logger = NewAppLogger("client", os.Stderr, log_mask)
 	} else {
-		logger, err = NewAppLoggerToFile("server", logfile, logfile_maxsize, logfile_rotate, log_mask)
+		logger, err = NewAppLoggerToFile("client", logfile, logfile_maxsize, logfile_rotate, log_mask)
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
