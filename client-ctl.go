@@ -188,7 +188,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					})
 				}
 				js = append(js, json_out_client_conn{
-					Id: cts.id,
+					Id: cts.Id,
 					ReqServerAddrs: cts.cfg.ServerAddrs,
 					CurrentServerIndex: cts.cfg.Index,
 					ServerAddr: cts.remote_addr,
@@ -227,7 +227,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				if err = je.Encode(JsonErrmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
 				status_code = WriteJsonRespHeader(w, http.StatusCreated)
-				if err = je.Encode(json_out_client_conn_id{Id: cts.id}); err != nil { goto oops }
+				if err = je.Encode(json_out_client_conn_id{Id: cts.Id}); err != nil { goto oops }
 			}
 
 		case http.MethodDelete:
@@ -301,7 +301,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				})
 			}
 			js = &json_out_client_conn{
-				Id: cts.id,
+				Id: cts.Id,
 				ReqServerAddrs: cts.cfg.ServerAddrs,
 				CurrentServerIndex: cts.cfg.Index,
 				ServerAddr: cts.local_addr,
@@ -433,7 +433,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				if err = je.Encode(JsonErrmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
 				status_code = WriteJsonRespHeader(w, http.StatusCreated)
-				if err = je.Encode(json_out_client_route_id{Id: r.Id, CtsId: r.cts.id}); err != nil { goto oops }
+				if err = je.Encode(json_out_client_route_id{Id: r.Id, CtsId: r.cts.Id}); err != nil { goto oops }
 			}
 
 		case http.MethodDelete:
