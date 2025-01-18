@@ -177,14 +177,14 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				cts.route_mtx.Lock()
 				for _, r = range cts.route_map {
 					jsp = append(jsp, json_out_client_route{
-						Id: r.id,
-						ClientPeerAddr: r.peer_addr,
-						ClientPeerName: r.peer_name,
+						Id: r.Id,
+						ClientPeerAddr: r.PeerAddr,
+						ClientPeerName: r.PeerName,
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
-						ServerPeerNet: r.server_peer_net,
-						ServerPeerOption: r.server_peer_option.String(),
-						Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
-						LifetimeStart: r.lifetime_start.Unix(),
+						ServerPeerNet: r.ServerPeerNet,
+						ServerPeerOption: r.ServerPeerOption.String(),
+						Lifetime: fmt.Sprintf("%.09f", r.Lifetime.Seconds()),
+						LifetimeStart: r.LifetimeStart.Unix(),
 					})
 				}
 				js = append(js, json_out_client_conn{
@@ -290,14 +290,14 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			cts.route_mtx.Lock()
 			for _, r = range cts.route_map {
 				jsp = append(jsp, json_out_client_route{
-					Id: r.id,
-					ClientPeerAddr: r.peer_addr,
-					ClientPeerName: r.peer_name,
+					Id: r.Id,
+					ClientPeerAddr: r.PeerAddr,
+					ClientPeerName: r.PeerName,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
-					ServerPeerNet: r.server_peer_net,
-					ServerPeerOption: r.server_peer_option.String(),
-					Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
-					LifetimeStart: r.lifetime_start.Unix(),
+					ServerPeerNet: r.ServerPeerNet,
+					ServerPeerOption: r.ServerPeerOption.String(),
+					Lifetime: fmt.Sprintf("%.09f", r.Lifetime.Seconds()),
+					LifetimeStart: r.LifetimeStart.Unix(),
 				})
 			}
 			js = &json_out_client_conn{
@@ -368,14 +368,14 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			cts.route_mtx.Lock()
 			for _, r = range cts.route_map {
 				jsp = append(jsp, json_out_client_route{
-					Id: r.id,
-					ClientPeerAddr: r.peer_addr,
-					ClientPeerName: r.peer_name,
+					Id: r.Id,
+					ClientPeerAddr: r.PeerAddr,
+					ClientPeerName: r.PeerName,
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
-					ServerPeerNet: r.server_peer_net,
-					ServerPeerOption: r.server_peer_option.String(),
-					Lifetime: fmt.Sprintf("%.09f", r.lifetime.Seconds()),
-					LifetimeStart: r.lifetime_start.Unix(),
+					ServerPeerNet: r.ServerPeerNet,
+					ServerPeerOption: r.ServerPeerOption.String(),
+					Lifetime: fmt.Sprintf("%.09f", r.Lifetime.Seconds()),
+					LifetimeStart: r.LifetimeStart.Unix(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -433,7 +433,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				if err = je.Encode(JsonErrmsg{Text: err.Error()}); err != nil { goto oops }
 			} else {
 				status_code = WriteJsonRespHeader(w, http.StatusCreated)
-				if err = je.Encode(json_out_client_route_id{Id: r.id, CtsId: r.cts.id}); err != nil { goto oops }
+				if err = je.Encode(json_out_client_route_id{Id: r.Id, CtsId: r.cts.id}); err != nil { goto oops }
 			}
 
 		case http.MethodDelete:
@@ -503,13 +503,13 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		case http.MethodGet:
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			err = je.Encode(json_out_client_route{
-				Id: r.id,
-				ClientPeerAddr: r.peer_addr,
-				ClientPeerName: r.peer_name,
+				Id: r.Id,
+				ClientPeerAddr: r.PeerAddr,
+				ClientPeerName: r.PeerName,
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
-				ServerPeerNet: r.server_peer_net,
-				ServerPeerOption: r.server_peer_option.String(),
-				Lifetime: r.lifetime.String(),
+				ServerPeerNet: r.ServerPeerNet,
+				ServerPeerOption: r.ServerPeerOption.String(),
+				Lifetime: r.Lifetime.String(),
 			})
 			if err != nil { goto oops }
 
@@ -608,13 +608,13 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 		case http.MethodGet:
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			err = je.Encode(json_out_client_route{
-				Id: r.id,
-				ClientPeerAddr: r.peer_addr,
-				ClientPeerName: r.peer_name,
+				Id: r.Id,
+				ClientPeerAddr: r.PeerAddr,
+				ClientPeerName: r.PeerName,
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
-				ServerPeerNet: r.server_peer_net,
-				ServerPeerOption: r.server_peer_option.String(),
-				Lifetime: r.lifetime.String(),
+				ServerPeerNet: r.ServerPeerNet,
+				ServerPeerOption: r.ServerPeerOption.String(),
+				Lifetime: r.Lifetime.String(),
 			})
 			if err != nil { goto oops }
 
