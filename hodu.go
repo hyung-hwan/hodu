@@ -1,5 +1,6 @@
 package hodu
 
+import "fmt"
 import "net"
 import "net/http"
 import "net/netip"
@@ -91,7 +92,7 @@ func word_to_route_option(word string) RouteOption {
 	return RouteOption(ROUTE_OPTION_UNSPEC)
 }
 
-func string_to_route_option(desc string) RouteOption {
+func StringToRouteOption(desc string) RouteOption {
 	var fld string
 	var option RouteOption
 	var p RouteOption
@@ -155,7 +156,7 @@ func get_last_rune_of_non_empty_string(s string) rune {
 	return tmp[len(tmp) - 1]
 }
 
-func parse_duration_string(dur string) (time.Duration, error) {
+func ParseDurationString(dur string) (time.Duration, error) {
 	// i want the input to be in seconds with resolution of 9 digits after
 	// the decimal point. For example, 0.05 to mean 500ms.
 	// however, i don't care if a unit is part of the input.
@@ -166,6 +167,10 @@ func parse_duration_string(dur string) (time.Duration, error) {
 	tmp = dur
 	if is_digit_or_period(get_last_rune_of_non_empty_string(tmp)) { tmp = tmp + "s" }
 	return time.ParseDuration(tmp)
+}
+
+func DurationToSecString(d time.Duration) string {
+	return fmt.Sprintf("%.09f", d.Seconds())
 }
 
 func WriteJsonRespHeader(w http.ResponseWriter, status_code int) int {

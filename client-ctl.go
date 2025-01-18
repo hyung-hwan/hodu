@@ -183,7 +183,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 						ServerPeerNet: r.ServerPeerNet,
 						ServerPeerOption: r.ServerPeerOption.String(),
-						Lifetime: fmt.Sprintf("%.09f", r.Lifetime.Seconds()),
+						Lifetime: DurationToSecString(r.Lifetime),
 						LifetimeStart: r.LifetimeStart.Unix(),
 					})
 				}
@@ -296,7 +296,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.ServerPeerNet,
 					ServerPeerOption: r.ServerPeerOption.String(),
-					Lifetime: fmt.Sprintf("%.09f", r.Lifetime.Seconds()),
+					Lifetime: DurationToSecString(r.Lifetime),
 					LifetimeStart: r.LifetimeStart.Unix(),
 				})
 			}
@@ -374,7 +374,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 					ServerPeerNet: r.ServerPeerNet,
 					ServerPeerOption: r.ServerPeerOption.String(),
-					Lifetime: fmt.Sprintf("%.09f", r.Lifetime.Seconds()),
+					Lifetime: DurationToSecString(r.Lifetime),
 					LifetimeStart: r.LifetimeStart.Unix(),
 				})
 			}
@@ -402,14 +402,14 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				goto oops
 			}
 
-			server_peer_option = string_to_route_option(jcr.ServerPeerOption)
+			server_peer_option = StringToRouteOption(jcr.ServerPeerOption)
 			if server_peer_option == RouteOption(ROUTE_OPTION_UNSPEC) {
 				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 				err = fmt.Errorf("wrong server-peer-option value - %s", server_peer_option)
 				goto oops
 			}
 
-			lifetime, err = parse_duration_string(jcr.Lifetime)
+			lifetime, err = ParseDurationString(jcr.Lifetime)
 			if err != nil {
 				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
@@ -509,7 +509,9 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				ServerPeerNet: r.ServerPeerNet,
 				ServerPeerOption: r.ServerPeerOption.String(),
-				Lifetime: r.Lifetime.String(),
+				Lifetime: DurationToSecString(r.Lifetime),
+				LifetimeStart: r.LifetimeStart.Unix(),
+
 			})
 			if err != nil { goto oops }
 
@@ -523,7 +525,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				goto oops
 			}
 
-			lifetime, err = parse_duration_string(jcr.Lifetime)
+			lifetime, err = ParseDurationString(jcr.Lifetime)
 			if err != nil {
 				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())
@@ -614,7 +616,8 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
 				ServerPeerNet: r.ServerPeerNet,
 				ServerPeerOption: r.ServerPeerOption.String(),
-				Lifetime: r.Lifetime.String(),
+				Lifetime: DurationToSecString(r.Lifetime),
+				LifetimeStart: r.LifetimeStart.Unix(),
 			})
 			if err != nil { goto oops }
 
@@ -628,7 +631,7 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 				goto oops
 			}
 
-			lifetime, err = parse_duration_string(jcr.Lifetime)
+			lifetime, err = ParseDurationString(jcr.Lifetime)
 			if err != nil {
 				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 				err = fmt.Errorf("wrong lifetime value %s - %s", jcr.Lifetime, err.Error())

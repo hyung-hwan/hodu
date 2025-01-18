@@ -188,7 +188,7 @@ func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, client
 	r.PeerAddr = client_peer_addr // client-side peer
 	r.PeerName = client_peer_name
 	// if the client_peer_addr is a domain name, it can't tell between tcp4 and tcp6
-	r.PeerOption = string_to_route_option(TcpAddrStrClass(client_peer_addr))
+	r.PeerOption = StringToRouteOption(TcpAddrStrClass(client_peer_addr))
 
 	r.ServerPeerAddr = server_peer_svc_addr
 	r.ServerPeerNet = server_peer_svc_net // permitted network for server-side peer
