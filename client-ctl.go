@@ -424,9 +424,9 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				ServiceAddr: jcr.ServerPeerServiceAddr,
 				ServiceNet: jcr.ServerPeerServiceNet,
 				Lifetime: lifetime,
+				Static: false,
 			}
 
-			//cts.AddClientRouteConfig(rc) // TODO: this is to remember... but how to delete it?
 			r, err = cts.AddNewClientRoute(rc)
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)

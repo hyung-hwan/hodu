@@ -35,6 +35,7 @@ type ClientRouteConfig struct {
 	ServiceAddr string // server-peer-service-addr
 	ServiceNet  string // server-peer-service-net
 	Lifetime    time.Duration
+	Static      bool
 }
 
 type ClientConfig struct {
@@ -112,6 +113,8 @@ type ClientConn struct {
 type ClientRoute struct {
 	cts *ClientConn
 	Id RouteId
+	Static bool
+
 	PeerAddr string
 	PeerName string
 	PeerOption RouteOption
@@ -178,11 +181,12 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 }*/
 
 // --------------------------------------------------------------------
-func NewClientRoute(cts *ClientConn, id RouteId, client_peer_addr string, client_peer_name string, server_peer_svc_addr string, server_peer_svc_net string, server_peer_option RouteOption, lifetime time.Duration) *ClientRoute {
+func NewClientRoute(cts *ClientConn, id RouteId, static bool, client_peer_addr string, client_peer_name string, server_peer_svc_addr string, server_peer_svc_net string, server_peer_option RouteOption, lifetime time.Duration) *ClientRoute {
 	var r ClientRoute
 
 	r.cts = cts
 	r.Id = id
+	r.Static = static
 	r.ptc_map = make(ClientPeerConnMap)
 	r.ptc_cancel_map = make(ClientPeerCancelFuncMap)
 	r.PeerAddr = client_peer_addr // client-side peer
@@ -647,6 +651,7 @@ func (r *ClientRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_d
 // --------------------------------------------------------------------
 func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 	var cts ClientConn
+	var i int
 
 	cts.cli = c
 	cts.route_map = make(ClientRouteMap)
@@ -654,6 +659,11 @@ func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
 	cts.cfg.ClientConfig = *cfg
 	cts.stop_req.Store(false)
 	cts.stop_chan = make(chan bool, 8)
+
+	for i, _ = range cts.cfg.Routes {
+		// override it to static regardless of the value passed in
+		cts.cfg.Routes[i].Static = true
+	}
 
 	// the actual connection to the server is established in the main task function
 	// The cts.conn, cts.hdc, cts.psc fields are left unassigned here.
@@ -698,7 +708,7 @@ func (cts *ClientConn) AddNewClientRoute(rc *ClientRouteConfig) (*ClientRoute, e
 		assigned_id = rc.Id
 	}
 
-	r = NewClientRoute(cts, assigned_id, rc.PeerAddr, rc.PeerName, rc.ServiceAddr, rc.ServiceNet, rc.Option, rc.Lifetime)
+	r = NewClientRoute(cts, assigned_id, rc.Static, rc.PeerAddr, rc.PeerName, rc.ServiceAddr, rc.ServiceNet, rc.Option, rc.Lifetime)
 	cts.route_map[r.Id] = r
 	cts.cli.stats.routes.Add(1)
 	if cts.cli.route_persister != nil { cts.cli.route_persister.Save(cts, r) }
@@ -834,13 +844,7 @@ func (cts *ClientConn) FindClientRouteByServerPeerSvcPortId(port_id PortId) *Cli
 	return nil
 }
 
-func (cts *ClientConn) AddClientRouteConfig (route *ClientRouteConfig) {
-	cts.route_mtx.Lock()
-	cts.cfg.Routes = append(cts.cfg.Routes, *route)
-	cts.route_mtx.Unlock()
-}
-
-func (cts *ClientConn) AddClientRoutes(routes []ClientRouteConfig) error {
+func (cts *ClientConn) add_client_routes(routes []ClientRouteConfig) error {
 	var v ClientRouteConfig
 	var err error
 
@@ -968,15 +972,18 @@ start_over:
 
 	if len(cts.cfg.Routes) > 0 {
 		// the connection structure to a server is ready.
-		// let's add routes to the client-side peers if given
-		err = cts.AddClientRoutes(cts.cfg.Routes)
+		// let's add statically configured routes to the client-side peers
+		err = cts.add_client_routes(cts.cfg.Routes)
 		if err != nil {
 			cts.cli.log.Write(cts.Sid, LOG_ERROR, "Failed to add routes to server[%d] %s for %v - %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], cts.cfg.Routes, err.Error())
 			goto done
 		}
 	}
 
-	if cts.cli.route_persister != nil { cts.cli.route_persister.LoadAll(cts) }
+	if cts.cli.route_persister != nil {
+		// restore the client routes added and saved via the control channel
+		cts.cli.route_persister.LoadAll(cts)
+	}
 
 	for {
 		var pkt *Packet
