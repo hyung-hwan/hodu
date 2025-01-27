@@ -44,6 +44,7 @@ type ClientTLSConfig struct {
 
 type BasicAuthConfig struct {
 	Enabled bool `yaml:"enabled"`
+	Realm string `yaml:"realm"`
 	Users []string `yaml:"users"`
 	UserFile string `yaml:"user-file"`
 }

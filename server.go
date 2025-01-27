@@ -42,26 +42,42 @@ type ServerSvcPortMap = map[PortId]ConnRouteId
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
-type ServerCTLConfig struct {
-	prefix string
-	addrs []string
-	basic_auth struct {
-		enabled bool
-		users []string
-	}
-	tls *tls.Config
+type ServerBasicAuthUser struct {
+	Username string
+	Password string
+}
+
+type ServerBasicAuth struct {
+	Enabled bool
+	Realm string
+	User []ServerBasicAuthUser
+}
+
+type ServerConfig struct {
+	RpcAddrs []string
+	RpcTls *tls.Config
+	RpcMaxConns int
+	MaxPeers int
+
+	CtlAddrs []string
+	CtlTls *tls.Config
+	CtlPrefix string
+	CtlBasicAuth ServerBasicAuth
+
+	PxyAddrs []string
+	PxyTls *tls.Config
+
+	WpxAddrs []string
+	WpxTls *tls.Config
 }
 
 type Server struct {
 	UnimplementedHoduServer
 	Named
 
+	cfg             *ServerConfig
 	ctx             context.Context
 	ctx_cancel      context.CancelFunc
-	pxytlscfg       *tls.Config
-	wpxtlscfg       *tls.Config
-	ctltlscfg       *tls.Config
-	rpctlscfg       *tls.Config
 
 	wg              sync.WaitGroup
 	stop_req        atomic.Bool
@@ -70,18 +86,14 @@ type Server struct {
 	ext_mtx         sync.Mutex
 	ext_svcs        []Service
 
-	pxy_addr        []string
 	pxy_ws          *server_proxy_ssh_ws
 	pxy_mux         *http.ServeMux
 	pxy             []*http.Server // proxy server
 
-	wpx_addr        []string
 	wpx_ws          *server_proxy_ssh_ws
 	wpx_mux         *http.ServeMux
 	wpx             []*http.Server // proxy server than handles http/https only
 
-	ctl_addr        []string
-	ctl_prefix      string
 	ctl_mux         *http.ServeMux
 	ctl             []*http.Server // control server
 
@@ -975,7 +987,7 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 	})
 }
 
-func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, pxytlscfg *tls.Config, wpxtlscfg *tls.Config, rpc_max int, peer_max int) (*Server, error) {
+func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfig) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
 	var rpcaddr *net.TCPAddr
@@ -986,7 +998,7 @@ func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 	var opts []grpc.ServerOption
 	var err error
 
-	if len(rpc_addrs) <= 0 {
+	if len(cfg.RpcAddrs) <= 0 {
 		return nil, fmt.Errorf("no server addresses provided")
 	}
 
@@ -995,7 +1007,7 @@ func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 	s.log = logger
 	/* create the specified number of listeners */
 	s.rpc = make([]*net.TCPListener, 0)
-	for _, addr = range rpc_addrs {
+	for _, addr = range cfg.RpcAddrs {
 		var addr_class string
 
 		addr_class = TcpAddrStrClass(addr)
@@ -1008,13 +1020,10 @@ func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 		s.rpc = append(s.rpc, l)
 	}
 
-	s.ctltlscfg = ctltlscfg
-	s.rpctlscfg = rpctlscfg
-	s.pxytlscfg = pxytlscfg
-	s.wpxtlscfg = wpxtlscfg
+	s.cfg = cfg
 	s.ext_svcs = make([]Service, 0, 1)
-	s.pts_limit = peer_max
-	s.cts_limit = rpc_max
+	s.pts_limit = cfg.MaxPeers
+	s.cts_limit = cfg.RpcMaxConns
 	s.cts_next_id = 1
 	s.cts_map = make(ServerConnMap)
 	s.cts_map_by_addr = make(ServerConnMapByAddr)
@@ -1031,7 +1040,7 @@ func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 */
 
 	opts = append(opts, grpc.StatsHandler(&ConnCatcher{server: &s}))
-	if s.rpctlscfg != nil { opts = append(opts, grpc.Creds(credentials.NewTLS(s.rpctlscfg))) }
+	if s.cfg.RpcTls != nil { opts = append(opts, grpc.Creds(credentials.NewTLS(s.cfg.RpcTls))) }
 	//opts = append(opts, grpc.UnaryInterceptor(unaryInterceptor))
 	//opts = append(opts, grpc.StreamInterceptor(streamInterceptor))
 	s.rpc_svr = grpc.NewServer(opts...)
@@ -1043,36 +1052,32 @@ func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 
 	// ---------------------------------------------------------
 
-	s.ctl_prefix = ctl_prefix
 	s.ctl_mux = http.NewServeMux()
 
-	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/server-conns",
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/server-conns",
 		s.wrap_http_handler(&server_ctl_server_conns{server_ctl{s: &s, id: HS_ID_CTL}}))
-	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/server-conns/{conn_id}",
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}",
 		s.wrap_http_handler(&server_ctl_server_conns_id{server_ctl{s: &s, id: HS_ID_CTL}}))
-	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/server-conns/{conn_id}/routes",
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes",
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes{server_ctl{s: &s, id: HS_ID_CTL}}))
-	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}",
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}",
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_CTL}}))
-	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/stats",
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/stats",
 		s.wrap_http_handler(&server_ctl_stats{server_ctl{s: &s, id: HS_ID_CTL}}))
 
 // TODO: make this optional. add this endpoint only if it's enabled...
 	s.promreg = prometheus.NewRegistry()
 	s.promreg.MustRegister(prometheus.NewGoCollector())
 	s.promreg.MustRegister(NewServerCollector(&s))
-	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/metrics",
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/metrics",
 		promhttp.HandlerFor(s.promreg, promhttp.HandlerOpts{ EnableOpenMetrics: true }))
 
-	s.ctl_addr = make([]string, len(ctl_addrs))
-	s.ctl = make([]*http.Server, len(ctl_addrs))
-	copy(s.ctl_addr, ctl_addrs)
-
-	for i = 0; i < len(ctl_addrs); i++ {
+	s.ctl = make([]*http.Server, len(cfg.CtlAddrs))
+	for i = 0; i < len(cfg.CtlAddrs); i++ {
 		s.ctl[i] = &http.Server{
-			Addr: ctl_addrs[i],
+			Addr: cfg.CtlAddrs[i],
 			Handler: s.ctl_mux,
-			TLSConfig: s.ctltlscfg,
+			TLSConfig: s.cfg.CtlTls,
 			ErrorLog: hs_log,
 			// TODO: more settings
 		}
@@ -1104,15 +1109,13 @@ func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}",
 		s.wrap_http_handler(&server_proxy_http_main{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, prefix: "/_http"}))
 
-	s.pxy_addr = make([]string, len(pxy_addrs))
-	s.pxy = make([]*http.Server, len(pxy_addrs))
-	copy(s.pxy_addr, pxy_addrs)
+	s.pxy = make([]*http.Server, len(cfg.PxyAddrs))
 
-	for i = 0; i < len(pxy_addrs); i++ {
+	for i = 0; i < len(cfg.PxyAddrs); i++ {
 		s.pxy[i] = &http.Server{
-			Addr: pxy_addrs[i],
+			Addr: cfg.PxyAddrs[i],
 			Handler: s.pxy_mux,
-			TLSConfig: s.pxytlscfg,
+			TLSConfig: cfg.PxyTls,
 			ErrorLog: hs_log,
 			// TODO: more settings
 		}
@@ -1145,15 +1148,13 @@ func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 	s.wpx_mux.Handle("/",
 		s.wrap_http_handler(&server_proxy_http_wpx{server_proxy: server_proxy{s: &s, id: HS_ID_WPX}}))
 
-	s.wpx_addr = make([]string, len(wpx_addrs))
-	s.wpx = make([]*http.Server, len(wpx_addrs))
-	copy(s.wpx_addr, wpx_addrs)
+	s.wpx = make([]*http.Server, len(cfg.WpxAddrs))
 
-	for i = 0; i < len(wpx_addrs); i++ {
+	for i = 0; i < len(cfg.WpxAddrs); i++ {
 		s.wpx[i] = &http.Server{
-			Addr: wpx_addrs[i],
+			Addr: cfg.WpxAddrs[i],
 			Handler: s.wpx_mux,
-			TLSConfig: s.wpxtlscfg,
+			TLSConfig: cfg.WpxTls,
 			ErrorLog: hs_log,
 		}
 	}
@@ -1266,7 +1267,7 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 		go func(i int, cs *http.Server) {
 			var l net.Listener
 
-			s.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, s.ctl_addr[i])
+			s.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, s.cfg.CtlAddrs[i])
 
 			if s.stop_req.Load() == false {
 				// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
@@ -1275,10 +1276,10 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
 				if err == nil {
 					if s.stop_req.Load() == false {
-						if s.ctltlscfg == nil {
+						if s.cfg.CtlTls == nil {
 							err = cs.Serve(l)
 						} else {
-							err = cs.ServeTLS(l, "", "") // s.ctltlscfg must provide a certificate and a key
+							err = cs.ServeTLS(l, "", "") // s.cfg.CtlTls must provide a certificate and a key
 						}
 					} else {
 						err = fmt.Errorf("stop requested")
@@ -1312,16 +1313,16 @@ func (s *Server) RunPxyTask(wg *sync.WaitGroup) {
 		go func(i int, cs *http.Server) {
 			var l net.Listener
 
-			s.log.Write("", LOG_INFO, "Proxy channel[%d] started on %s", i, s.pxy_addr[i])
+			s.log.Write("", LOG_INFO, "Proxy channel[%d] started on %s", i, s.cfg.PxyAddrs[i])
 
 			if s.stop_req.Load() == false {
 				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
 				if err == nil {
 					if s.stop_req.Load() == false {
-						if s.pxytlscfg == nil { // TODO: change this
+						if s.cfg.PxyTls == nil { // TODO: change this
 							err = cs.Serve(l)
 						} else {
-							err = cs.ServeTLS(l, "", "") // s.pxytlscfg must provide a certificate and a key
+							err = cs.ServeTLS(l, "", "") // s.cfg.PxyTls must provide a certificate and a key
 						}
 					} else {
 						err = fmt.Errorf("stop requested")
@@ -1355,16 +1356,16 @@ func (s *Server) RunWpxTask(wg *sync.WaitGroup) {
 		go func(i int, cs *http.Server) {
 			var l net.Listener
 
-			s.log.Write("", LOG_INFO, "Wpx channel[%d] started on %s", i, s.wpx_addr[i])
+			s.log.Write("", LOG_INFO, "Wpx channel[%d] started on %s", i, s.cfg.WpxAddrs[i])
 
 			if s.stop_req.Load() == false {
 				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
 				if err == nil {
 					if s.stop_req.Load() == false {
-						if s.wpxtlscfg == nil { // TODO: change this
+						if s.cfg.WpxTls == nil { // TODO: change this
 							err = cs.Serve(l)
 						} else {
-							err = cs.ServeTLS(l, "", "") // s.wpxtlscfg must provide a certificate and a key
+							err = cs.ServeTLS(l, "", "") // s.cfg.WpxTls must provide a certificate and a key
 						}
 					} else {
 						err = fmt.Errorf("stop requested")
@@ -1679,7 +1680,7 @@ func (s *Server) WriteLog(id string, level LogLevel, fmtstr string, args ...inte
 }
 
 func (s *Server) AddCtlHandler(path string, handler ServerHttpHandler) {
-	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl" + path, s.wrap_http_handler(handler))
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl" + path, s.wrap_http_handler(handler))
 }
 
 func (s *Server) AddCtlMetricsCollector(col prometheus.Collector) error {

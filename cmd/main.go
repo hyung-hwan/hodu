@@ -91,50 +91,52 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 
 func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx_addrs []string, cfg *ServerConfig) error {
 	var s *hodu.Server
-	var ctltlscfg *tls.Config
-	var rpctlscfg *tls.Config
-	var pxytlscfg *tls.Config
-	var wpxtlscfg *tls.Config
-	var ctl_prefix string
+	var config *hodu.ServerConfig
 	var logger *AppLogger
 	var log_mask hodu.LogMask
 	var logfile string
 	var logfile_maxsize int64
 	var logfile_rotate int
-	var max_rpc_conns int
-	var max_peers int
 	var xterm_html_file string
 	var xterm_html string
 	var err error
 
 	log_mask = hodu.LOG_ALL
 
+	config = &hodu.ServerConfig{
+		CtlAddrs: ctl_addrs,
+		RpcAddrs: rpc_addrs,
+		PxyAddrs: pxy_addrs,
+		WpxAddrs: wpx_addrs,
+	}
+
 	if cfg != nil {
-		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
+		config.CtlTls, err = make_tls_server_config(&cfg.CTL.TLS)
 		if err != nil { return err }
-		rpctlscfg, err = make_tls_server_config(&cfg.RPC.TLS)
+		config.RpcTls, err = make_tls_server_config(&cfg.RPC.TLS)
 		if err != nil { return err }
-		pxytlscfg, err = make_tls_server_config(&cfg.PXY.TLS)
+		config.PxyTls, err = make_tls_server_config(&cfg.PXY.TLS)
 		if err != nil { return err }
-		wpxtlscfg, err = make_tls_server_config(&cfg.WPX.TLS)
+		config.WpxTls, err = make_tls_server_config(&cfg.WPX.TLS)
 		if err != nil { return err }
 
-		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
-		if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Service.Addrs }
-		if len(pxy_addrs) <= 0 { pxy_addrs = cfg.PXY.Service.Addrs }
-		if len(wpx_addrs) <= 0 { wpx_addrs = cfg.WPX.Service.Addrs }
+		if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
+		if len(config.RpcAddrs) <= 0 { config.RpcAddrs = cfg.RPC.Service.Addrs }
+		if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
+		if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
-		ctl_prefix = cfg.CTL.Service.Prefix
+		config.CtlPrefix = cfg.CTL.Service.Prefix
+		config.RpcMaxConns = cfg.APP.MaxRpcConns
+		config.MaxPeers = cfg.APP.MaxPeers
+		xterm_html_file = cfg.APP.XtermHtmlFile
+
 		log_mask = log_strings_to_mask(cfg.APP.LogMask)
 		logfile = cfg.APP.LogFile
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
-		max_rpc_conns = cfg.APP.MaxRpcConns
-		max_peers = cfg.APP.MaxPeers
-		xterm_html_file = cfg.APP.XtermHtmlFile
 	}
 
-	if len(rpc_addrs) <= 0 {
+	if len(config.RpcAddrs) <= 0 {
 		return fmt.Errorf("no rpc service addresses specified")
 	}
 
@@ -160,17 +162,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		context.Background(),
 		HODU_NAME,
 		logger,
-		ctl_addrs,
-		rpc_addrs,
-		pxy_addrs,
-		wpx_addrs,
-		ctl_prefix,
-		ctltlscfg,
-		rpctlscfg,
-		pxytlscfg,
-		wpxtlscfg,
-		max_rpc_conns,
-		max_peers)
+		config)
 	if err != nil {
 		return fmt.Errorf("failed to create new server - %s", err.Error())
 	}
