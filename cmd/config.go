@@ -51,6 +51,7 @@ type BasicAuthConfig struct {
 type CTLServiceConfig struct {
 	Prefix string   `yaml:"prefix"`  // url prefix for control channel endpoints
 	Addrs  []string `yaml:"addresses"`
+	BasicAuth BasicAuthConfig `yaml:"basic-auth"`
 }
 
 type PXYServiceConfig struct {

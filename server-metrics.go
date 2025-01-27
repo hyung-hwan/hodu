@@ -46,7 +46,7 @@ func NewServerCollector(server *Server) ServerCollector {
 			nil, nil,
 		),
 		SshProxySessions: prometheus.NewDesc(
-			prefix + "ssh_pxy_sessions",
+			prefix + "pxy_ssh_sessions",
 			"Number of SSH proxy sessions",
 			nil, nil,
 		),

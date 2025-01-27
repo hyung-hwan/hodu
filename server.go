@@ -42,6 +42,16 @@ type ServerSvcPortMap = map[PortId]ConnRouteId
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
+type ServerCTLConfig struct {
+	prefix string
+	addrs []string
+	basic_auth struct {
+		enabled bool
+		users []string
+	}
+	tls *tls.Config
+}
+
 type Server struct {
 	UnimplementedHoduServer
 	Named

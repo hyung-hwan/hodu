@@ -26,7 +26,7 @@ type json_out_server_stats struct {
 	ServerRoutes int64 `json:"server-routes"`
 	ServerPeers int64 `json:"server-peers"`
 
-	SshProxySessions int64 `json:"ssh-pxy-sessions"`
+	SshProxySessions int64 `json:"pxy-ssh-sessions"`
 }
 
 // ------------------------------------
