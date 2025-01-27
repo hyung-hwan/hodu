@@ -10,7 +10,6 @@ import "strings"
 import "sync"
 import "time"
 
-
 const HODU_RPC_VERSION uint32 = 0x010000
 
 type LogLevel int
@@ -29,6 +28,10 @@ const LOG_NONE LogMask = LogMask(0)
 var IPV4_PREFIX_ZERO = netip.MustParsePrefix("0.0.0.0/0")
 var IPV6_PREFIX_ZERO = netip.MustParsePrefix("::/0")
 
+type Named struct {
+	name string
+}
+
 type Logger interface {
 	Write(id string, level LogLevel, fmtstr string, args ...interface{})
 	WriteWithCallDepth(id string, level LogLevel, call_depth int, fmtstr string, args ...interface{})
@@ -43,6 +46,43 @@ type Service interface {
 	FixServices() // do some fixup as needed
 	WaitForTermination() // blocking. must wait until all services are stopped
 	WriteLog(id string, level LogLevel, fmtstr string, args ...interface{})
+}
+
+type json_out_go_stats struct {
+	CPUs int `json:"cpus"`
+	Goroutines int `json:"goroutines"`
+	NumCgoCalls int64 `json:"num-cgo-calls"`
+	NumGCs uint32 `json:"num-gcs"`
+	AllocBytes uint64 `json:"memory-alloc-bytes"`
+	TotalAllocBytes uint64 `json:"memory-total-alloc-bytes"`
+	SysBytes uint64 `json:"memory-sys-bytes"`
+	Lookups uint64 `json:"memory-lookups"`
+	MemAllocs uint64 `json:"memory-num-allocs"`
+	MemFrees uint64 `json:"memory-num-frees"`
+
+	HeapAllocBytes uint64 `json:"memory-heap-alloc-bytes"`
+	HeapSysBytes uint64 `json:"memory-heap-sys-bytes"`
+	HeapIdleBytes uint64 `json:"memory-heap-idle-bytes"`
+	HeapInuseBytes uint64 `json:"memory-heap-inuse-bytes"`
+	HeapReleasedBytes uint64 `json:"memory-heap-released-bytes"`
+	HeapObjects uint64 `json:"memory-heap-objects"`
+	StackInuseBytes uint64 `json:"memory-stack-inuse-bytes"`
+	StackSysBytes uint64 `json:"memory-stack-sys-bytes"`
+	MSpanInuseBytes uint64 `json:"memory-mspan-inuse-bytes"`
+	MSpanSysBytes uint64 `json:"memory-mspan-sys-bytes"`
+	MCacheInuseBytes uint64 `json:"memory-mcache-inuse-bytes"`
+	MCacheSysBytes uint64 `json:"memory-mcache-sys-bytes"`
+	BuckHashSysBytes uint64 `json:"memory-buck-hash-sys-bytes"`
+	GCSysBytes uint64 `json:"memory-gc-sys-bytes"`
+	OtherSysBytes uint64 `json:"memory-other-sys-bytes"`
+}
+
+func (n *Named) SetName(name string) {
+	n.name = name
+}
+
+func (n *Named) Name() string {
+	return n.name
 }
 
 func TcpAddrStrClass(addr string) string {
@@ -220,4 +260,38 @@ func proxy_info_to_server_route(pi *ServerRouteProxyInfo) *ServerRoute {
 		SvcAddr: pi.SvcAddr,
 		SvcPermNet: pi.SvcPermNet,
 	}
+}
+
+func (stats *json_out_go_stats) from_runtime_stats() {
+	var mstat runtime.MemStats
+
+	runtime.ReadMemStats(&mstat)
+
+	stats.CPUs = runtime.NumCPU()
+	stats.Goroutines = runtime.NumGoroutine()
+	stats.NumCgoCalls = runtime.NumCgoCall()
+	stats.NumGCs = mstat.NumGC
+
+	stats.AllocBytes = mstat.Alloc
+	stats.TotalAllocBytes = mstat.TotalAlloc
+	stats.SysBytes = mstat.Sys
+	stats.Lookups = mstat.Lookups
+	stats.MemAllocs = mstat.Mallocs
+	stats.MemFrees = mstat.Frees
+
+	stats.HeapAllocBytes = mstat.HeapAlloc
+	stats.HeapSysBytes = mstat.HeapSys
+	stats.HeapIdleBytes = mstat.HeapIdle
+	stats.HeapInuseBytes = mstat.HeapInuse
+	stats.HeapReleasedBytes = mstat.HeapReleased
+	stats.HeapObjects = mstat.HeapObjects
+	stats.StackInuseBytes = mstat.StackInuse
+	stats.StackSysBytes = mstat.StackSys
+	stats.MSpanInuseBytes = mstat.MSpanInuse
+	stats.MSpanSysBytes = mstat.MSpanSys
+	stats.MCacheInuseBytes = mstat.MCacheInuse
+	stats.MCacheSysBytes = mstat.MCacheSys
+	stats.BuckHashSysBytes = mstat.BuckHashSys
+	stats.GCSysBytes = mstat.GCSys
+	stats.OtherSysBytes = mstat.OtherSys
 }

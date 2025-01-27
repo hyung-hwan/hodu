@@ -18,6 +18,8 @@ import "google.golang.org/grpc/credentials"
 import "google.golang.org/grpc/credentials/insecure"
 import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/status"
+import "github.com/prometheus/client_golang/prometheus"
+import "github.com/prometheus/client_golang/prometheus/promhttp"
 
 type PacketStreamClient grpc.BidiStreamingClient[Packet, Packet]
 
@@ -51,6 +53,8 @@ type ClientConfigActive struct {
 }
 
 type Client struct {
+	Named
+
 	ctx         context.Context
 	ctx_cancel  context.CancelFunc
 	ctltlscfg  *tls.Config
@@ -78,6 +82,7 @@ type Client struct {
 	log         Logger
 	route_persister ClientRoutePersister
 
+	promreg *prometheus.Registry
 	stats struct {
 		conns atomic.Int64
 		routes atomic.Int64
@@ -859,7 +864,7 @@ func (cts *ClientConn) add_client_routes(routes []ClientRouteConfig) error {
 	for _, v = range routes {
 		_, err = cts.AddNewClientRoute(&v)
 		if err != nil {
-			return fmt.Errorf("unable to add client route for %s - %s", v, err.Error())
+			return fmt.Errorf("unable to add client route for %v - %s", v, err.Error())
 		}
 	}
 
@@ -1219,7 +1224,7 @@ func (hlw *client_ctl_log_writer) Write(p []byte) (n int, err error) {
 }
 
 type ClientHttpHandler interface {
-	GetId() string
+	Id() string
 	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
 }
 
@@ -1253,19 +1258,20 @@ func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
 
 		if status_code > 0 {
 			if err == nil {
-				c.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
+				c.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
 			} else {
-				c.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+				c.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
 			}
 		}
 	})
 }
 
-func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, rpc_max int, peer_max int, peer_conn_tmout time.Duration) *Client {
+func NewClient(ctx context.Context, name string, logger Logger, ctl_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, rpc_max int, peer_max int, peer_conn_tmout time.Duration) *Client {
 	var c Client
 	var i int
 	var hs_log *log.Logger
 
+	c.name = name
 	c.ctx, c.ctx_cancel = context.WithCancel(ctx)
 	c.ctltlscfg = ctltlscfg
 	c.rpctlscfg = rpctlscfg
@@ -1297,6 +1303,14 @@ func NewClient(ctx context.Context, logger Logger, ctl_addrs []string, ctl_prefi
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers_id{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/stats",
 		c.wrap_http_handler(&client_ctl_stats{client_ctl{c: &c, id: HS_ID_CTL}}))
+
+// TODO: make this optional. add this endpoint only if it's enabled...
+	c.promreg = prometheus.NewRegistry()
+	c.promreg.MustRegister(prometheus.NewGoCollector())
+	c.promreg.MustRegister(NewClientCollector(&c))
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/metrics",
+		promhttp.HandlerFor(c.promreg, promhttp.HandlerOpts{ EnableOpenMetrics: true }))
+
 
 	c.ctl_addr = make([]string, len(ctl_addrs))
 	c.ctl = make([]*http.Server, len(ctl_addrs))
@@ -1665,4 +1679,12 @@ func (c *Client) WriteLog(id string, level LogLevel, fmtstr string, args ...inte
 
 func (c *Client) SetRoutePersister(persister ClientRoutePersister) {
 	c.route_persister = persister
+}
+
+func (c *Client) AddCtlMetricsCollector(col prometheus.Collector) error {
+	return c.promreg.Register(col)
+}
+
+func (c *Client) RemoveCtlMetricsCollector(col prometheus.Collector) bool {
+	return c.promreg.Unregister(col)
 }

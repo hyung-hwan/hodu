@@ -3,8 +3,6 @@ package hodu
 import "encoding/json"
 import "fmt"
 import "net/http"
-//import "net/url"
-import "runtime"
 import "strconv"
 import "strings"
 import "time"
@@ -85,14 +83,7 @@ type json_out_client_peer struct {
 }
 
 type json_out_client_stats struct {
-	CPUs int `json:"cpus"`
-	Goroutines int `json:"goroutines"`
-
-	NumGCs uint32 `json:"num-gcs"`
-	HeapAllocBytes uint64 `json:"memory-alloc-bytes"`
-	MemAllocs uint64 `json:"memory-num-allocs"`
-	MemFrees uint64 `json:"memory-num-frees"`
-
+	json_out_go_stats
 	ClientConns int64 `json:"client-conns"`
 	ClientRoutes int64 `json:"client-routes"`
 	ClientPeers int64 `json:"client-peers"`
@@ -140,7 +131,7 @@ type client_ctl_stats struct {
 
 // ------------------------------------
 
-func (ctl *client_ctl) GetId() string {
+func (ctl *client_ctl) Id() string {
 	return ctl.id
 }
 
@@ -831,14 +822,7 @@ func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	switch req.Method {
 		case http.MethodGet:
 			var stats json_out_client_stats
-			var mstat runtime.MemStats
-			runtime.ReadMemStats(&mstat)
-			stats.CPUs = runtime.NumCPU()
-			stats.Goroutines = runtime.NumGoroutine()
-			stats.NumGCs = mstat.NumGC
-			stats.HeapAllocBytes = mstat.HeapAlloc
-			stats.MemAllocs = mstat.Mallocs
-			stats.MemFrees = mstat.Frees
+			stats.from_runtime_stats()
 			stats.ClientConns = c.stats.conns.Load()
 			stats.ClientRoutes = c.stats.routes.Load()
 			stats.ClientPeers = c.stats.peers.Load()

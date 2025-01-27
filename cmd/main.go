@@ -158,6 +158,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 
 	s, err = hodu.NewServer(
 		context.Background(),
+		HODU_NAME,
 		logger,
 		ctl_addrs,
 		rpc_addrs,
@@ -315,6 +316,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	}
 	c = hodu.NewClient(
 		context.Background(),
+		HODU_NAME,
 		logger,
 		ctl_addrs,
 		ctl_prefix,

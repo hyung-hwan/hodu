@@ -18,9 +18,10 @@ import "unsafe"
 import "golang.org/x/net/websocket"
 import "google.golang.org/grpc"
 import "google.golang.org/grpc/credentials"
-//import "google.golang.org/grpc/metadata"
 import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/stats"
+import "github.com/prometheus/client_golang/prometheus"
+import "github.com/prometheus/client_golang/prometheus/promhttp"
 
 const PTS_LIMIT int = 16384
 const CTS_LIMIT int = 16384
@@ -42,6 +43,9 @@ type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Respo
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
 type Server struct {
+	UnimplementedHoduServer
+	Named
+
 	ctx             context.Context
 	ctx_cancel      context.CancelFunc
 	pxytlscfg       *tls.Config
@@ -88,6 +92,7 @@ type Server struct {
 	svc_port_mtx    sync.Mutex
 	svc_port_map    ServerSvcPortMap
 
+	promreg *prometheus.Registry
 	stats struct {
 		conns atomic.Int64
 		routes atomic.Int64
@@ -98,8 +103,6 @@ type Server struct {
 	wpx_resp_tf     ServerWpxResponseTransformer
 	wpx_foreign_port_proxy_maker ServerWpxForeignPortProxyMaker
 	xterm_html      string
-
-	UnimplementedHoduServer
 }
 
 // connection from client.
@@ -927,7 +930,7 @@ func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 }
 
 type ServerHttpHandler interface {
-	GetId() string
+	Id() string
 	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
 }
 
@@ -954,15 +957,15 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 
 		if status_code > 0 {
 			if err == nil {
-				s.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
+				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
 			} else {
-				s.log.Write(handler.GetId(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
 			}
 		}
 	})
 }
 
-func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, pxytlscfg *tls.Config, wpxtlscfg *tls.Config, rpc_max int, peer_max int) (*Server, error) {
+func NewServer(ctx context.Context, name string, logger Logger, ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx_addrs []string, ctl_prefix string, ctltlscfg *tls.Config, rpctlscfg *tls.Config, pxytlscfg *tls.Config, wpxtlscfg *tls.Config, rpc_max int, peer_max int) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
 	var rpcaddr *net.TCPAddr
@@ -978,6 +981,7 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 	}
 
 	s.ctx, s.ctx_cancel = context.WithCancel(ctx)
+	s.name = name
 	s.log = logger
 	/* create the specified number of listeners */
 	s.rpc = make([]*net.TCPListener, 0)
@@ -1042,6 +1046,13 @@ func NewServer(ctx context.Context, logger Logger, ctl_addrs []string, rpc_addrs
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/stats",
 		s.wrap_http_handler(&server_ctl_stats{server_ctl{s: &s, id: HS_ID_CTL}}))
+
+// TODO: make this optional. add this endpoint only if it's enabled...
+	s.promreg = prometheus.NewRegistry()
+	s.promreg.MustRegister(prometheus.NewGoCollector())
+	s.promreg.MustRegister(NewServerCollector(&s))
+	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl/metrics",
+		promhttp.HandlerFor(s.promreg, promhttp.HandlerOpts{ EnableOpenMetrics: true }))
 
 	s.ctl_addr = make([]string, len(ctl_addrs))
 	s.ctl = make([]*http.Server, len(ctl_addrs))
@@ -1659,4 +1670,12 @@ func (s *Server) WriteLog(id string, level LogLevel, fmtstr string, args ...inte
 
 func (s *Server) AddCtlHandler(path string, handler ServerHttpHandler) {
 	s.ctl_mux.Handle(s.ctl_prefix + "/_ctl" + path, s.wrap_http_handler(handler))
+}
+
+func (s *Server) AddCtlMetricsCollector(col prometheus.Collector) error {
+	return s.promreg.Register(col)
+}
+
+func (s *Server) RemoveCtlMetricsCollector(col prometheus.Collector) bool {
+	return s.promreg.Unregister(col)
 }

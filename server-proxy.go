@@ -184,7 +184,7 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 	return upgrade_required
 }
 
-func (pxy *server_proxy) GetId() string {
+func (pxy *server_proxy) Id() string {
 	return pxy.id
 }
 

@@ -42,6 +42,12 @@ type ClientTLSConfig struct {
 	ServerName         string  `yaml:"server-name"`
 }
 
+type BasicAuthConfig struct {
+	Enabled bool `yaml:"enabled"`
+	Users []string `yaml:"users"`
+	UserFile string `yaml:"user-file"`
+}
+
 type CTLServiceConfig struct {
 	Prefix string   `yaml:"prefix"`  // url prefix for control channel endpoints
 	Addrs  []string `yaml:"addresses"`

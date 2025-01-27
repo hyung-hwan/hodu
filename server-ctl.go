@@ -2,7 +2,6 @@ package hodu
 
 import "encoding/json"
 import "net/http"
-import "runtime"
 
 type json_out_server_conn struct {
 	Id ConnId `json:"id"`
@@ -21,19 +20,13 @@ type json_out_server_route struct {
 }
 
 type json_out_server_stats struct {
-	CPUs int `json:"cpus"`
-	Goroutines int `json:"goroutines"`
-
-	NumGCs uint32 `json:"num-gcs"`
-	HeapAllocBytes uint64 `json:"memory-alloc-bytes"`
-	MemAllocs uint64 `json:"memory-num-allocs"`
-	MemFrees uint64 `json:"memory-num-frees"`
+	json_out_go_stats
 
 	ServerConns int64 `json:"server-conns"`
 	ServerRoutes int64 `json:"server-routes"`
 	ServerPeers int64 `json:"server-peers"`
 
-	SshProxySessions int64 `json:"ssh-proxy-session"`
+	SshProxySessions int64 `json:"ssh-pxy-sessions"`
 }
 
 // ------------------------------------
@@ -65,7 +58,7 @@ type server_ctl_stats struct {
 
 // ------------------------------------
 
-func (ctl *server_ctl) GetId() string {
+func (ctl *server_ctl) Id() string {
 	return ctl.id
 }
 
@@ -356,15 +349,7 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	switch req.Method {
 		case http.MethodGet:
 			var stats json_out_server_stats
-			var mstat runtime.MemStats
-
-			runtime.ReadMemStats(&mstat)
-			stats.CPUs = runtime.NumCPU()
-			stats.Goroutines = runtime.NumGoroutine()
-			stats.NumGCs = mstat.NumGC
-			stats.HeapAllocBytes = mstat.HeapAlloc
-			stats.MemAllocs = mstat.Mallocs
-			stats.MemFrees = mstat.Frees
+			stats.from_runtime_stats()
 			stats.ServerConns = s.stats.conns.Load()
 			stats.ServerRoutes = s.stats.routes.Load()
 			stats.ServerPeers = s.stats.peers.Load()

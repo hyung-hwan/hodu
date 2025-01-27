@@ -11,13 +11,16 @@ VERSION=1.0.0
 SRCS=\
 	client.go \
 	client-ctl.go \
+	client-metrics.go \
 	client-peer.go \
 	hodu.go \
 	hodu.pb.go \
 	hodu_grpc.pb.go \
+	jwt.go \
 	packet.go \
 	server.go \
 	server-ctl.go \
+	server-metrics.go \
 	server-peer.go \
 	server-proxy.go \
 	system.go \
@@ -49,6 +52,9 @@ clean:
 	go clean -x -i
 	rm -f $(NAME)
 
+test:
+	go test -x
+
 hodu.pb.go: hodu.proto
 	protoc --go_out=. --go_opt=paths=source_relative \
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
@@ -75,4 +81,4 @@ cmd/tls.crt:
 cmd/tls.key:
 	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=$(NAME)" --addext "subjectAltName=DNS:$(NAME),IP:10.0.0.1,IP:::1"
 
-.PHONY: clean
+.PHONY: clean test
