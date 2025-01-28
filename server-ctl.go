@@ -72,7 +72,7 @@ func (ctl *server_ctl) Authenticate(req *http.Request) string {
 	var s *Server
 
 	s = ctl.s
-	if s.cfg.CtlBasicAuth != nil && s.cfg.CtlBasicAuth.Enabled {
+	if s.cfg.CtlAuth != nil && s.cfg.CtlAuth.Enabled {
 		var auth_hdr string
 		var auth_parts []string
 		var username string
@@ -82,7 +82,7 @@ func (ctl *server_ctl) Authenticate(req *http.Request) string {
 		var err error
 
 		auth_hdr = req.Header.Get("Authorization")
-		if auth_hdr == "" { return s.cfg.CtlBasicAuth.Realm }
+		if auth_hdr == "" { return s.cfg.CtlAuth.Realm }
 
 		auth_parts = strings.Fields(auth_hdr)
 		if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") {
@@ -93,10 +93,10 @@ func (ctl *server_ctl) Authenticate(req *http.Request) string {
 
 		// fall back to basic authentication
 		username, password, ok = req.BasicAuth()
-		if !ok { return s.cfg.CtlBasicAuth.Realm }
+		if !ok { return s.cfg.CtlAuth.Realm }
 
-		credpass, ok = s.cfg.CtlBasicAuth.Creds[username]
-		if !ok || credpass != password { return s.cfg.CtlBasicAuth.Realm }
+		credpass, ok = s.cfg.CtlAuth.Creds[username]
+		if !ok || credpass != password { return s.cfg.CtlAuth.Realm }
 	}
 
 	return ""
@@ -105,6 +105,7 @@ func (ctl *server_ctl) Authenticate(req *http.Request) string {
 // ------------------------------------
 
 type ServerTokenClaim struct {
+	ExpiresAt int64 `json:"exp"`
 	IssuedAt int64 `json:"iat"`
 }
 
@@ -114,10 +115,12 @@ type json_out_token struct {
 }
 
 func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
 	var status_code int
 	var je *json.Encoder
 	var err error
 
+	s = ctl.s
 	je = json.NewEncoder(w)
 
 	switch req.Method {
@@ -125,8 +128,16 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			var jwt JWT
 			var jc ServerTokenClaim
 			var tok string
+			var now time.Time
 
-			jc.IssuedAt = time.Now().Unix()
+			if s.cfg.CtlAuth == nil || !s.cfg.CtlAuth.Enabled {
+				status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
+				goto done
+			}
+
+			now = time.Now()
+			jc.IssuedAt = now.Unix()
+			jc.ExpiresAt = now.Add(s.cfg.CtlAuth.TokenTtl).Unix()
 			tok, err = jwt.Sign(&jc)
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
@@ -139,10 +150,10 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			if err != nil { goto oops }
 
 		default:
-			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
-//done:
+done:
 	return status_code, nil
 
 oops:
@@ -201,7 +212,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
-			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
 //done:
@@ -267,7 +278,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
-			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
 //done:
@@ -326,7 +337,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
-			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
 //done:
@@ -412,7 +423,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
-			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
 done:
@@ -445,7 +456,7 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			if err = je.Encode(stats); err != nil { goto oops }
 
 		default:
-			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
 //done:

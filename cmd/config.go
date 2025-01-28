@@ -44,16 +44,17 @@ type ClientTLSConfig struct {
 	ServerName         string  `yaml:"server-name"`
 }
 
-type BasicAuthConfig struct {
+type AuthConfig struct {
 	Enabled bool `yaml:"enabled"`
 	Realm string `yaml:"realm"`
 	Creds []string `yaml:"credentials"`
+	TokenTtl string `yaml:"token-ttl"`
 }
 
 type CTLServiceConfig struct {
 	Prefix string   `yaml:"prefix"`  // url prefix for control channel endpoints
 	Addrs  []string `yaml:"addresses"`
-	BasicAuth BasicAuthConfig `yaml:"basic-auth"`
+	Auth   AuthConfig `yaml:"auth"`
 }
 
 type PXYServiceConfig struct {
@@ -345,8 +346,8 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 }
 
 // --------------------------------------------------------------------
-func make_server_basic_auth_config(cfg *BasicAuthConfig) (*hodu.ServerBasicAuth, error) {
-	var config hodu.ServerBasicAuth
+func make_server_basic_auth_config(cfg *AuthConfig) (*hodu.ServerAuthConfig, error) {
+	var config hodu.ServerAuthConfig
 	var cred string
 	var b []byte
 	var x []string
@@ -354,7 +355,11 @@ func make_server_basic_auth_config(cfg *BasicAuthConfig) (*hodu.ServerBasicAuth,
 
 	config.Enabled = cfg.Enabled
 	config.Realm = cfg.Realm
-	config.Creds = make(hodu.ServerBasicAuthCredMap)
+	config.Creds = make(hodu.ServerAuthCredMap)
+	config.TokenTtl, err = hodu.ParseDurationString(cfg.TokenTtl)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token ttl %s - %s", cred, err)
+	}
 
 	for _, cred = range cfg.Creds {
 		b, err = base64.StdEncoding.DecodeString(cred)

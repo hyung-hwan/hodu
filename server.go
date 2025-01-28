@@ -42,12 +42,13 @@ type ServerSvcPortMap = map[PortId]ConnRouteId
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
-type ServerBasicAuthCredMap map[string]string
+type ServerAuthCredMap map[string]string
 
-type ServerBasicAuth struct {
+type ServerAuthConfig struct {
 	Enabled bool
 	Realm string
-	Creds ServerBasicAuthCredMap
+	Creds ServerAuthCredMap
+	TokenTtl time.Duration
 }
 
 type ServerConfig struct {
@@ -59,7 +60,7 @@ type ServerConfig struct {
 	CtlAddrs []string
 	CtlTls *tls.Config
 	CtlPrefix string
-	CtlBasicAuth *ServerBasicAuth
+	CtlAuth *ServerAuthConfig
 
 	PxyAddrs []string
 	PxyTls *tls.Config

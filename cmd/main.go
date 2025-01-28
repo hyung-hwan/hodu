@@ -125,7 +125,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
 		if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
-		config.CtlBasicAuth, err = make_server_basic_auth_config(&cfg.CTL.Service.BasicAuth)
+		config.CtlAuth, err = make_server_basic_auth_config(&cfg.CTL.Service.Auth)
 		if err != nil { return err }
 
 		config.CtlPrefix = cfg.CTL.Service.Prefix
