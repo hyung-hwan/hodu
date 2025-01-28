@@ -2,12 +2,14 @@ package main
 
 import "crypto/tls"
 import "crypto/x509"
+import "encoding/base64"
 import "errors"
 import "fmt"
 import "hodu"
 import "io"
 import "io/ioutil"
 import "os"
+import "strings"
 import "time"
 
 import "gopkg.in/yaml.v3"
@@ -45,8 +47,7 @@ type ClientTLSConfig struct {
 type BasicAuthConfig struct {
 	Enabled bool `yaml:"enabled"`
 	Realm string `yaml:"realm"`
-	Users []string `yaml:"users"`
-	UserFile string `yaml:"user-file"`
+	Creds []string `yaml:"credentials"`
 }
 
 type CTLServiceConfig struct {
@@ -341,4 +342,31 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 	}
 
 	return tlscfg, nil
+}
+
+// --------------------------------------------------------------------
+func make_server_basic_auth_config(cfg *BasicAuthConfig) (*hodu.ServerBasicAuth, error) {
+	var config hodu.ServerBasicAuth
+	var cred string
+	var b []byte
+	var x []string
+	var err error
+
+	config.Enabled = cfg.Enabled
+	config.Realm = cfg.Realm
+
+	for _, cred = range cfg.Creds {
+		b, err = base64.StdEncoding.DecodeString(cred)
+		if err == nil { cred = string(b) }
+
+		// each entry must be of the form username:password
+		x = strings.Split(cred, ":")
+		if len(x) != 2 {
+			return nil, fmt.Errorf("invalid basic auth credential - %s", cred)
+		}
+
+		config.Creds = append(config.Creds, hodu.ServerBasicAuthCred{ Username: x[0], Password: x[1] })
+	}
+
+	return &config, nil
 }

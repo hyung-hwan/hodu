@@ -42,7 +42,7 @@ type ServerSvcPortMap = map[PortId]ConnRouteId
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
-type ServerBasicAuthUser struct {
+type ServerBasicAuthCred struct {
 	Username string
 	Password string
 }
@@ -50,7 +50,7 @@ type ServerBasicAuthUser struct {
 type ServerBasicAuth struct {
 	Enabled bool
 	Realm string
-	User []ServerBasicAuthUser
+	Creds []ServerBasicAuthCred
 }
 
 type ServerConfig struct {
@@ -62,7 +62,7 @@ type ServerConfig struct {
 	CtlAddrs []string
 	CtlTls *tls.Config
 	CtlPrefix string
-	CtlBasicAuth ServerBasicAuth
+	CtlBasicAuth *ServerBasicAuth
 
 	PxyAddrs []string
 	PxyTls *tls.Config
@@ -953,6 +953,7 @@ func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 
 type ServerHttpHandler interface {
 	Id() string
+	Authenticate(req *http.Request) bool
 	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
 }
 

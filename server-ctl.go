@@ -62,6 +62,17 @@ func (ctl *server_ctl) Id() string {
 	return ctl.id
 }
 
+func (ctl *server_ctl) Authenticate(req *http.Request) bool {
+	var s *Server
+
+	s = ctl.s
+	if s.cfg.CtlBasicAuth != nil && s.cfg.CtlBasicAuth.Enabled {
+		// perform basic authentication
+	}
+
+	return true
+}
+
 // ------------------------------------
 
 func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {

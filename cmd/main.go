@@ -93,7 +93,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 	var s *hodu.Server
 	var config *hodu.ServerConfig
 	var logger *AppLogger
-	var log_mask hodu.LogMask
+	var logmask hodu.LogMask
 	var logfile string
 	var logfile_maxsize int64
 	var logfile_rotate int
@@ -101,7 +101,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 	var xterm_html string
 	var err error
 
-	log_mask = hodu.LOG_ALL
+	logmask = hodu.LOG_ALL
 
 	config = &hodu.ServerConfig{
 		CtlAddrs: ctl_addrs,
@@ -125,12 +125,15 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
 		if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
+		config.CtlBasicAuth, err = make_server_basic_auth_config(&cfg.CTL.Service.BasicAuth)
+		if err != nil { return err }
+
 		config.CtlPrefix = cfg.CTL.Service.Prefix
 		config.RpcMaxConns = cfg.APP.MaxRpcConns
 		config.MaxPeers = cfg.APP.MaxPeers
 		xterm_html_file = cfg.APP.XtermHtmlFile
 
-		log_mask = log_strings_to_mask(cfg.APP.LogMask)
+		logmask = log_strings_to_mask(cfg.APP.LogMask)
 		logfile = cfg.APP.LogFile
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
@@ -141,9 +144,9 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 	}
 
 	if logfile == "" {
-		logger = NewAppLogger("server", os.Stderr, log_mask)
+		logger = NewAppLogger("server", os.Stderr, logmask)
 	} else {
-		logger, err = NewAppLoggerToFile("server", logfile, logfile_maxsize, logfile_rotate, log_mask)
+		logger, err = NewAppLoggerToFile("server", logfile, logfile_maxsize, logfile_rotate, logmask)
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
@@ -158,13 +161,9 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		xterm_html = string(tmp)
 	}
 
-	s, err = hodu.NewServer(
-		context.Background(),
-		HODU_NAME,
-		logger,
-		config)
+	s, err = hodu.NewServer(context.Background(), HODU_NAME, logger, config)
 	if err != nil {
-		return fmt.Errorf("failed to create new server - %s", err.Error())
+		return fmt.Errorf("failed to create server - %s", err.Error())
 	}
 
 	if xterm_html != "" { s.SetXtermHtml(xterm_html) }
@@ -251,7 +250,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var ctl_prefix string
 	var cc hodu.ClientConfig
 	var logger *AppLogger
-	var log_mask hodu.LogMask
+	var logmask hodu.LogMask
 	var logfile string
 	var logfile_maxsize int64
 	var logfile_rotate int
@@ -261,7 +260,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var i int
 	var err error
 
-	log_mask = hodu.LOG_ALL
+	logmask = hodu.LOG_ALL
 	if cfg != nil {
 		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
 		if err != nil {
@@ -278,7 +277,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 
 		cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
 		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
-		log_mask = log_strings_to_mask(cfg.APP.LogMask)
+		logmask = log_strings_to_mask(cfg.APP.LogMask)
 		logfile = cfg.APP.LogFile
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
@@ -299,9 +298,9 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	}
 
 	if logfile == "" {
-		logger = NewAppLogger("client", os.Stderr, log_mask)
+		logger = NewAppLogger("client", os.Stderr, logmask)
 	} else {
-		logger, err = NewAppLoggerToFile("client", logfile, logfile_maxsize, logfile_rotate, log_mask)
+		logger, err = NewAppLoggerToFile("client", logfile, logfile_maxsize, logfile_rotate, logmask)
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
