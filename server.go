@@ -42,15 +42,12 @@ type ServerSvcPortMap = map[PortId]ConnRouteId
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
-type ServerBasicAuthCred struct {
-	Username string
-	Password string
-}
+type ServerBasicAuthCredMap map[string]string
 
 type ServerBasicAuth struct {
 	Enabled bool
 	Realm string
-	Creds []ServerBasicAuthCred
+	Creds ServerBasicAuthCredMap
 }
 
 type ServerConfig struct {
@@ -953,7 +950,7 @@ func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 
 type ServerHttpHandler interface {
 	Id() string
-	Authenticate(req *http.Request) bool
+	Authenticate(req *http.Request) string
 	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
 }
 
@@ -963,6 +960,7 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 		var err error
 		var start_time time.Time
 		var time_taken time.Duration
+		var realm string
 
 		// this deferred function is to overcome the recovering implemenation
 		// from panic done in go's http server. in that implemenation, panic
@@ -975,7 +973,13 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 		}()
 
 		start_time = time.Now()
-		status_code, err = handler.ServeHTTP(w, req)
+		realm = handler.Authenticate(req)
+		if realm != "" {
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
+			status_code = http.StatusUnauthorized
+		} else {
+			status_code, err = handler.ServeHTTP(w, req)
+		}
 		time_taken = time.Now().Sub(start_time)
 
 		if status_code > 0 {
@@ -1065,6 +1069,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/stats",
 		s.wrap_http_handler(&server_ctl_stats{server_ctl{s: &s, id: HS_ID_CTL}}))
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/token",
+		s.wrap_http_handler(&server_ctl_token{server_ctl{s: &s, id: HS_ID_CTL}}))
 
 // TODO: make this optional. add this endpoint only if it's enabled...
 	s.promreg = prometheus.NewRegistry()

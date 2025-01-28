@@ -2,6 +2,8 @@ package hodu
 
 import "encoding/json"
 import "net/http"
+import "strings"
+import "time"
 
 type json_out_server_conn struct {
 	Id ConnId `json:"id"`
@@ -36,6 +38,10 @@ type server_ctl struct {
 	id string
 }
 
+type server_ctl_token struct {
+	server_ctl
+}
+
 type server_ctl_server_conns struct {
 	server_ctl
 }
@@ -62,15 +68,85 @@ func (ctl *server_ctl) Id() string {
 	return ctl.id
 }
 
-func (ctl *server_ctl) Authenticate(req *http.Request) bool {
+func (ctl *server_ctl) Authenticate(req *http.Request) string {
 	var s *Server
 
 	s = ctl.s
 	if s.cfg.CtlBasicAuth != nil && s.cfg.CtlBasicAuth.Enabled {
-		// perform basic authentication
+		var auth_hdr string
+		var auth_parts []string
+		var username string
+		var password string
+		var credpass string
+		var ok bool
+		var err error
+
+		auth_hdr = req.Header.Get("Authorization")
+		if auth_hdr == "" { return s.cfg.CtlBasicAuth.Realm }
+
+		auth_parts = strings.Fields(auth_hdr)
+		if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") {
+			var jwt JWT
+			err = jwt.Verify(strings.TrimSpace(auth_parts[1]))
+			if err == nil { return "" }
+		}
+
+		// fall back to basic authentication
+		username, password, ok = req.BasicAuth()
+		if !ok { return s.cfg.CtlBasicAuth.Realm }
+
+		credpass, ok = s.cfg.CtlBasicAuth.Creds[username]
+		if !ok || credpass != password { return s.cfg.CtlBasicAuth.Realm }
 	}
 
-	return true
+	return ""
+}
+
+// ------------------------------------
+
+type ServerTokenClaim struct {
+	IssuedAt int64 `json:"iat"`
+}
+
+type json_out_token struct {
+	AccessToken string `json:"access-token"`
+	RefreshToken string `json:"refresh-token"`
+}
+
+func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var status_code int
+	var je *json.Encoder
+	var err error
+
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var jwt JWT
+			var jc ServerTokenClaim
+			var tok string
+
+			jc.IssuedAt = time.Now().Unix()
+			tok, err = jwt.Sign(&jc)
+			if err != nil {
+				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			err = je.Encode(json_out_token{ AccessToken: tok }) // TODO: refresh token
+			if err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
 }
 
 // ------------------------------------
@@ -78,8 +154,8 @@ func (ctl *server_ctl) Authenticate(req *http.Request) bool {
 func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
-	var err error
 	var je *json.Encoder
+	var err error
 
 	s = ctl.s
 	je = json.NewEncoder(w)
@@ -152,8 +228,8 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(JsonErrmsg{Text: err.Error()}); err != nil { goto oops }
-		goto done
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
 	}
 
 	switch req.Method {
@@ -194,7 +270,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 	}
 
-done:
+//done:
 	return status_code, nil
 
 oops:
@@ -218,8 +294,8 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(JsonErrmsg{Text: err.Error()}); err != nil { goto oops }
-		goto done
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
 	}
 
 	switch req.Method {
@@ -253,7 +329,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 	}
 
-done:
+//done:
 	return status_code, nil
 
 oops:
@@ -308,8 +384,8 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		if err = je.Encode(JsonErrmsg{Text: err.Error()}); err != nil { goto oops }
-		goto done
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
 	}
 
 	switch req.Method {

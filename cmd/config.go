@@ -354,6 +354,7 @@ func make_server_basic_auth_config(cfg *BasicAuthConfig) (*hodu.ServerBasicAuth,
 
 	config.Enabled = cfg.Enabled
 	config.Realm = cfg.Realm
+	config.Creds = make(hodu.ServerBasicAuthCredMap)
 
 	for _, cred = range cfg.Creds {
 		b, err = base64.StdEncoding.DecodeString(cred)
@@ -365,7 +366,7 @@ func make_server_basic_auth_config(cfg *BasicAuthConfig) (*hodu.ServerBasicAuth,
 			return nil, fmt.Errorf("invalid basic auth credential - %s", cred)
 		}
 
-		config.Creds = append(config.Creds, hodu.ServerBasicAuthCred{ Username: x[0], Password: x[1] })
+		config.Creds[x[0]] = x[1]
 	}
 
 	return &config, nil

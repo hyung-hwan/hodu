@@ -48,6 +48,10 @@ type Service interface {
 	WriteLog(id string, level LogLevel, fmtstr string, args ...interface{})
 }
 
+type JsonErrmsg struct {
+	Text string `json:"error-text"`
+}
+
 type json_out_go_stats struct {
 	CPUs int `json:"cpus"`
 	Goroutines int `json:"goroutines"`

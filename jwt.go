@@ -16,7 +16,7 @@ func Sign(data []byte, privkey *rsa.PrivateKey) ([]byte, error) {
 	h = crypto.SHA512.New()
 	h.Write(data)
 
-	fmt.Printf("%+v\n", h.Sum(nil))
+	//fmt.Printf("%+v\n", h.Sum(nil))
 	return rsa.SignPKCS1v15(rand.Reader, privkey, crypto.SHA512, h.Sum(nil))
 }
 
@@ -79,7 +79,7 @@ func (j *JWT) Sign(claims interface{}) (string, error) {
 	sb, err = SignHS512([]byte(ss), "hello")
 	if err != nil { return "", err }
 
-fmt.Printf ("%+v %+v %s\n", string(hb), string(cb), (ss + "." + base64.RawURLEncoding.EncodeToString(sb)))
+//fmt.Printf ("%+v %+v %s\n", string(hb), string(cb), (ss + "." + base64.RawURLEncoding.EncodeToString(sb)))
 	return ss + "." + base64.RawURLEncoding.EncodeToString(sb), nil
 }
 
@@ -100,22 +100,23 @@ func (j *JWT) Verify(tok string) error {
 	if err != nil { return fmt.Errorf("invalid header - %s", err.Error()) }
 	err = json.Unmarshal(hb, &jh)
 	if err != nil { return fmt.Errorf("invalid header - %s", err.Error()) }
-fmt.Printf ("DECODED HEADER [%+v]\n", jh)
+//fmt.Printf ("DECODED HEADER [%+v]\n", jh)
 
 	cb, err = base64.RawURLEncoding.DecodeString(segs[1])
 	if err != nil { return fmt.Errorf("invalid claims - %s", err.Error()) }
 	err = json.Unmarshal(cb, &jcm)
 	if err != nil { return fmt.Errorf("invalid header - %s", err.Error()) }
-fmt.Printf ("DECODED CLAIMS [%+v]\n", jcm)
+//fmt.Printf ("DECODED CLAIMS [%+v]\n", jcm)
 
 	x, err = j.Sign(jcm)
 	if err != nil { return err }
-fmt.Printf ("VERIFICATION OK...\n")
 
 	if x != tok { return fmt.Errorf("signature mismatch") }
+//fmt.Printf ("VERIFICATION OK...[%s] [%s]\n", x, tok)
 
 //	sb, err = base64.RawURLEncoding.DecodeString(segs[2])
 //	if err != nil { return fmt.Errorf("invalid signature - %s", err.Error()) }
+// TODO: check expiry and others...
 
 	_ = sb
 
