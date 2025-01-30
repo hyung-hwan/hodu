@@ -1,6 +1,7 @@
 package hodu
 
 import "context"
+import "crypto/rsa"
 import "crypto/tls"
 import "errors"
 import "fmt"
@@ -49,6 +50,7 @@ type ServerAuthConfig struct {
 	Realm string
 	Creds ServerAuthCredMap
 	TokenTtl time.Duration
+	TokenRsaKey *rsa.PrivateKey
 }
 
 type ServerConfig struct {

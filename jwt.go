@@ -1,7 +1,7 @@
 package hodu
 
 import "crypto"
-import "crypto/hmac"
+//import "crypto/hmac"
 import "crypto/rand"
 import "crypto/rsa"
 import "encoding/base64"
@@ -10,6 +10,7 @@ import "fmt"
 import "hash"
 import "strings"
 
+/*
 func Sign(data []byte, privkey *rsa.PrivateKey) ([]byte, error) {
 	var h hash.Hash
 
@@ -47,8 +48,11 @@ func VerifyHS512(data []byte, key string, sig []byte) error {
 	if !hmac.Equal(h.Sum(nil), sig) { return fmt.Errorf("invalid signature") }
 	return nil
 }
+*/
 
-type JWT struct {
+type JWT[T any] struct {
+	key *rsa.PrivateKey
+	claims *T
 }
 
 type JWTHeader struct {
@@ -58,39 +62,47 @@ type JWTHeader struct {
 
 type JWTClaimMap map[string]interface{}
 
-func (j *JWT) Sign(claims interface{}) (string, error) {
+func NewJWT[T any](key *rsa.PrivateKey, claims *T) *JWT[T] {
+	return &JWT[T]{key: key, claims: claims}
+}
+
+func (j *JWT[T]) SignRS512() (string, error) {
 	var h JWTHeader
 	var hb []byte
 	var cb []byte
 	var ss string
 	var sb []byte
+	var hs hash.Hash
 	var err error
 
-	h.Algo = "HS512"
+	h.Algo = "RS512"
 	h.Type = "JWT"
 
 	hb, err = json.Marshal(h)	
 	if err != nil { return "", err }
 
-	cb, err = json.Marshal(claims)
+	cb, err = json.Marshal(j.claims)
 	if err != nil { return "", err }
 
 	ss = base64.RawURLEncoding.EncodeToString(hb) + "." + base64.RawURLEncoding.EncodeToString(cb)
-	sb, err = SignHS512([]byte(ss), "hello")
+
+	hs = crypto.SHA512.New()
+	hs.Write([]byte(ss))
+
+	sb, err = rsa.SignPKCS1v15(rand.Reader, j.key, crypto.SHA512, hs.Sum(nil))
 	if err != nil { return "", err }
 
 //fmt.Printf ("%+v %+v %s\n", string(hb), string(cb), (ss + "." + base64.RawURLEncoding.EncodeToString(sb)))
 	return ss + "." + base64.RawURLEncoding.EncodeToString(sb), nil
 }
 
-func (j *JWT) Verify(tok string) error {
+func (j *JWT[T]) VerifyRS512(tok string) error {
 	var segs []string
 	var hb []byte
 	var cb []byte
-	var sb []byte
+	var ss []byte
 	var jh JWTHeader
-	var jcm JWTClaimMap
-	var x string
+	var hs hash.Hash
 	var err error
 
 	segs = strings.Split(tok, ".")
@@ -100,25 +112,23 @@ func (j *JWT) Verify(tok string) error {
 	if err != nil { return fmt.Errorf("invalid header - %s", err.Error()) }
 	err = json.Unmarshal(hb, &jh)
 	if err != nil { return fmt.Errorf("invalid header - %s", err.Error()) }
-//fmt.Printf ("DECODED HEADER [%+v]\n", jh)
+
+	if jh.Algo != "RS512" || jh.Type != "JWT" { return fmt.Errorf("invalid header content %+v", jh) }
 
 	cb, err = base64.RawURLEncoding.DecodeString(segs[1])
 	if err != nil { return fmt.Errorf("invalid claims - %s", err.Error()) }
-	err = json.Unmarshal(cb, &jcm)
-	if err != nil { return fmt.Errorf("invalid header - %s", err.Error()) }
-//fmt.Printf ("DECODED CLAIMS [%+v]\n", jcm)
+	err = json.Unmarshal(cb, j.claims)
+	if err != nil { return fmt.Errorf("invalid claims - %s", err.Error()) }
 
-	x, err = j.Sign(jcm)
-	if err != nil { return err }
+	ss, err = base64.RawURLEncoding.DecodeString(segs[2])
+	if err != nil { return fmt.Errorf("invalid signature - %s", err.Error()) }
 
-	if x != tok { return fmt.Errorf("signature mismatch") }
-//fmt.Printf ("VERIFICATION OK...[%s] [%s]\n", x, tok)
-
-//	sb, err = base64.RawURLEncoding.DecodeString(segs[2])
-//	if err != nil { return fmt.Errorf("invalid signature - %s", err.Error()) }
-// TODO: check expiry and others...
-
-	_ = sb
+	hs = crypto.SHA512.New()
+	hs.Write([]byte(segs[0]))
+	hs.Write([]byte("."))
+	hs.Write([]byte(segs[1]))
+	err = rsa.VerifyPKCS1v15(&j.key.PublicKey, crypto.SHA512, hs.Sum(nil), ss)
+	if err != nil { return fmt.Errorf("unverifiable signature - %s", err.Error()) }
 
 	return nil
 }

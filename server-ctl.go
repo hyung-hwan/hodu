@@ -5,6 +5,16 @@ import "net/http"
 import "strings"
 import "time"
 
+type ServerTokenClaim struct {
+	ExpiresAt int64 `json:"exp"`
+	IssuedAt int64 `json:"iat"`
+}
+
+type json_out_token struct {
+	AccessToken string `json:"access-token"`
+	RefreshToken string `json:"refresh-token"`
+}
+
 type json_out_server_conn struct {
 	Id ConnId `json:"id"`
 	ServerAddr string `json:"server-addr"`
@@ -86,9 +96,16 @@ func (ctl *server_ctl) Authenticate(req *http.Request) string {
 
 		auth_parts = strings.Fields(auth_hdr)
 		if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") {
-			var jwt JWT
-			err = jwt.Verify(strings.TrimSpace(auth_parts[1]))
-			if err == nil { return "" }
+			var jwt *JWT[ServerTokenClaim]
+			var claim ServerTokenClaim
+			jwt = NewJWT(s.cfg.CtlAuth.TokenRsaKey, &claim)
+			err = jwt.VerifyRS512(strings.TrimSpace(auth_parts[1]))
+			if err == nil {
+				// verification ok. let's check the actual payload
+				var now time.Time
+				now = time.Now()
+				if now.After(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return "" } // not expired
+			}
 		}
 
 		// fall back to basic authentication
@@ -104,16 +121,6 @@ func (ctl *server_ctl) Authenticate(req *http.Request) string {
 
 // ------------------------------------
 
-type ServerTokenClaim struct {
-	ExpiresAt int64 `json:"exp"`
-	IssuedAt int64 `json:"iat"`
-}
-
-type json_out_token struct {
-	AccessToken string `json:"access-token"`
-	RefreshToken string `json:"refresh-token"`
-}
-
 func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
@@ -125,8 +132,8 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 
 	switch req.Method {
 		case http.MethodGet:
-			var jwt JWT
-			var jc ServerTokenClaim
+			var jwt *JWT[ServerTokenClaim]
+			var claim ServerTokenClaim
 			var tok string
 			var now time.Time
 
@@ -136,9 +143,10 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			}
 
 			now = time.Now()
-			jc.IssuedAt = now.Unix()
-			jc.ExpiresAt = now.Add(s.cfg.CtlAuth.TokenTtl).Unix()
-			tok, err = jwt.Sign(&jc)
+			claim.IssuedAt = now.Unix()
+			claim.ExpiresAt = now.Add(s.cfg.CtlAuth.TokenTtl).Unix()
+			jwt = NewJWT(s.cfg.CtlAuth.TokenRsaKey, &claim)
+			tok, err = jwt.SignRS512()
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
 				je.Encode(JsonErrmsg{Text: err.Error()})

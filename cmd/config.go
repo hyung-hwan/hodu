@@ -1,8 +1,10 @@
 package main
 
+import "crypto/rsa"
 import "crypto/tls"
 import "crypto/x509"
 import "encoding/base64"
+import "encoding/pem"
 import "errors"
 import "fmt"
 import "hodu"
@@ -49,6 +51,8 @@ type AuthConfig struct {
 	Realm string `yaml:"realm"`
 	Creds []string `yaml:"credentials"`
 	TokenTtl string `yaml:"token-ttl"`
+	TokenRsaKeyText string `yaml:"token-rsa-key-text"`
+	TokenRsaKeyFile string `yaml:"token-rsa-key-file"`
 }
 
 type CTLServiceConfig struct {
@@ -346,11 +350,14 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 }
 
 // --------------------------------------------------------------------
-func make_server_basic_auth_config(cfg *AuthConfig) (*hodu.ServerAuthConfig, error) {
+func make_server_auth_config(cfg *AuthConfig) (*hodu.ServerAuthConfig, error) {
 	var config hodu.ServerAuthConfig
 	var cred string
 	var b []byte
 	var x []string
+	var rsa_key_text []byte
+	var rk *rsa.PrivateKey
+	var pb *pem.Block
 	var err error
 
 	config.Enabled = cfg.Enabled
@@ -361,6 +368,7 @@ func make_server_basic_auth_config(cfg *AuthConfig) (*hodu.ServerAuthConfig, err
 		return nil, fmt.Errorf("invalid token ttl %s - %s", cred, err)
 	}
 
+	// convert user credentials
 	for _, cred = range cfg.Creds {
 		b, err = base64.StdEncoding.DecodeString(cred)
 		if err == nil { cred = string(b) }
@@ -368,11 +376,33 @@ func make_server_basic_auth_config(cfg *AuthConfig) (*hodu.ServerAuthConfig, err
 		// each entry must be of the form username:password
 		x = strings.Split(cred, ":")
 		if len(x) != 2 {
-			return nil, fmt.Errorf("invalid basic auth credential - %s", cred)
+			return nil, fmt.Errorf("invalid auth credential - %s", cred)
 		}
 
 		config.Creds[x[0]] = x[1]
 	}
 
+
+	// load rsa key
+	if cfg.TokenRsaKeyText == "" && cfg.TokenRsaKeyFile != "" {
+		rsa_key_text, err = os.ReadFile(cfg.TokenRsaKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read %s - %s", cfg.TokenRsaKeyFile, err.Error())
+		}
+	}
+	if len(rsa_key_text) == 0 { rsa_key_text = []byte(cfg.TokenRsaKeyText) }
+	if len(rsa_key_text) == 0 { rsa_key_text = hodu_rsa_key_text }
+
+	pb, b = pem.Decode(rsa_key_text)
+	if pb == nil || len(b) > 0 {
+		return nil, fmt.Errorf("invalid token rsa key text %s - no block or too many blocks", string(rsa_key_text))
+	}
+
+	rk, err = x509.ParsePKCS1PrivateKey(pb.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token rsa key text %s - %s", string(rsa_key_text), err.Error())
+	}
+
+	config.TokenRsaKey = rk
 	return &config, nil
 }

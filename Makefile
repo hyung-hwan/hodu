@@ -33,6 +33,7 @@ DATA = \
 	xterm.html
 
 CMD_DATA=\
+	cmd/rsa.key \
 	cmd/tls.crt \
 	cmd/tls.key
 
@@ -80,5 +81,8 @@ cmd/tls.crt:
 
 cmd/tls.key:
 	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=$(NAME)" --addext "subjectAltName=DNS:$(NAME),IP:10.0.0.1,IP:::1"
+
+cmd/rsa.key:
+	openssl genrsa -traditional -out cmd/rsa.key 2048
 
 .PHONY: clean test

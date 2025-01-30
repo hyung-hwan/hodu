@@ -23,6 +23,8 @@ var HODU_VERSION string = "0.0.0"
 var hodu_tls_cert_text []byte
 //go:embed tls.key
 var hodu_tls_key_text []byte
+//go:embed rsa.key
+var hodu_rsa_key_text []byte
 
 // --------------------------------------------------------------------
 type signal_handler struct {
@@ -125,7 +127,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
 		if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
-		config.CtlAuth, err = make_server_basic_auth_config(&cfg.CTL.Service.Auth)
+		config.CtlAuth, err = make_server_auth_config(&cfg.CTL.Service.Auth)
 		if err != nil { return err }
 
 		config.CtlPrefix = cfg.CTL.Service.Prefix
