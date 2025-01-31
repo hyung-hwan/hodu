@@ -3,6 +3,8 @@ package hodu
 import "encoding/json"
 import "fmt"
 import "net/http"
+import "net/netip"
+import "path/filepath"
 import "strings"
 import "time"
 
@@ -82,15 +84,40 @@ func (ctl *server_ctl) Id() string {
 func (ctl *server_ctl) Authenticate(req *http.Request) (int, string) {
 	var s *Server
 	var rule HttpAccessRule
+	var raddrport netip.AddrPort
+	var raddr netip.Addr
+	var err error
 
 	s = ctl.s
 
+	raddrport, err = netip.ParseAddrPort(req.RemoteAddr)
+	if err == nil { raddr = raddrport.Addr() }
+
 	for _, rule = range s.cfg.CtlAuth.AccessRules {
-		if req.URL.Path == rule.Prefix || strings.HasPrefix(req.URL.Path, rule.Prefix + "/") {
-			if rule.Action == HTTP_ACCESS_ACCEPT {
-				return http.StatusOK, ""
-			} else if rule.Action == HTTP_ACCESS_REJECT {
-				return http.StatusForbidden, ""
+		// i don't take into account X-Forwarded-For and similar headers
+		if req.URL.Path == rule.Prefix || strings.HasPrefix(req.URL.Path, filepath.Clean(rule.Prefix + "/")) {
+			var org_net_ok bool
+
+			if len(rule.OrgNets) > 0 && raddr.IsValid() {
+				var netpfx netip.Prefix
+
+				org_net_ok = false
+				for  _, netpfx = range rule.OrgNets {
+					if err == nil && netpfx.Contains(raddr) {
+						org_net_ok = true
+						break
+					}
+				}
+			} else {
+				org_net_ok = true
+			}
+
+			if org_net_ok {
+				if rule.Action == HTTP_ACCESS_ACCEPT {
+					return http.StatusOK, ""
+				} else if rule.Action == HTTP_ACCESS_REJECT {
+					return http.StatusForbidden, ""
+				}
 			}
 		}
 	}

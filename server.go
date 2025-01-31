@@ -980,8 +980,11 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 		status_code, realm = handler.Authenticate(req)
 		if status_code == http.StatusUnauthorized && realm != "" {
 			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
+			WriteEmptyRespHeader(w, status_code)
 		} else if status_code == http.StatusOK {
 			status_code, err = handler.ServeHTTP(w, req)
+		} else {
+			WriteEmptyRespHeader(w, status_code)
 		}
 		time_taken = time.Now().Sub(start_time)
 
