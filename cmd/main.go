@@ -91,12 +91,11 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 
 // --------------------------------------------------------------------
 
-func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx_addrs []string, cfg *ServerConfig) error {
+func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx_addrs []string, logfile string, cfg *ServerConfig) error {
 	var s *hodu.Server
 	var config *hodu.ServerConfig
 	var logger *AppLogger
 	var logmask hodu.LogMask
-	var logfile string
 	var logfile_maxsize int64
 	var logfile_rotate int
 	var xterm_html_file string
@@ -136,7 +135,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		xterm_html_file = cfg.APP.XtermHtmlFile
 
 		logmask = log_strings_to_mask(cfg.APP.LogMask)
-		logfile = cfg.APP.LogFile
+		if logfile != "" { cfg.APP.LogFile = logfile }
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
 	}
@@ -245,7 +244,7 @@ func parse_client_route_config(v string) (*hodu.ClientRouteConfig, error) {
 	return &hodu.ClientRouteConfig{PeerAddr: va[0], PeerName: ptc_name, Option: option, ServiceAddr: svc_addr}, nil // TODO: other fields
 }
 
-func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string, cfg *ClientConfig) error {
+func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string, logfile string, cfg *ClientConfig) error {
 	var c *hodu.Client
 	var rpctlscfg *tls.Config
 	var ctltlscfg *tls.Config
@@ -254,7 +253,6 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var cc hodu.ClientConfig
 	var logger *AppLogger
 	var logmask hodu.LogMask
-	var logfile string
 	var logfile_maxsize int64
 	var logfile_rotate int
 	var max_rpc_conns int
@@ -280,7 +278,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 		cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
 		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
 		logmask = log_strings_to_mask(cfg.APP.LogMask)
-		logfile = cfg.APP.LogFile
+		if logfile == "" { logfile = cfg.APP.LogFile }
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
 		max_rpc_conns = cfg.APP.MaxRpcConns
@@ -391,9 +389,8 @@ func main() {
 				goto oops
 			}
 		}
-		if logfile != "" { cfg.APP.LogFile = logfile }
 
-		err = server_main(ctl_addrs, rpc_addrs, pxy_addrs, wpx_addrs, cfg)
+		err = server_main(ctl_addrs, rpc_addrs, pxy_addrs, wpx_addrs, logfile, cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops
@@ -440,9 +437,8 @@ func main() {
 				goto oops
 			}
 		}
-		if logfile != "" { cfg.APP.LogFile = logfile }
 
-		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), cfg)
+		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), logfile, cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: client error - %s\n", err.Error())
 			goto oops
