@@ -190,8 +190,8 @@ func (pxy *server_proxy) Id() string {
 	return pxy.id
 }
 
-func (pxy *server_proxy) Authenticate(req *http.Request) string {
-	return ""
+func (pxy *server_proxy) Authenticate(req *http.Request) (int, string) {
+	return http.StatusOK, ""
 }
 
 // ------------------------------------

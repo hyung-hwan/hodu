@@ -1,6 +1,7 @@
 package hodu
 
 import "encoding/json"
+import "fmt"
 import "net/http"
 import "strings"
 import "time"
@@ -12,7 +13,7 @@ type ServerTokenClaim struct {
 
 type json_out_token struct {
 	AccessToken string `json:"access-token"`
-	RefreshToken string `json:"refresh-token"`
+	RefreshToken string `json:"refresh-token,omitempty"`
 }
 
 type json_out_server_conn struct {
@@ -78,10 +79,22 @@ func (ctl *server_ctl) Id() string {
 	return ctl.id
 }
 
-func (ctl *server_ctl) Authenticate(req *http.Request) string {
+func (ctl *server_ctl) Authenticate(req *http.Request) (int, string) {
 	var s *Server
+	var rule HttpAccessRule
 
 	s = ctl.s
+
+	for _, rule = range s.cfg.CtlAuth.AccessRules {
+		if req.URL.Path == rule.Prefix || strings.HasPrefix(req.URL.Path, rule.Prefix + "/") {
+			if rule.Action == HTTP_ACCESS_ACCEPT {
+				return http.StatusOK, ""
+			} else if rule.Action == HTTP_ACCESS_REJECT {
+				return http.StatusForbidden, ""
+			}
+		}
+	}
+
 	if s.cfg.CtlAuth != nil && s.cfg.CtlAuth.Enabled {
 		var auth_hdr string
 		var auth_parts []string
@@ -92,10 +105,10 @@ func (ctl *server_ctl) Authenticate(req *http.Request) string {
 		var err error
 
 		auth_hdr = req.Header.Get("Authorization")
-		if auth_hdr == "" { return s.cfg.CtlAuth.Realm }
+		if auth_hdr == "" { return http.StatusUnauthorized, s.cfg.CtlAuth.Realm }
 
 		auth_parts = strings.Fields(auth_hdr)
-		if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") {
+		if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") && s.cfg.CtlAuth.TokenRsaKey != nil {
 			var jwt *JWT[ServerTokenClaim]
 			var claim ServerTokenClaim
 			jwt = NewJWT(s.cfg.CtlAuth.TokenRsaKey, &claim)
@@ -104,19 +117,19 @@ func (ctl *server_ctl) Authenticate(req *http.Request) string {
 				// verification ok. let's check the actual payload
 				var now time.Time
 				now = time.Now()
-				if now.After(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return "" } // not expired
+				if now.After(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return http.StatusOK, "" } // not expired
 			}
 		}
 
 		// fall back to basic authentication
 		username, password, ok = req.BasicAuth()
-		if !ok { return s.cfg.CtlAuth.Realm }
+		if !ok { return http.StatusUnauthorized, s.cfg.CtlAuth.Realm }
 
 		credpass, ok = s.cfg.CtlAuth.Creds[username]
-		if !ok || credpass != password { return s.cfg.CtlAuth.Realm }
+		if !ok || credpass != password { return http.StatusUnauthorized, s.cfg.CtlAuth.Realm }
 	}
 
-	return ""
+	return http.StatusOK, ""
 }
 
 // ------------------------------------
@@ -137,9 +150,11 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			var tok string
 			var now time.Time
 
-			if s.cfg.CtlAuth == nil || !s.cfg.CtlAuth.Enabled {
-				status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
-				goto done
+			if s.cfg.CtlAuth == nil || !s.cfg.CtlAuth.Enabled || s.cfg.CtlAuth.TokenRsaKey == nil {
+				status_code = WriteJsonRespHeader(w, http.StatusForbidden)
+				err = fmt.Errorf("auth not enabled or token rsa key not set")
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
 			}
 
 			now = time.Now()
@@ -161,7 +176,7 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
-done:
+//done:
 	return status_code, nil
 
 oops:

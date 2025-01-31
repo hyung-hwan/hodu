@@ -43,14 +43,15 @@ type ServerSvcPortMap = map[PortId]ConnRouteId
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
-type ServerAuthCredMap map[string]string
+type ServerHttpAuthCredMap map[string]string
 
-type ServerAuthConfig struct {
+type ServerHttpAuthConfig struct {
 	Enabled bool
 	Realm string
-	Creds ServerAuthCredMap
+	Creds ServerHttpAuthCredMap
 	TokenTtl time.Duration
 	TokenRsaKey *rsa.PrivateKey
+	AccessRules []HttpAccessRule
 }
 
 type ServerConfig struct {
@@ -62,7 +63,7 @@ type ServerConfig struct {
 	CtlAddrs []string
 	CtlTls *tls.Config
 	CtlPrefix string
-	CtlAuth *ServerAuthConfig
+	CtlAuth *ServerHttpAuthConfig
 
 	PxyAddrs []string
 	PxyTls *tls.Config
@@ -953,7 +954,7 @@ func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 
 type ServerHttpHandler interface {
 	Id() string
-	Authenticate(req *http.Request) string
+	Authenticate(req *http.Request) (int, string)
 	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
 }
 
@@ -976,11 +977,10 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 		}()
 
 		start_time = time.Now()
-		realm = handler.Authenticate(req)
-		if realm != "" {
+		status_code, realm = handler.Authenticate(req)
+		if status_code == http.StatusUnauthorized && realm != "" {
 			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
-			status_code = http.StatusUnauthorized
-		} else {
+		} else if status_code == http.StatusOK {
 			status_code, err = handler.ServeHTTP(w, req)
 		}
 		time_taken = time.Now().Sub(start_time)

@@ -10,6 +10,7 @@ import "fmt"
 import "hodu"
 import "io"
 import "io/ioutil"
+import "net/netip"
 import "os"
 import "strings"
 import "time"
@@ -46,19 +47,26 @@ type ClientTLSConfig struct {
 	ServerName         string  `yaml:"server-name"`
 }
 
-type AuthConfig struct {
+type HttpAccessRule struct {
+	Prefix string `yaml:"prefix"`
+	OrgNets []string `yaml:"origin-networks"`
+	Action string `yaml:"action"`
+}
+
+type HttpAuthConfig struct {
 	Enabled bool `yaml:"enabled"`
 	Realm string `yaml:"realm"`
 	Creds []string `yaml:"credentials"`
 	TokenTtl string `yaml:"token-ttl"`
 	TokenRsaKeyText string `yaml:"token-rsa-key-text"`
 	TokenRsaKeyFile string `yaml:"token-rsa-key-file"`
+	AccessRules []HttpAccessRule `yaml:"access-rules"`
 }
 
 type CTLServiceConfig struct {
 	Prefix string   `yaml:"prefix"`  // url prefix for control channel endpoints
 	Addrs  []string `yaml:"addresses"`
-	Auth   AuthConfig `yaml:"auth"`
+	Auth   HttpAuthConfig `yaml:"auth"`
 }
 
 type PXYServiceConfig struct {
@@ -350,19 +358,20 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 }
 
 // --------------------------------------------------------------------
-func make_server_auth_config(cfg *AuthConfig) (*hodu.ServerAuthConfig, error) {
-	var config hodu.ServerAuthConfig
+func make_server_auth_config(cfg *HttpAuthConfig) (*hodu.ServerHttpAuthConfig, error) {
+	var config hodu.ServerHttpAuthConfig
 	var cred string
 	var b []byte
 	var x []string
 	var rsa_key_text []byte
 	var rk *rsa.PrivateKey
 	var pb *pem.Block
+	var rule HttpAccessRule
 	var err error
 
 	config.Enabled = cfg.Enabled
 	config.Realm = cfg.Realm
-	config.Creds = make(hodu.ServerAuthCredMap)
+	config.Creds = make(hodu.ServerHttpAuthCredMap)
 	config.TokenTtl, err = hodu.ParseDurationString(cfg.TokenTtl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid token ttl %s - %s", cred, err)
@@ -381,7 +390,6 @@ func make_server_auth_config(cfg *AuthConfig) (*hodu.ServerAuthConfig, error) {
 
 		config.Creds[x[0]] = x[1]
 	}
-
 
 	// load rsa key
 	if cfg.TokenRsaKeyText == "" && cfg.TokenRsaKeyFile != "" {
@@ -404,5 +412,41 @@ func make_server_auth_config(cfg *AuthConfig) (*hodu.ServerAuthConfig, error) {
 	}
 
 	config.TokenRsaKey = rk
+
+	// load access rules
+	for _, rule = range cfg.AccessRules {
+		var action hodu.HttpAccessAction
+		var orgnet string
+		var lastidx int
+
+		if rule.Prefix == "" {
+			return nil, fmt.Errorf("blank access rule prefix not allowed")
+		}
+
+		switch strings.ToLower(rule.Action) {
+			case "accept":
+				action = hodu.HTTP_ACCESS_ACCEPT
+			case "reject":
+				action = hodu.HTTP_ACCESS_REJECT
+			case "auth-required":
+				action = hodu.HTTP_ACCESS_AUTH_REQUIRED
+			default:
+				return nil, fmt.Errorf("invalid access rule action %s", rule.Action)
+		}
+
+		config.AccessRules = append(config.AccessRules, hodu.HttpAccessRule{
+			Prefix: rule.Prefix,
+			Action: action,
+		})
+
+		lastidx = len(config.AccessRules) - 1
+		for _, orgnet = range rule.OrgNets {
+			var netpfx netip.Prefix
+			netpfx, err = netip.ParsePrefix(orgnet)
+			if err != nil { return nil, fmt.Errorf("invalid network %s - %s", orgnet, err.Error()) }
+			config.AccessRules[lastidx].OrgNets = append(config.AccessRules[lastidx].OrgNets, netpfx)
+		}
+	}
+
 	return &config, nil
 }

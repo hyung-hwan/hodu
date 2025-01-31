@@ -48,6 +48,19 @@ type Service interface {
 	WriteLog(id string, level LogLevel, fmtstr string, args ...interface{})
 }
 
+type HttpAccessAction int
+const (
+	HTTP_ACCESS_ACCEPT HttpAccessAction = iota
+	HTTP_ACCESS_REJECT
+	HTTP_ACCESS_AUTH_REQUIRED
+)
+
+type HttpAccessRule struct {
+	Prefix string
+	OrgNets []netip.Prefix
+	Action HttpAccessAction
+}
+
 type JsonErrmsg struct {
 	Text string `json:"error-text"`
 }
