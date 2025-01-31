@@ -474,10 +474,10 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 
 	switch pxy.file {
 		case "xterm.js":
-			status_code = write_js_resp_header(w, http.StatusOK)
+			status_code = WriteJsRespHeader(w, http.StatusOK)
 			w.Write(xterm_js)
 		case "xterm-addon-fit.js":
-			status_code = write_js_resp_header(w, http.StatusOK)
+			status_code = WriteJsRespHeader(w, http.StatusOK)
 			w.Write(xterm_addon_fit_js)
 		case "xterm.css":
 			status_code = WriteCssRespHeader(w, http.StatusOK)

@@ -91,6 +91,10 @@ type client_ctl struct {
 	id string
 }
 
+type client_ctl_token struct {
+	client_ctl
+}
+
 type client_ctl_client_conns struct {
 	client_ctl
 	//c *Client
@@ -129,6 +133,62 @@ type client_ctl_stats struct {
 
 func (ctl *client_ctl) Id() string {
 	return ctl.id
+}
+
+func (ctl *client_ctl) Authenticate(req *http.Request) (int, string) {
+	if ctl.c.ctl_auth == nil { return http.StatusOK, "" }
+     return ctl.c.ctl_auth.Authenticate(req)
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var c *Client
+	var status_code int
+	var je *json.Encoder
+	var err error
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var jwt *JWT[ServerTokenClaim]
+			var claim ServerTokenClaim
+			var tok string
+			var now time.Time
+
+			if c.ctl_auth == nil || !c.ctl_auth.Enabled || c.ctl_auth.TokenRsaKey == nil {
+				status_code = WriteJsonRespHeader(w, http.StatusForbidden)
+				err = fmt.Errorf("auth not enabled or token rsa key not set")
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+
+			now = time.Now()
+			claim.IssuedAt = now.Unix()
+			claim.ExpiresAt = now.Add(c.ctl_auth.TokenTtl).Unix()
+			jwt = NewJWT(c.ctl_auth.TokenRsaKey, &claim)
+			tok, err = jwt.SignRS512()
+			if err != nil {
+				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			err = je.Encode(json_out_token{ AccessToken: tok }) // TODO: refresh token
+			if err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
 }
 
 // ------------------------------------

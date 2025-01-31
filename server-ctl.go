@@ -3,9 +3,6 @@ package hodu
 import "encoding/json"
 import "fmt"
 import "net/http"
-import "net/netip"
-import "path/filepath"
-import "strings"
 import "time"
 
 type ServerTokenClaim struct {
@@ -82,81 +79,8 @@ func (ctl *server_ctl) Id() string {
 }
 
 func (ctl *server_ctl) Authenticate(req *http.Request) (int, string) {
-	var s *Server
-	var rule HttpAccessRule
-	var raddrport netip.AddrPort
-	var raddr netip.Addr
-	var err error
-
-	s = ctl.s
-
-	raddrport, err = netip.ParseAddrPort(req.RemoteAddr)
-	if err == nil { raddr = raddrport.Addr() }
-
-	for _, rule = range s.cfg.CtlAuth.AccessRules {
-		// i don't take into account X-Forwarded-For and similar headers
-		if req.URL.Path == rule.Prefix || strings.HasPrefix(req.URL.Path, filepath.Clean(rule.Prefix + "/")) {
-			var org_net_ok bool
-
-			if len(rule.OrgNets) > 0 && raddr.IsValid() {
-				var netpfx netip.Prefix
-
-				org_net_ok = false
-				for  _, netpfx = range rule.OrgNets {
-					if err == nil && netpfx.Contains(raddr) {
-						org_net_ok = true
-						break
-					}
-				}
-			} else {
-				org_net_ok = true
-			}
-
-			if org_net_ok {
-				if rule.Action == HTTP_ACCESS_ACCEPT {
-					return http.StatusOK, ""
-				} else if rule.Action == HTTP_ACCESS_REJECT {
-					return http.StatusForbidden, ""
-				}
-			}
-		}
-	}
-
-	if s.cfg.CtlAuth != nil && s.cfg.CtlAuth.Enabled {
-		var auth_hdr string
-		var auth_parts []string
-		var username string
-		var password string
-		var credpass string
-		var ok bool
-		var err error
-
-		auth_hdr = req.Header.Get("Authorization")
-		if auth_hdr == "" { return http.StatusUnauthorized, s.cfg.CtlAuth.Realm }
-
-		auth_parts = strings.Fields(auth_hdr)
-		if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") && s.cfg.CtlAuth.TokenRsaKey != nil {
-			var jwt *JWT[ServerTokenClaim]
-			var claim ServerTokenClaim
-			jwt = NewJWT(s.cfg.CtlAuth.TokenRsaKey, &claim)
-			err = jwt.VerifyRS512(strings.TrimSpace(auth_parts[1]))
-			if err == nil {
-				// verification ok. let's check the actual payload
-				var now time.Time
-				now = time.Now()
-				if now.After(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return http.StatusOK, "" } // not expired
-			}
-		}
-
-		// fall back to basic authentication
-		username, password, ok = req.BasicAuth()
-		if !ok { return http.StatusUnauthorized, s.cfg.CtlAuth.Realm }
-
-		credpass, ok = s.cfg.CtlAuth.Creds[username]
-		if !ok || credpass != password { return http.StatusUnauthorized, s.cfg.CtlAuth.Realm }
-	}
-
-	return http.StatusOK, ""
+	if ctl.s.cfg.CtlAuth == nil { return http.StatusOK, "" }
+	return ctl.s.cfg.CtlAuth.Authenticate(req)
 }
 
 // ------------------------------------

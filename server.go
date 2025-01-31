@@ -1,7 +1,6 @@
 package hodu
 
 import "context"
-import "crypto/rsa"
 import "crypto/tls"
 import "errors"
 import "fmt"
@@ -43,17 +42,6 @@ type ServerSvcPortMap = map[PortId]ConnRouteId
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
 
-type ServerHttpAuthCredMap map[string]string
-
-type ServerHttpAuthConfig struct {
-	Enabled bool
-	Realm string
-	Creds ServerHttpAuthCredMap
-	TokenTtl time.Duration
-	TokenRsaKey *rsa.PrivateKey
-	AccessRules []HttpAccessRule
-}
-
 type ServerConfig struct {
 	RpcAddrs []string
 	RpcTls *tls.Config
@@ -63,7 +51,7 @@ type ServerConfig struct {
 	CtlAddrs []string
 	CtlTls *tls.Config
 	CtlPrefix string
-	CtlAuth *ServerHttpAuthConfig
+	CtlAuth *HttpAuthConfig
 
 	PxyAddrs []string
 	PxyTls *tls.Config

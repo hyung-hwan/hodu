@@ -358,8 +358,8 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 }
 
 // --------------------------------------------------------------------
-func make_server_auth_config(cfg *HttpAuthConfig) (*hodu.ServerHttpAuthConfig, error) {
-	var config hodu.ServerHttpAuthConfig
+func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
+	var config hodu.HttpAuthConfig
 	var cred string
 	var b []byte
 	var x []string
@@ -371,7 +371,7 @@ func make_server_auth_config(cfg *HttpAuthConfig) (*hodu.ServerHttpAuthConfig, e
 
 	config.Enabled = cfg.Enabled
 	config.Realm = cfg.Realm
-	config.Creds = make(hodu.ServerHttpAuthCredMap)
+	config.Creds = make(hodu.HttpAuthCredMap)
 	config.TokenTtl, err = hodu.ParseDurationString(cfg.TokenTtl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid token ttl %s - %s", cred, err)

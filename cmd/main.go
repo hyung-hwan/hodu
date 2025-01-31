@@ -127,7 +127,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
 		if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
-		config.CtlAuth, err = make_server_auth_config(&cfg.CTL.Service.Auth)
+		config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
 		if err != nil { return err }
 
 		config.CtlPrefix = cfg.CTL.Service.Prefix
@@ -247,8 +247,9 @@ func parse_client_route_config(v string) (*hodu.ClientRouteConfig, error) {
 
 func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string, cfg *ClientConfig) error {
 	var c *hodu.Client
-	var ctltlscfg *tls.Config
 	var rpctlscfg *tls.Config
+	var ctltlscfg *tls.Config
+	var ctl_auth *hodu.HttpAuthConfig
 	var ctl_prefix string
 	var cc hodu.ClientConfig
 	var logger *AppLogger
@@ -265,17 +266,16 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	logmask = hodu.LOG_ALL
 	if cfg != nil {
 		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
-		if err != nil {
-			return err
-		}
+		if err != nil { return err }
 		rpctlscfg, err = make_tls_client_config(&cfg.RPC.TLS)
-		if err != nil {
-			return err
-		}
+		if err != nil { return err }
 
 		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
 		if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
 		ctl_prefix = cfg.CTL.Service.Prefix
+
+		ctl_auth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
+		if err != nil { return err }
 
 		cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
 		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
@@ -314,6 +314,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 		ctl_addrs,
 		ctl_prefix,
 		ctltlscfg,
+		ctl_auth,
 		rpctlscfg,
 		max_rpc_conns,
 		max_peers,
