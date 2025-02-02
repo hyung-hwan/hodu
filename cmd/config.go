@@ -367,6 +367,7 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 	var rk *rsa.PrivateKey
 	var pb *pem.Block
 	var rule HttpAccessRule
+	var idx int
 	var err error
 
 	config.Enabled = cfg.Enabled
@@ -414,10 +415,11 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 	config.TokenRsaKey = rk
 
 	// load access rules
-	for _, rule = range cfg.AccessRules {
+	config.AccessRules = make([]hodu.HttpAccessRule, len(cfg.AccessRules))
+	for idx, rule = range cfg.AccessRules {
 		var action hodu.HttpAccessAction
 		var orgnet string
-		var lastidx int
+		var orgnet_idx int
 
 		if rule.Prefix == "" {
 			return nil, fmt.Errorf("blank access rule prefix not allowed")
@@ -434,17 +436,17 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 				return nil, fmt.Errorf("invalid access rule action %s", rule.Action)
 		}
 
-		config.AccessRules = append(config.AccessRules, hodu.HttpAccessRule{
+		config.AccessRules[idx] = hodu.HttpAccessRule{
 			Prefix: rule.Prefix,
 			Action: action,
-		})
+			OrgNets: make([]netip.Prefix, len(rule.OrgNets)),
+		}
 
-		lastidx = len(config.AccessRules) - 1
-		for _, orgnet = range rule.OrgNets {
+		for orgnet_idx, orgnet = range rule.OrgNets {
 			var netpfx netip.Prefix
 			netpfx, err = netip.ParsePrefix(orgnet)
 			if err != nil { return nil, fmt.Errorf("invalid network %s - %s", orgnet, err.Error()) }
-			config.AccessRules[lastidx].OrgNets = append(config.AccessRules[lastidx].OrgNets, netpfx)
+			config.AccessRules[idx].OrgNets[orgnet_idx] = netpfx
 		}
 	}
 
