@@ -5,7 +5,6 @@ import "crypto/tls"
 import "errors"
 import "fmt"
 import "log"
-//import "math/rand"
 import "net"
 import "net/http"
 import "sync"
@@ -1251,8 +1250,10 @@ func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
 		start_time = time.Now()
 
 		status_code, realm = handler.Authenticate(req)
-		if status_code == http.StatusUnauthorized && realm != "" {
-			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
+		if status_code == http.StatusUnauthorized {
+			if realm != "" {
+				w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
+			}
 			WriteEmptyRespHeader(w, status_code)
 		} else if status_code == http.StatusOK {
 			status_code, err = handler.ServeHTTP(w, req)

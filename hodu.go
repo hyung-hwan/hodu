@@ -78,6 +78,11 @@ type JsonErrmsg struct {
 	Text string `json:"error-text"`
 }
 
+type json_in_cred struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 type json_out_go_stats struct {
 	CPUs int `json:"cpus"`
 	Goroutines int `json:"goroutines"`
@@ -374,36 +379,43 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 
 	if auth != nil && auth.Enabled {
 		var auth_hdr string
-		var auth_parts []string
 		var username string
 		var password string
 		var credpass string
 		var ok bool
-		var err error
 
 		auth_hdr = req.Header.Get("Authorization")
-		if auth_hdr == "" { return http.StatusUnauthorized, auth.Realm }
+		if auth_hdr != "" {
+			var auth_parts []string
 
-		auth_parts = strings.Fields(auth_hdr)
-		if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") && auth.TokenRsaKey != nil {
-			var jwt *JWT[ServerTokenClaim]
-			var claim ServerTokenClaim
-			jwt = NewJWT(auth.TokenRsaKey, &claim)
-			err = jwt.VerifyRS512(strings.TrimSpace(auth_parts[1]))
-			if err == nil {
-				// verification ok. let's check the actual payload
-				var now time.Time
-				now = time.Now()
-				if now.After(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return http.StatusOK, "" } // not expired
+			auth_parts = strings.Fields(auth_hdr)
+			if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") && auth.TokenRsaKey != nil {
+				var jwt *JWT[ServerTokenClaim]
+				var claim ServerTokenClaim
+				jwt = NewJWT(auth.TokenRsaKey, &claim)
+				err = jwt.VerifyRS512(strings.TrimSpace(auth_parts[1]))
+				if err == nil {
+					// verification ok. let's check the actual payload
+					var now time.Time
+					now = time.Now()
+					if now.After(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return http.StatusOK, "" } // not expired
+				}
 			}
 		}
 
+		username = req.Header.Get("X-Auth-Username")
+		password = req.Header.Get("X-Auth-Password")
+
 		// fall back to basic authentication
-		username, password, ok = req.BasicAuth()
-		if !ok { return http.StatusUnauthorized, auth.Realm }
+		if username == "" && password == "" && auth.Realm != "" {
+			username, password, ok = req.BasicAuth()
+			if !ok { return http.StatusUnauthorized, auth.Realm }
+		}
 
 		credpass, ok = auth.Creds[username]
-		if !ok || credpass != password { return http.StatusUnauthorized, auth.Realm }
+		if !ok || credpass != password {
+			return http.StatusUnauthorized, auth.Realm
+		}
 	}
 
 	return http.StatusOK, ""
