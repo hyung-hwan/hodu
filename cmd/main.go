@@ -1,7 +1,6 @@
 package main
 
 import "context"
-import "crypto/tls"
 import _ "embed"
 import "flag"
 import "fmt"
@@ -13,7 +12,6 @@ import "os/signal"
 import "strings"
 import "sync"
 import "syscall"
-import "time"
 
 // Don't change these items to 'const' as they can be overridden externally with a linker option
 var HODU_NAME string = "hodu"
@@ -126,6 +124,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
 		if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
+		config.CtlCors = cfg.CTL.Service.Cors
 		config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
 		if err != nil { return err }
 
@@ -246,33 +245,33 @@ func parse_client_route_config(v string) (*hodu.ClientRouteConfig, error) {
 
 func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string, logfile string, cfg *ClientConfig) error {
 	var c *hodu.Client
-	var rpctlscfg *tls.Config
-	var ctltlscfg *tls.Config
-	var ctl_auth *hodu.HttpAuthConfig
-	var ctl_prefix string
-	var cc hodu.ClientConfig
+	var config *hodu.ClientConfig
+	var cc hodu.ClientConnConfig
 	var logger *AppLogger
 	var logmask hodu.LogMask
 	var logfile_maxsize int64
 	var logfile_rotate int
-	var max_rpc_conns int
-	var max_peers int
-	var peer_conn_tmout time.Duration
 	var i int
 	var err error
 
 	logmask = hodu.LOG_ALL
+
+	config = &hodu.ClientConfig{
+		CtlAddrs: ctl_addrs,
+	}
+
 	if cfg != nil {
-		ctltlscfg, err = make_tls_server_config(&cfg.CTL.TLS)
+		config.CtlTls, err = make_tls_server_config(&cfg.CTL.TLS)
 		if err != nil { return err }
-		rpctlscfg, err = make_tls_client_config(&cfg.RPC.TLS)
+		config.RpcTls, err = make_tls_client_config(&cfg.RPC.TLS)
 		if err != nil { return err }
 
-		if len(ctl_addrs) <= 0 { ctl_addrs = cfg.CTL.Service.Addrs }
 		if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
-		ctl_prefix = cfg.CTL.Service.Prefix
+		if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
 
-		ctl_auth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
+		config.CtlPrefix = cfg.CTL.Service.Prefix
+		config.CtlCors = cfg.CTL.Service.Cors
+		config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
 		if err != nil { return err }
 
 		cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
@@ -281,9 +280,9 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 		if logfile == "" { logfile = cfg.APP.LogFile }
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
-		max_rpc_conns = cfg.APP.MaxRpcConns
-		max_peers = cfg.APP.MaxPeers
-		peer_conn_tmout = cfg.APP.PeerConnTmout
+		config.RpcConnMax = cfg.APP.MaxRpcConns
+		config.PeerConnMax = cfg.APP.MaxPeers
+		config.PeerConnTmout = cfg.APP.PeerConnTmout
 	}
 
 	// unlke the server, we allow the client to start with no rpc address.
@@ -305,18 +304,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
 	}
-	c = hodu.NewClient(
-		context.Background(),
-		HODU_NAME,
-		logger,
-		ctl_addrs,
-		ctl_prefix,
-		ctltlscfg,
-		ctl_auth,
-		rpctlscfg,
-		max_rpc_conns,
-		max_peers,
-		peer_conn_tmout)
+	c = hodu.NewClient(context.Background(), HODU_NAME, logger, config)
 
 	c.StartService(&cc)
 	c.StartCtlService() // control channel

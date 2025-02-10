@@ -52,6 +52,7 @@ type ServerConfig struct {
 	CtlTls *tls.Config
 	CtlPrefix string
 	CtlAuth *HttpAuthConfig
+	CtlCors bool
 
 	PxyAddrs []string
 	PxyTls *tls.Config
@@ -942,6 +943,7 @@ func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 
 type ServerHttpHandler interface {
 	Id() string
+	Cors(req *http.Request) bool
 	Authenticate(req *http.Request) (int, string)
 	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
 }
@@ -965,16 +967,25 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 		}()
 
 		start_time = time.Now()
-		status_code, realm = handler.Authenticate(req)
-		if status_code == http.StatusUnauthorized {
-			if realm != "" {
-				w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
-			}
-			WriteEmptyRespHeader(w, status_code)
-		} else if status_code == http.StatusOK {
-			status_code, err = handler.ServeHTTP(w, req)
+
+		if handler.Cors(req) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+		}
+		if req.Method == http.MethodOptions {
+			status_code = WriteEmptyRespHeader(w, http.StatusOK)
 		} else {
-			WriteEmptyRespHeader(w, status_code)
+			status_code, realm = handler.Authenticate(req)
+			if status_code == http.StatusUnauthorized {
+				if realm != "" {
+					w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
+				}
+				WriteEmptyRespHeader(w, status_code)
+			} else if status_code == http.StatusOK {
+				status_code, err = handler.ServeHTTP(w, req)
+			} else {
+				WriteEmptyRespHeader(w, status_code)
+			}
 		}
 		time_taken = time.Now().Sub(start_time)
 

@@ -78,6 +78,10 @@ func (ctl *server_ctl) Id() string {
 	return ctl.id
 }
 
+func (ctl *server_ctl) Cors(req *http.Request) bool {
+	return ctl.s.cfg.CtlCors
+}
+
 func (ctl *server_ctl) Authenticate(req *http.Request) (int, string) {
 	if ctl.s.cfg.CtlAuth == nil { return http.StatusOK, "" }
 	return ctl.s.cfg.CtlAuth.Authenticate(req)

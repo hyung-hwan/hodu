@@ -66,6 +66,7 @@ type HttpAuthConfig struct {
 type CTLServiceConfig struct {
 	Prefix string   `yaml:"prefix"`  // url prefix for control channel endpoints
 	Addrs  []string `yaml:"addresses"`
+	Cors   bool     `yaml:"cors"`
 	Auth   HttpAuthConfig `yaml:"auth"`
 }
 

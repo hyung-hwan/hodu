@@ -1,6 +1,7 @@
 package hodu
 
 import "crypto/rsa"
+import "encoding/base64"
 import "fmt"
 import "net"
 import "net/http"
@@ -403,8 +404,21 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 			}
 		}
 
+		// this application wants these two header values to be base64-encoded
 		username = req.Header.Get("X-Auth-Username")
 		password = req.Header.Get("X-Auth-Password")
+		if username != "" {
+			var tmp []byte
+			tmp, err = base64.StdEncoding.DecodeString(username)
+			if err != nil { return http.StatusBadRequest, "" }
+			username = string(tmp)
+		}
+		if password != "" {
+			var tmp []byte
+			tmp, err = base64.StdEncoding.DecodeString(password)
+			if err != nil { return http.StatusBadRequest, "" }
+			password = string(tmp)
+		}
 
 		// fall back to basic authentication
 		if username == "" && password == "" && auth.Realm != "" {

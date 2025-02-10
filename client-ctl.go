@@ -135,6 +135,10 @@ func (ctl *client_ctl) Id() string {
 	return ctl.id
 }
 
+func (ctl *client_ctl) Cors(req *http.Request) bool {
+	return ctl.c.ctl_cors
+}
+
 func (ctl *client_ctl) Authenticate(req *http.Request) (int, string) {
 	if ctl.c.ctl_auth == nil { return http.StatusOK, "" }
      return ctl.c.ctl_auth.Authenticate(req)
@@ -257,7 +261,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			// after hacing connected to the server. therefore, the json_in_client_conn
 			// type contains a server address field only.
 			var s json_in_client_conn
-			var cc ClientConfig
+			var cc ClientConnConfig
 			var cts *ClientConn
 
 			err = json.NewDecoder(req.Body).Decode(&s)

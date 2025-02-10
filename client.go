@@ -39,16 +39,29 @@ type ClientRouteConfig struct {
 	Static      bool
 }
 
-type ClientConfig struct {
+type ClientConnConfig struct {
 	ServerAddrs []string
 	Routes      []ClientRouteConfig
 	ServerSeedTmout time.Duration
 	ServerAuthority string // http2 :authority header
 }
 
-type ClientConfigActive struct {
+type ClientConnConfigActive struct {
 	Index int
-	ClientConfig
+	ClientConnConfig
+}
+
+type ClientConfig struct {
+	CtlAddrs []string
+	CtlTls *tls.Config
+	CtlPrefix string
+	CtlAuth *HttpAuthConfig
+	CtlCors bool
+
+	RpcTls *tls.Config
+	RpcConnMax int
+	PeerConnMax int
+	PeerConnTmout time.Duration
 }
 
 type Client struct {
@@ -64,6 +77,7 @@ type Client struct {
 	ctl_tls   *tls.Config
 	ctl_addr   []string
 	ctl_prefix string
+	ctl_cors   bool
 	ctl_auth   *HttpAuthConfig
 	ctl_mux    *http.ServeMux
 	ctl        []*http.Server // control server
@@ -102,7 +116,7 @@ const  (
 // client connection to server
 type ClientConn struct {
 	cli          *Client
-	cfg           ClientConfigActive
+	cfg           ClientConnConfigActive
 	Id            ConnId
 	Sid           string // id rendered in string
 	State         ClientConnState
@@ -660,14 +674,14 @@ func (r *ClientRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_d
 }
 
 // --------------------------------------------------------------------
-func NewClientConn(c *Client, cfg *ClientConfig) *ClientConn {
+func NewClientConn(c *Client, cfg *ClientConnConfig) *ClientConn {
 	var cts ClientConn
 	var i int
 
 	cts.cli = c
 	cts.route_map = make(ClientRouteMap)
 	cts.route_next_id = 1
-	cts.cfg.ClientConfig = *cfg
+	cts.cfg.ClientConnConfig = *cfg
 	cts.stop_req.Store(false)
 	cts.stop_chan = make(chan bool, 8)
 
@@ -1225,6 +1239,7 @@ func (hlw *client_ctl_log_writer) Write(p []byte) (n int, err error) {
 
 type ClientHttpHandler interface {
 	Id() string
+	Cors(req *http.Request) bool
 	Authenticate(req *http.Request) (int, string)
 	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
 }
@@ -1249,16 +1264,24 @@ func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
 
 		start_time = time.Now()
 
-		status_code, realm = handler.Authenticate(req)
-		if status_code == http.StatusUnauthorized {
-			if realm != "" {
-				w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
-			}
-			WriteEmptyRespHeader(w, status_code)
-		} else if status_code == http.StatusOK {
-			status_code, err = handler.ServeHTTP(w, req)
+		if handler.Cors(req) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+		}
+		if req.Method == http.MethodOptions {
+			status_code = WriteEmptyRespHeader(w, http.StatusOK)
 		} else {
-			WriteEmptyRespHeader(w, status_code)
+			status_code, realm = handler.Authenticate(req)
+			if status_code == http.StatusUnauthorized {
+				if realm != "" {
+					w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic Realm=\"%s\"", realm))
+				}
+				WriteEmptyRespHeader(w, status_code)
+			} else if status_code == http.StatusOK {
+				status_code, err = handler.ServeHTTP(w, req)
+			} else {
+				WriteEmptyRespHeader(w, status_code)
+			}
 		}
 
 		// TODO: statistics by status_code and end point types.
@@ -1274,7 +1297,7 @@ func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
 	})
 }
 
-func NewClient(ctx context.Context, name string, logger Logger, ctl_addrs []string, ctl_prefix string, ctl_tls *tls.Config, ctl_auth *HttpAuthConfig, rpc_tls *tls.Config, rpc_max int, peer_max int, peer_conn_tmout time.Duration) *Client {
+func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfig) *Client {
 	var c Client
 	var i int
 	var hs_log *log.Logger
@@ -1282,19 +1305,20 @@ func NewClient(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 	c.name = name
 	c.ctx, c.ctx_cancel = context.WithCancel(ctx)
 	c.ext_svcs = make([]Service, 0, 1)
-	c.ptc_tmout = peer_conn_tmout
-	c.ptc_limit = peer_max
-	c.cts_limit = rpc_max
+	c.ptc_tmout = cfg.PeerConnTmout
+	c.ptc_limit = cfg.PeerConnMax
+	c.cts_limit = cfg.RpcConnMax
 	c.cts_next_id = 1
 	c.cts_map = make(ClientConnMap)
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
 	c.log = logger
 
-	c.rpc_tls = rpc_tls
-	c.ctl_auth = ctl_auth
-	c.ctl_tls = ctl_tls
-	c.ctl_prefix = ctl_prefix
+	c.rpc_tls = cfg.RpcTls
+	c.ctl_auth = cfg.CtlAuth
+	c.ctl_tls = cfg.CtlTls
+	c.ctl_prefix = cfg.CtlPrefix
+	c.ctl_cors = cfg.CtlCors
 	c.ctl_mux = http.NewServeMux()
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns",
 		c.wrap_http_handler(&client_ctl_client_conns{client_ctl{c: &c, id: HS_ID_CTL}}))
@@ -1323,15 +1347,15 @@ func NewClient(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 		promhttp.HandlerFor(c.promreg, promhttp.HandlerOpts{ EnableOpenMetrics: true }))
 
 
-	c.ctl_addr = make([]string, len(ctl_addrs))
-	c.ctl = make([]*http.Server, len(ctl_addrs))
-	copy(c.ctl_addr, ctl_addrs)
+	c.ctl_addr = make([]string, len(cfg.CtlAddrs))
+	c.ctl = make([]*http.Server, len(cfg.CtlAddrs))
+	copy(c.ctl_addr, cfg.CtlAddrs)
 
 	hs_log = log.New(&client_ctl_log_writer{cli: &c}, "", 0)
 
-	for i = 0; i < len(ctl_addrs); i++ {
+	for i = 0; i < len(cfg.CtlAddrs); i++ {
 		c.ctl[i] = &http.Server{
-			Addr: ctl_addrs[i],
+			Addr: cfg.CtlAddrs[i],
 			Handler: c.ctl_mux,
 			TLSConfig: c.ctl_tls,
 			ErrorLog: hs_log,
@@ -1346,7 +1370,7 @@ func NewClient(ctx context.Context, name string, logger Logger, ctl_addrs []stri
 	return &c
 }
 
-func (c *Client) AddNewClientConn(cfg *ClientConfig) (*ClientConn, error) {
+func (c *Client) AddNewClientConn(cfg *ClientConnConfig) (*ClientConn, error) {
 	var cts *ClientConn
 	var ok bool
 	var start_id ConnId
@@ -1622,7 +1646,7 @@ func (c *Client) RunTask(wg *sync.WaitGroup) {
 	// so no call to wg.Done()
 }
 
-func (c *Client) start_service(cfg *ClientConfig) (*ClientConn, error) {
+func (c *Client) start_service(cfg *ClientConnConfig) (*ClientConn, error) {
 	var cts *ClientConn
 	var err error
 
@@ -1639,10 +1663,10 @@ func (c *Client) start_service(cfg *ClientConfig) (*ClientConn, error) {
 }
 
 func (c *Client) StartService(data interface{}) {
-	var cfg *ClientConfig
+	var cfg *ClientConnConfig
 	var ok bool
 
-	cfg, ok = data.(*ClientConfig)
+	cfg, ok = data.(*ClientConnConfig)
 	if !ok {
 		c.log.Write("", LOG_ERROR, "Failed to start service - invalid configuration - %v", data)
 	} else {
