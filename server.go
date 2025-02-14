@@ -1104,7 +1104,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.pxy_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
 		websocket.Handler(func(ws *websocket.Conn) { s.pxy_ws.ServeWebsocket(ws) }))
 	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
-		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_PXY}}))
+		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_PXY, noauth: true}}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/",
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "_redirect"}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/",
@@ -1118,6 +1118,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.pxy_mux.Handle("/_ssh/",
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "_forbidden"}))
 	s.pxy_mux.Handle("/favicon.ico",
+		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "_forbidden"}))
+	s.pxy_mux.Handle("/favicon.ico/",
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "_forbidden"}))
 
 	s.pxy_mux.Handle("/_http/{conn_id}/{route_id}/{trailer...}",
@@ -1145,7 +1147,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		websocket.Handler(func(ws *websocket.Conn) { s.wpx_ws.ServeWebsocket(ws) }))
 
 	s.wpx_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
-		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_WPX}}))
+		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_WPX, noauth: true}}))
 	s.wpx_mux.Handle("/_ssh/xterm.js",
 		s.wrap_http_handler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_WPX}, file: "xterm.js"}))
 	s.wpx_mux.Handle("/_ssh/xterm-addon-fit.js",

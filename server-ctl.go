@@ -46,6 +46,7 @@ type json_out_server_stats struct {
 type server_ctl struct {
 	s *Server
 	id string
+	noauth bool // override the auth configuration if true
 }
 
 type server_ctl_token struct {
@@ -83,7 +84,7 @@ func (ctl *server_ctl) Cors(req *http.Request) bool {
 }
 
 func (ctl *server_ctl) Authenticate(req *http.Request) (int, string) {
-	if ctl.s.cfg.CtlAuth == nil { return http.StatusOK, "" }
+	if ctl.noauth || ctl.s.cfg.CtlAuth == nil { return http.StatusOK, "" }
 	return ctl.s.cfg.CtlAuth.Authenticate(req)
 }
 
