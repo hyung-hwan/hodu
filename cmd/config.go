@@ -260,7 +260,7 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodu_tls_key_text)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to load key pair - %s", err)
+			return nil, fmt.Errorf("failed to load key pair - %s", err.Error())
 		}
 
 		cert_pool = x509.NewCertPool()
@@ -318,7 +318,7 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 			cert, err = tls.X509KeyPair(hodu_tls_cert_text, hodu_tls_key_text)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to load key pair - %s", err)
+			return nil, fmt.Errorf("failed to load key pair - %s", err.Error())
 		}
 
 		cert_pool = x509.NewCertPool()
@@ -376,7 +376,7 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 	config.Creds = make(hodu.HttpAuthCredMap)
 	config.TokenTtl, err = hodu.ParseDurationString(cfg.TokenTtl)
 	if err != nil {
-		return nil, fmt.Errorf("invalid token ttl %s - %s", cred, err)
+		return nil, fmt.Errorf("invalid token ttl %s - %s", cred, err.Error())
 	}
 
 	// convert user credentials
