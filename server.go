@@ -341,6 +341,27 @@ func (r *ServerRoute) ReqStop() {
 	}
 }
 
+func (r *ServerRoute) ReqStopAllServerPeerConns() {
+	var c *ServerPeerConn
+
+	r.pts_mtx.Lock()
+	for _, c = range r.pts_map { c.ReqStop() }
+	r.pts_mtx.Unlock()
+}
+
+func (r *ServerRoute) FindServerPeerConnById(peer_id PeerId) *ServerPeerConn {
+	var c *ServerPeerConn
+	var ok bool
+
+	r.pts_mtx.Lock()
+	defer r.pts_mtx.Unlock()
+
+	c, ok = r.pts_map[peer_id]
+	if !ok { return nil }
+
+	return c
+}
+
 func (r *ServerRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_data interface{}) error {
 	var spc *ServerPeerConn
 	var ok bool
@@ -508,6 +529,18 @@ func (cts *ServerConn) FindServerRouteById(route_id RouteId) *ServerRoute {
 	cts.route_mtx.Unlock()
 
 	return r
+}
+
+func (cts *ServerConn) FindServerPeerConnById(route_id RouteId, peer_id PeerId) *ServerPeerConn {
+	var r *ServerRoute
+	var ok bool
+
+	cts.route_mtx.Lock()
+	defer cts.route_mtx.Unlock()
+	r, ok = cts.route_map[route_id]
+	if !ok { return nil }
+
+	return r.FindServerPeerConnById(peer_id)
 }
 
 func (cts *ServerConn) ReqStopAllServerRoutes() {
@@ -1076,6 +1109,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}/peers",
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id_peers{server_ctl{s: &s, id: HS_ID_CTL}}))
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
+		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id_peers_id{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/stats",
 		s.wrap_http_handler(&server_ctl_stats{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/token",
@@ -1594,6 +1629,19 @@ func (s *Server) FindServerRouteById(id ConnId, route_id RouteId) *ServerRoute {
 	return cts.FindServerRouteById(route_id)
 }
 
+func (s *Server) FindServerPeerConnById(id ConnId, route_id RouteId, peer_id PeerId) *ServerPeerConn {
+	var cts *ServerConn
+	var ok bool
+
+	s.cts_mtx.Lock()
+	defer s.cts_mtx.Unlock()
+
+	cts, ok = s.cts_map[id]
+	if !ok { return nil }
+
+	return cts.FindServerPeerConnById(route_id, peer_id)
+}
+
 func (s *Server) FindServerRouteByPortId(port_id PortId) *ServerRoute {
 	var cri ConnRouteId
 	var ok bool
@@ -1604,6 +1652,55 @@ func (s *Server) FindServerRouteByPortId(port_id PortId) *ServerRoute {
 	cri, ok = s.svc_port_map[port_id]
 	if !ok { return nil }
 	return s.FindServerRouteById(cri.conn_id, cri.route_id)
+}
+
+func (s *Server) FindServerPeerConnByPortId(port_id PortId, peer_id PeerId) *ServerPeerConn {
+	var cri ConnRouteId
+	var ok bool
+
+	s.svc_port_mtx.Lock()
+	defer s.svc_port_mtx.Unlock()
+
+	cri, ok = s.svc_port_map[port_id]
+	if !ok { return nil }
+	return s.FindServerPeerConnById(cri.conn_id, cri.route_id, peer_id)
+}
+
+func (s *Server) FindServerPeerConnByIdStr(conn_id string, route_id string, peer_id string) (*ServerPeerConn, error) {
+	var p *ServerPeerConn
+	var err error
+
+	if route_id == PORT_ID_MARKER {
+		var port_nid uint64
+		var peer_nid uint64
+
+		port_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
+		if err != nil { return nil, fmt.Errorf("invalid port id %s - %s", conn_id, err.Error()) }
+
+		peer_nid, err = strconv.ParseUint(peer_id, 10, int(unsafe.Sizeof(PeerId(0)) * 8))
+		if err != nil { return nil, fmt.Errorf("invalid peer id %s - %s", peer_id, err.Error()) }
+
+		p = s.FindServerPeerConnByPortId(PortId(port_nid), PeerId(peer_nid))
+		if p == nil { return nil, fmt.Errorf("peer(%d,%d) not found", port_nid, peer_nid) }
+	} else {
+		var conn_nid uint64
+		var route_nid uint64
+		var peer_nid uint64
+
+		conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+		if err != nil { return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()) }
+
+		route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
+		if err != nil { return nil, fmt.Errorf("invalid route id %s - %s", route_id, err.Error()) }
+
+		peer_nid, err = strconv.ParseUint(peer_id, 10, int(unsafe.Sizeof(PeerId(0)) * 8))
+		if err != nil { return nil, fmt.Errorf("invalid peer id %s - %s", peer_id, err.Error()) }
+
+		p = s.FindServerPeerConnById(ConnId(conn_nid), RouteId(route_nid), PeerId(peer_nid))
+		if p == nil { return nil, fmt.Errorf("peer(%d,%d,%d) not found", conn_nid, route_nid, peer_nid) }
+	}
+
+	return p, nil
 }
 
 func (s *Server) FindServerRouteByIdStr(conn_id string, route_id string) (*ServerRoute, error) {

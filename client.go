@@ -278,14 +278,14 @@ func (r *ClientRoute) ReqStopAllClientPeerConns() {
 	r.ptc_mtx.Unlock()
 }
 
-func (r *ClientRoute) FindClientPeerConnById(conn_id PeerId) *ClientPeerConn {
+func (r *ClientRoute) FindClientPeerConnById(peer_id PeerId) *ClientPeerConn {
 	var c *ClientPeerConn
 	var ok bool
 
 	r.ptc_mtx.Lock()
 	defer r.ptc_mtx.Unlock()
 
-	c, ok = r.ptc_map[conn_id]
+	c, ok = r.ptc_map[peer_id]
 	if !ok { return nil }
 
 	return c

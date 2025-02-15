@@ -31,6 +31,14 @@ type json_out_server_route struct {
 	ServerPeerServiceNet string `json:"server-peer-service-net"`
 }
 
+type json_out_server_peer struct {
+	Id PeerId `json:"id"`
+	ClientPeerAddr string `json:"client-peer-addr"`
+	ClientLocalAddr string `json:"client-local-addr"`
+	ServerPeerAddr string `json:"server-peer-addr"`
+	ServerLocalAddr string `json:"server-local-addr"`
+}
+
 type json_out_server_stats struct {
 	json_out_go_stats
 
@@ -70,6 +78,10 @@ type server_ctl_server_conns_id_routes_id struct {
 }
 
 type server_ctl_server_conns_id_routes_id_peers struct {
+	server_ctl
+}
+
+type server_ctl_server_conns_id_routes_id_peers_id struct {
 	server_ctl
 }
 
@@ -315,6 +327,8 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			if err = je.Encode(jsp); err != nil { goto oops }
 
 		case http.MethodDelete:
+			// direct removal causes quite some clean-up issues.
+			// make stop request to all server routes and let the task stop by themselves
 			//cts.RemoveAllServerRoutes()
 			cts.ReqStopAllServerRoutes()
 			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
@@ -441,23 +455,86 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 
 	switch req.Method {
 		case http.MethodGet:
+			var p *ServerPeerConn
+			var jcp []json_out_server_peer
+
+			jcp = make([]json_out_server_peer, 0)
+			r.pts_mtx.Lock()
+			for _, p = range r.pts_map {
+				jcp = append(jcp, json_out_server_peer{
+					Id: p.conn_id,
+					ServerPeerAddr: p.conn.RemoteAddr().String(),
+					ServerLocalAddr: p.conn.LocalAddr().String(),
+					ClientPeerAddr: p.cts.remote_addr,
+					ClientLocalAddr: p.cts.local_addr,
+				})
+			}
+			r.pts_mtx.Unlock()
+
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
-			err = je.Encode(json_out_server_route{
-				Id: r.Id,
-				ClientPeerAddr: r.PtcAddr,
-				ClientPeerName: r.PtcName,
-				ServerPeerServiceAddr: r.SvcAddr.String(),
-				ServerPeerServiceNet: r.SvcPermNet.String(),
-				ServerPeerOption: r.SvcOption.String(),
-			})
-			if err != nil { goto oops }
+			if err = je.Encode(jcp); err != nil { goto oops }
 
 		case http.MethodDelete:
-			//r.ReqStopAllServerPeerConns()
+			r.ReqStopAllServerPeerConns()
 			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
 			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *server_ctl_server_conns_id_routes_id_peers_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var conn_id string
+	var route_id string
+	var peer_id string
+	var je *json.Encoder
+	var p *ServerPeerConn
+	var err error
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	route_id = req.PathValue("route_id")
+	peer_id = req.PathValue("peer_id")
+	p, err = s.FindServerPeerConnByIdStr(conn_id, route_id, peer_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			var jcp *json_out_server_peer
+
+			jcp = &json_out_server_peer{
+				Id: p.conn_id,
+				ServerPeerAddr: p.conn.RemoteAddr().String(),
+				ServerLocalAddr: p.conn.LocalAddr().String(),
+				ClientPeerAddr: p.cts.remote_addr,
+				ClientLocalAddr: p.cts.local_addr,
+			}
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(jcp); err != nil { goto oops }
+
+		case http.MethodDelete:
+			p.ReqStop()
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 	}
 
 //done:
@@ -494,10 +571,8 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	}
 
 //done:
-	//s.log.Write(ctl.id, LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code) // TODO: time taken
 	return status_code, nil
 
 oops:
-	//s.log.Write(ctl.id, LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
 	return status_code, err
 }
