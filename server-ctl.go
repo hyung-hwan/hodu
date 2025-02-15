@@ -69,6 +69,10 @@ type server_ctl_server_conns_id_routes_id struct {
 	server_ctl
 }
 
+type server_ctl_server_conns_id_routes_id_peers struct {
+	server_ctl
+}
+
 type server_ctl_stats struct {
 	server_ctl
 }
@@ -406,6 +410,57 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	}
 
 done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var conn_id string
+	var route_id string
+	var je *json.Encoder
+	var r *ServerRoute
+	var err error
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	route_id = req.PathValue("route_id")
+	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			err = je.Encode(json_out_server_route{
+				Id: r.Id,
+				ClientPeerAddr: r.PtcAddr,
+				ClientPeerName: r.PtcName,
+				ServerPeerServiceAddr: r.SvcAddr.String(),
+				ServerPeerServiceNet: r.SvcPermNet.String(),
+				ServerPeerOption: r.SvcOption.String(),
+			})
+			if err != nil { goto oops }
+
+		case http.MethodDelete:
+			//r.ReqStopAllServerPeerConns()
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+//done:
 	return status_code, nil
 
 oops:
