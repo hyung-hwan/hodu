@@ -12,7 +12,6 @@ import "time"
 type ServerPeerConn struct {
 	route     *ServerRoute
 	conn_id   PeerId
-	cts       *ClientConn
 	conn      *net.TCPConn
 
 	stop_chan chan bool
@@ -22,6 +21,8 @@ type ServerPeerConn struct {
 	client_peer_started atomic.Bool
 	client_peer_stopped atomic.Bool
 	client_peer_eof atomic.Bool
+	client_peer_laddr string
+	client_peer_raddr string
 }
 
 func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id PeerId) *ServerPeerConn {
@@ -163,6 +164,19 @@ func (spc *ServerPeerConn) ReportEvent(event_type PACKET_KIND, event_data interf
 
 	switch event_type {
 		case PACKET_KIND_PEER_STARTED:
+			var ok bool
+			var pd *PeerDesc
+
+			pd, ok = event_data.(*PeerDesc)
+			if !ok {
+				// something wrong. leave it unknown.
+				spc.client_peer_laddr = "";
+				spc.client_peer_raddr = "";
+			} else {
+				spc.client_peer_laddr = pd.LocalAddrStr
+				spc.client_peer_raddr = pd.RemoteAddrStr
+			}
+
 			if spc.client_peer_started.CompareAndSwap(false, true) {
 				spc.client_peer_status_chan <- true
 			}

@@ -33,10 +33,10 @@ type json_out_server_route struct {
 
 type json_out_server_peer struct {
 	Id PeerId `json:"id"`
-	ClientPeerAddr string `json:"client-peer-addr"`
-	ClientLocalAddr string `json:"client-local-addr"`
 	ServerPeerAddr string `json:"server-peer-addr"`
 	ServerLocalAddr string `json:"server-local-addr"`
+	ClientPeerAddr string `json:"client-peer-addr"`
+	ClientLocalAddr string `json:"client-local-addr"`
 }
 
 type json_out_server_stats struct {
@@ -465,8 +465,8 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 					Id: p.conn_id,
 					ServerPeerAddr: p.conn.RemoteAddr().String(),
 					ServerLocalAddr: p.conn.LocalAddr().String(),
-					ClientPeerAddr: p.cts.remote_addr,
-					ClientLocalAddr: p.cts.local_addr,
+					ClientPeerAddr: p.client_peer_raddr,
+					ClientLocalAddr: p.client_peer_laddr,
 				})
 			}
 			r.pts_mtx.Unlock()
@@ -522,8 +522,8 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 				Id: p.conn_id,
 				ServerPeerAddr: p.conn.RemoteAddr().String(),
 				ServerLocalAddr: p.conn.LocalAddr().String(),
-				ClientPeerAddr: p.cts.remote_addr,
-				ClientLocalAddr: p.cts.local_addr,
+				ClientPeerAddr: p.client_peer_raddr,
+				ClientLocalAddr: p.client_peer_laddr,
 			}
 
 			status_code = WriteJsonRespHeader(w, http.StatusOK)

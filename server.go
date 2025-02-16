@@ -1004,6 +1004,7 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 		if handler.Cors(req) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Headers", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "*")
 		}
 		if req.Method == http.MethodOptions {
 			status_code = WriteEmptyRespHeader(w, http.StatusOK)
