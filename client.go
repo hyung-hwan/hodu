@@ -1163,6 +1163,17 @@ start_over:
 					cts.cli.log.Write(cts.Sid, LOG_ERROR, "Invalid peer_data event from %s", cts.remote_addr)
 				}
 
+			case PACKET_KIND_CONN_NOTICE:
+				// the connection from the client to a peer has been established
+				var x *Packet_Notice
+				var ok bool
+				x, ok = pkt.U.(*Packet_Notice)
+				if ok {
+fmt.Printf ("CONN NOTICE [%s] from %s\n", x.Notice.Text, cts.remote_addr)
+				} else {
+					cts.cli.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_data event from %s", cts.remote_addr)
+				}
+
 			default:
 				// do nothing. ignore the rest
 		}

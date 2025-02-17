@@ -738,6 +738,17 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 					// invalid event data
 					cts.svr.log.Write(cts.sid, LOG_ERROR, "Invalid peer_data event from %s", cts.RemoteAddr)
 				}
+
+			case PACKET_KIND_CONN_NOTICE:
+				// the connection from the client to a peer has been established
+				var x *Packet_Notice
+				var ok bool
+				x, ok = pkt.U.(*Packet_Notice)
+				if ok {
+fmt.Printf ("CONN NOTICE [%s] from %s\n", x.Notice.Text, cts.RemoteAddr)
+				} else {
+					cts.svr.log.Write(cts.sid, LOG_ERROR, "Invalid conn_data event from %s", cts.RemoteAddr)
+				}
 		}
 	}
 
@@ -1112,6 +1123,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id_peers{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
 		s.wrap_http_handler(&server_ctl_server_conns_id_routes_id_peers_id{server_ctl{s: &s, id: HS_ID_CTL}}))
+	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/notices",
+		s.wrap_http_handler(&server_ctl_server_conns_id_notices{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/stats",
 		s.wrap_http_handler(&server_ctl_stats{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.cfg.CtlPrefix + "/_ctl/token",

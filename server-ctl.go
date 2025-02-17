@@ -85,6 +85,10 @@ type server_ctl_server_conns_id_routes_id_peers_id struct {
 	server_ctl
 }
 
+type server_ctl_server_conns_id_notices struct {
+	server_ctl
+}
+
 type server_ctl_stats struct {
 	server_ctl
 }
@@ -476,7 +480,7 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 
 		case http.MethodDelete:
 			r.ReqStopAllServerPeerConns()
-			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
+			status_code = WriteEmptyRespHeader(w, http.StatusOK)
 
 		default:
 			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
@@ -546,11 +550,63 @@ oops:
 
 // ------------------------------------
 
+func (ctl *server_ctl_server_conns_id_notices) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var conn_id string
+	var cts *ServerConn
+	var je *json.Encoder
+	var err error
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	cts, err = s.FindServerConnByIdStr(conn_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodPost:
+			var noti json_in_notice
+
+			err = json.NewDecoder(req.Body).Decode(&noti)
+			if err != nil {
+				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+				goto oops
+			}
+
+			err = cts.pss.Send(MakeConnNoticePacket(noti.Text))
+			if err != nil {
+				err = fmt.Errorf("failed to send conn_notice text to %s - %s", noti.Text, cts.RemoteAddr, err.Error())
+				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
 func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
-	var err error
 	var je *json.Encoder
+	var err error
 
 	s = ctl.s
 	je = json.NewEncoder(w)

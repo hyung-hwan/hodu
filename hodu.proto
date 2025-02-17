@@ -64,9 +64,13 @@ message PeerDesc {
 
 message PeerData {
 	uint32 RouteId = 1;
-	uint32 PeerId = 2;
-	bytes Data = 3;
+	uint32 PeerId  = 2;
+	bytes Data     = 3;
 };
+
+message ConnNotice {
+	string Text = 1;
+}
 
 enum PACKET_KIND {
 	RESERVED      = 0; // not used
@@ -79,14 +83,16 @@ enum PACKET_KIND {
 	PEER_ABORTED  = 7;
 	PEER_EOF      = 8;
 	PEER_DATA     = 9;
+	CONN_NOTICE   = 10;
 };
 
 message Packet {
 	PACKET_KIND  Kind = 1;
 
 	oneof U {
-		RouteDesc Route = 2;
-		PeerDesc  Peer  = 3;
-		PeerData  Data  = 4;
+		RouteDesc  Route  = 2;
+		PeerDesc   Peer   = 3;
+		PeerData   Data   = 4;
+		ConnNotice Notice = 5;
 	};
 }

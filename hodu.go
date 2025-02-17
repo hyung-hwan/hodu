@@ -84,6 +84,10 @@ type json_in_cred struct {
 	Password string `json:"password"`
 }
 
+type json_in_notice struct {
+	Text string `json:"text"`
+}
+
 type json_out_go_stats struct {
 	CPUs int `json:"cpus"`
 	Goroutines int `json:"goroutines"`
