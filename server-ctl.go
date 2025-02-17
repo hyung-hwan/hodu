@@ -579,6 +579,7 @@ func (ctl *server_ctl_server_conns_id_notices) ServeHTTP(w http.ResponseWriter, 
 				goto oops
 			}
 
+			// no check if noti.Text is empty as i want an empty message to be delivered too.
 			err = cts.pss.Send(MakeConnNoticePacket(noti.Text))
 			if err != nil {
 				err = fmt.Errorf("failed to send conn_notice text to %s - %s", noti.Text, cts.RemoteAddr, err.Error())

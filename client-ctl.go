@@ -125,6 +125,10 @@ type client_ctl_client_conns_id_routes_id_peers_id struct {
 	client_ctl
 }
 
+type client_ctl_client_conns_id_notices struct {
+	client_ctl
+}
+
 type client_ctl_stats struct {
 	client_ctl
 }
@@ -858,6 +862,59 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 		case http.MethodDelete:
 			p.ReqStop()
 			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_client_conns_id_notices) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var c *Client
+	var status_code int
+	var conn_id string
+	var cts *ClientConn
+	var je *json.Encoder
+	var err error
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	cts, err = c.FindClientConnByIdStr(conn_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodPost:
+			var noti json_in_notice
+
+			err = json.NewDecoder(req.Body).Decode(&noti)
+			if err != nil {
+				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+				goto oops
+			}
+
+			// no check if noti.Text is empty as i want an empty message to be delivered too.
+			err = cts.psc.Send(MakeConnNoticePacket(noti.Text))
+			if err != nil {
+				err = fmt.Errorf("failed to send conn_notice text to %s - %s", noti.Text, cts.remote_addr, err.Error())
+				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
 
 		default:
 			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)

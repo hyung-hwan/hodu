@@ -7,9 +7,11 @@ import "fmt"
 import "log"
 import "net"
 import "net/http"
+import "strconv"
 import "sync"
 import "sync/atomic"
 import "time"
+import "unsafe"
 
 import "google.golang.org/grpc"
 import "google.golang.org/grpc/codes"
@@ -1346,6 +1348,8 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
 		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers_id{client_ctl{c: &c, id: HS_ID_CTL}}))
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/notices",
+		c.wrap_http_handler(&client_ctl_client_conns_id_notices{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/stats",
 		c.wrap_http_handler(&client_ctl_stats{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/token",
@@ -1531,6 +1535,20 @@ func (c *Client) FindClientRouteById(conn_id ConnId, route_id RouteId) *ClientRo
 	}
 
 	return cts.FindClientRouteById(route_id)
+}
+
+func (c *Client) FindClientConnByIdStr(conn_id string) (*ClientConn, error) {
+	var conn_nid uint64
+	var cts *ClientConn
+	var err error
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	if err != nil { return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()); }
+
+	cts = c.FindClientConnById(ConnId(conn_nid))
+	if cts == nil { return nil, fmt.Errorf("non-existent connection id %d", conn_nid) }
+
+	return cts, nil
 }
 
 func (c *Client) FindClientRouteByServerPeerSvcPortId(conn_id ConnId, port_id PortId) *ClientRoute {
