@@ -85,7 +85,11 @@ type server_ctl_server_conns_id_routes_id_peers_id struct {
 	server_ctl
 }
 
-type server_ctl_server_conns_id_notices struct {
+type server_ctl_notices struct {
+	server_ctl
+}
+
+type server_ctl_notices_id struct {
 	server_ctl
 }
 
@@ -550,7 +554,46 @@ oops:
 
 // ------------------------------------
 
-func (ctl *server_ctl_server_conns_id_notices) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+func (ctl *server_ctl_notices) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var cts *ServerConn
+	var err error
+
+	s = ctl.s
+
+	switch req.Method {
+		case http.MethodPost:
+			var noti json_in_notice
+
+			err = json.NewDecoder(req.Body).Decode(&noti)
+			if err != nil {
+				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+				goto oops
+			}
+
+			s.cts_mtx.Lock()
+			for _, cts = range s.cts_map {
+				cts.pss.Send(MakeConnNoticePacket(noti.Text))
+				// let's not care about an error when broacasting a notice to all connections
+			}
+			s.cts_mtx.Unlock()
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *server_ctl_notices_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
 	var conn_id string
@@ -561,7 +604,7 @@ func (ctl *server_ctl_server_conns_id_notices) ServeHTTP(w http.ResponseWriter, 
 	s = ctl.s
 	je = json.NewEncoder(w)
 
-	conn_id = req.PathValue("conn_id")
+	conn_id = req.PathValue("conn_id") // server connection
 	cts, err = s.FindServerConnByIdStr(conn_id)
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)

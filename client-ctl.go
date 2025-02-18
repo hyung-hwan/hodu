@@ -125,7 +125,11 @@ type client_ctl_client_conns_id_routes_id_peers_id struct {
 	client_ctl
 }
 
-type client_ctl_client_conns_id_notices struct {
+type client_ctl_notices struct {
+	client_ctl
+}
+
+type client_ctl_notices_id struct {
 	client_ctl
 }
 
@@ -876,7 +880,46 @@ oops:
 
 // ------------------------------------
 
-func (ctl *client_ctl_client_conns_id_notices) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+func (ctl *client_ctl_notices) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var c *Client
+	var status_code int
+	var cts *ClientConn
+	var err error
+
+	c = ctl.c
+
+	switch req.Method {
+		case http.MethodPost:
+			var noti json_in_notice
+
+			err = json.NewDecoder(req.Body).Decode(&noti)
+			if err != nil {
+				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+				goto oops
+			}
+
+			c.cts_mtx.Lock()
+			for _, cts = range c.cts_map {
+				cts.psc.Send(MakeConnNoticePacket(noti.Text))
+				// let's not care about an error when broacasting a notice to all connections
+			}
+			c.cts_mtx.Unlock()
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_notices_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
 	var conn_id string
