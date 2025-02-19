@@ -19,6 +19,7 @@ type json_out_server_conn struct {
 	Id ConnId `json:"id"`
 	ServerAddr string `json:"server-addr"`
 	ClientAddr string `json:"client-addr"`
+	ClientToken string `json:"client-token"`
 	Routes []json_out_server_route `json:"routes"`
 }
 
@@ -201,6 +202,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					Id: cts.Id,
 					ClientAddr: cts.RemoteAddr.String(),
 					ServerAddr: cts.LocalAddr.String(),
+					ClientToken: cts.Token,
 					Routes: jsp,
 				})
 				cts.route_mtx.Unlock()
@@ -268,6 +270,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				Id: cts.Id,
 				ClientAddr: cts.RemoteAddr.String(),
 				ServerAddr: cts.LocalAddr.String(),
+				ClientToken: cts.Token,
 				Routes: jsp,
 			}
 			cts.route_mtx.Unlock()

@@ -63,6 +63,10 @@ func MakePeerDataPacket(route_id RouteId, peer_id PeerId, data []byte) *Packet {
 		U: &Packet_Data{Data: &PeerData{RouteId: uint32(route_id), PeerId: uint32(peer_id), Data: data}}}
 }
 
+func MakeConnDescPacket(token string) *Packet {
+	return &Packet{Kind: PACKET_KIND_CONN_DESC,U: &Packet_Conn{Conn: &ConnDesc{Token: token}}}
+}
+
 func MakeConnNoticePacket(msg string) *Packet {
 	return &Packet{Kind: PACKET_KIND_CONN_NOTICE, U: &Packet_Notice{Notice: &ConnNotice{Text: msg}}}
 }

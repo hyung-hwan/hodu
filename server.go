@@ -128,6 +128,7 @@ type ServerConn struct {
 	S            *Server
 	Id            ConnId
 	Sid           string // for logging
+	Token         string // provided by client
 
 	RemoteAddr    net.Addr // client address that created this structure
 	LocalAddr     net.Addr // local address that the client is connected to
@@ -742,6 +743,16 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				} else {
 					// invalid event data
 					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid peer_data event from %s", cts.RemoteAddr)
+				}
+
+			case PACKET_KIND_CONN_DESC:
+				var x *Packet_Conn
+				var ok bool
+				x, ok = pkt.U.(*Packet_Conn)
+				if ok {
+					cts.Token = x.Conn.Token
+				} else {
+					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc event from %s", cts.RemoteAddr)
 				}
 
 			case PACKET_KIND_CONN_NOTICE:

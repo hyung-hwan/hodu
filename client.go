@@ -64,6 +64,8 @@ type ClientConfig struct {
 	RpcConnMax int
 	PeerConnMax int
 	PeerConnTmout time.Duration
+
+	Token string // to send to the server for identification
 }
 
 type ClientConnNoticeHandler interface {
@@ -98,6 +100,7 @@ type Client struct {
 	wg          sync.WaitGroup
 	stop_req    atomic.Bool
 	stop_chan   chan bool
+	token       string
 
 	log             Logger
 	conn_notice     ClientConnNoticeHandler
@@ -1007,6 +1010,14 @@ start_over:
 
 	cts.psc = &GuardedPacketStreamClient{Hodu_PacketStreamClient: psc}
 
+	if cts.C.token != "" {
+		err = cts.psc.Send(MakeConnDescPacket(cts.C.token))
+		if err != nil {
+			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send conn-desc to server[%d] %s - %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
+			goto reconnect_to_server
+		}
+	}
+
 	if len(cts.cfg.Routes) > 0 {
 		// the connection structure to a server is ready.
 		// let's add statically configured routes to the client-side peers
@@ -1344,6 +1355,7 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.stop_req.Store(false)
 	c.stop_chan = make(chan bool, 8)
 	c.log = logger
+	c.token = cfg.Token
 
 	c.rpc_tls = cfg.RpcTls
 	c.ctl_auth = cfg.CtlAuth
