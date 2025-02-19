@@ -751,6 +751,11 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				x, ok = pkt.U.(*Packet_Conn)
 				if ok {
 					cts.Token = x.Conn.Token
+					// TODO: lock
+					//       manipulate the cts_map_by_token
+					// if cts.Token is empty, not placed in the table...
+					// removal by old token value before adding it.
+					//       unlock
 				} else {
 					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc event from %s", cts.RemoteAddr)
 				}
