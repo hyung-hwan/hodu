@@ -70,8 +70,8 @@ type Server struct {
 	Named
 
 	cfg             *ServerConfig
-	ctx             context.Context
-	ctx_cancel      context.CancelFunc
+	Ctx             context.Context
+	CtxCancel       context.CancelFunc
 
 	wg              sync.WaitGroup
 	stop_req        atomic.Bool
@@ -1066,7 +1066,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		return nil, fmt.Errorf("no server addresses provided")
 	}
 
-	s.ctx, s.ctx_cancel = context.WithCancel(ctx)
+	s.Ctx, s.CtxCancel = context.WithCancel(ctx)
 	s.name = name
 	s.log = logger
 	/* create the specified number of listeners */
@@ -1471,18 +1471,18 @@ func (s *Server) ReqStop() {
 		// call cancellation function before anything else
 		// to break sub-tasks relying on this server context.
 		// for example, http.Client in server_proxy_http_main
-		s.ctx_cancel()
+		s.CtxCancel()
 
 		for _, hs = range s.ctl {
-			hs.Shutdown(s.ctx) // to break s.ctl.Serve()
+			hs.Shutdown(s.Ctx) // to break s.ctl.Serve()
 		}
 
 		for _, hs = range s.pxy {
-			hs.Shutdown(s.ctx) // to break s.pxy.Serve()
+			hs.Shutdown(s.Ctx) // to break s.pxy.Serve()
 		}
 
 		for _, hs = range s.wpx {
-			hs.Shutdown(s.ctx) // to break s.wpx.Serve()
+			hs.Shutdown(s.Ctx) // to break s.wpx.Serve()
 		}
 
 		//s.rpc_svr.GracefulStop()

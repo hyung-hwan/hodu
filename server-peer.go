@@ -69,7 +69,7 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 
 	// set up a timer to set waiting duration until the connection is
 	// actually established on the client side and it's informed...
-	waitctx, cancel_wait = context.WithTimeout(spc.route.Cts.S.ctx, 5 * time.Second) // TODO: make this configurable
+	waitctx, cancel_wait = context.WithTimeout(spc.route.Cts.S.Ctx, 5 * time.Second) // TODO: make this configurable
 wait_for_started:
 	for {
 		select {

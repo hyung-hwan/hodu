@@ -374,7 +374,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 */
 	addr = svc_addr_to_dst_addr(pi.SvcAddr)
-	transport, err = pxy.addr_to_transport(s.ctx, addr)
+	transport, err = pxy.addr_to_transport(s.Ctx, addr)
 	if err != nil {
 		status_code = WriteEmptyRespHeader(w, http.StatusBadGateway)
 		goto oops
@@ -383,7 +383,7 @@ func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	s.log.Write(pxy.id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
 
-	proxy_req, err = http.NewRequestWithContext(s.ctx, req.Method, proxy_url.String(), req.Body)
+	proxy_req, err = http.NewRequestWithContext(s.Ctx, req.Method, proxy_url.String(), req.Body)
 	if err != nil {
 		status_code = WriteEmptyRespHeader(w, http.StatusInternalServerError)
 		goto oops
