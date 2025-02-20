@@ -1841,10 +1841,14 @@ func (s *Server) FindServerConnByIdStr(conn_id string) (*ServerConn, error) {
 	var err error
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
-	if err != nil { return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()); }
-
-	cts = s.FindServerConnById(ConnId(conn_nid))
-	if cts == nil { return nil, fmt.Errorf("non-existent connection id %d", conn_nid) }
+	if err != nil {
+		//return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()); }
+		cts = s.FindServerConnByToken(conn_id) // if not numeric, attempt to use it as a token
+		if cts == nil { return nil, fmt.Errorf("non-existent connection token '%s'", conn_id) }
+	} else {
+		cts = s.FindServerConnById(ConnId(conn_nid))
+		if cts == nil { return nil, fmt.Errorf("non-existent connection id %d", conn_nid) }
+	}
 
 	return cts, nil
 }

@@ -575,6 +575,7 @@ func (ctl *server_ctl_notices) ServeHTTP(w http.ResponseWriter, req *http.Reques
 				goto oops
 			}
 
+			// TODO: what if this loop takes too long? in that case, lock is held for long. think about how to handle this.
 			s.cts_mtx.Lock()
 			for _, cts = range s.cts_map {
 				cts.pss.Send(MakeConnNoticePacket(noti.Text))
