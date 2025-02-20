@@ -1013,8 +1013,10 @@ start_over:
 	if cts.C.token != "" {
 		err = cts.psc.Send(MakeConnDescPacket(cts.C.token))
 		if err != nil {
-			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send conn-desc to server[%d] %s - %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
+			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send conn-desc(%s) to server[%d] %s - %s", cts.C.token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
 			goto reconnect_to_server
+		} else {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sending conn-desc(%s) to server[%d] %s", cts.C.token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
 		}
 	}
 
@@ -1191,7 +1193,7 @@ start_over:
 						cts.C.conn_notice.Handle(cts, x.Notice.Text)
 					}
 				} else {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_data event from %s", cts.remote_addr)
+					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_notice packet from %s", cts.remote_addr)
 				}
 
 			default:
