@@ -34,7 +34,7 @@ const HS_ID_PXY string = "pxy"
 const HS_ID_PXY_WS string = "pxy-ws"
 
 type ServerConnMapByAddr = map[net.Addr]*ServerConn
-type ServerConnMapByToken = map[string]*ServerConn
+type ServerConnMapByClientToken = map[string]*ServerConn
 type ServerConnMap = map[ConnId]*ServerConn
 type ServerRouteMap = map[RouteId]*ServerRoute
 type ServerPeerConnMap = map[PeerId]*ServerPeerConn
@@ -102,7 +102,7 @@ type Server struct {
 	cts_mtx          sync.Mutex
 	cts_map          ServerConnMap
 	cts_map_by_addr  ServerConnMapByAddr
-	cts_map_by_token ServerConnMapByToken
+	cts_map_by_token ServerConnMapByClientToken
 	cts_wg           sync.WaitGroup
 
 	log              Logger
@@ -130,7 +130,7 @@ type ServerConn struct {
 	S            *Server
 	Id            ConnId
 	Sid           string // for logging
-	Token         string // provided by client
+	ClientToken   string // provided by client
 
 	RemoteAddr    net.Addr // client address that created this structure
 	LocalAddr     net.Addr // local address that the client is connected to
@@ -755,9 +755,9 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 					if x.Conn.Token == "" {
 						cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc packet from %s - blank token", cts.RemoteAddr)
 						cts.ReqStop() // TODO: is this desirable to disconnect?
-					} else if x.Conn.Token != cts.Token {
+					} else if x.Conn.Token != cts.ClientToken {
 						_, err = strconv.ParseUint(x.Conn.Token, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
-						if err == nil {
+						if err == nil { // this is not != nil. this is to check if the token is numeric
 							cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc packet from %s - numeric token '%s'", cts.RemoteAddr, x.Conn.Token)
 							cts.ReqStop() // TODO: is this desirable to disconnect?
 						} else {
@@ -769,8 +769,8 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 								cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc packet from %s - duplicate token '%s'", cts.RemoteAddr, x.Conn.Token)
 								cts.ReqStop() // TODO: is this desirable to disconnect?
 							} else {
-								if cts.Token != "" { delete(cts.S.cts_map_by_token, cts.Token) }
-								cts.Token = x.Conn.Token
+								if cts.ClientToken != "" { delete(cts.S.cts_map_by_token, cts.ClientToken) }
+								cts.ClientToken = x.Conn.Token
 								cts.S.cts_map_by_token[x.Conn.Token] = cts
 								cts.S.cts_mtx.Unlock()
 								cts.S.log.Write(cts.Sid, LOG_INFO, "client(%d) %s - token set to '%s'", cts.Id, cts.RemoteAddr, x.Conn.Token)
@@ -1079,10 +1079,10 @@ func (s *Server) wrap_http_handler(handler ServerHttpHandler) http.Handler {
 		time_taken = time.Now().Sub(start_time)
 
 		if status_code > 0 {
-			if err == nil {
-				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
-			} else {
+			if err != nil {
 				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+			} else {
+				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
 			}
 		}
 	})
@@ -1128,7 +1128,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.cts_next_id = 1
 	s.cts_map = make(ServerConnMap)
 	s.cts_map_by_addr = make(ServerConnMapByAddr)
-	s.cts_map_by_token = make(ServerConnMapByToken)
+	s.cts_map_by_token = make(ServerConnMapByClientToken)
 	s.svc_port_map = make(ServerSvcPortMap)
 	s.stop_chan = make(chan bool, 8)
 	s.stop_req.Store(false)
@@ -1586,15 +1586,15 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 		s.cts_mtx.Unlock()
 		return nil, fmt.Errorf("existing client address - %s", cts.RemoteAddr.String())
 	}
-	if cts.Token != "" {
+	if cts.ClientToken != "" {
 		// this check is not needed as Token is never set at this phase
 		// however leave statements here for completeness
-		_, ok = s.cts_map_by_token[cts.Token]
+		_, ok = s.cts_map_by_token[cts.ClientToken]
 		if ok {
 			s.cts_mtx.Unlock()
-			return nil, fmt.Errorf("existing client token - %s", cts.Token)
+			return nil, fmt.Errorf("existing client token - %s", cts.ClientToken)
 		}
-		s.cts_map_by_token[cts.Token] = &cts
+		s.cts_map_by_token[cts.ClientToken] = &cts
 	}
 	s.cts_map_by_addr[cts.RemoteAddr] = &cts
 	s.cts_map[cts.Id] = &cts
@@ -1630,7 +1630,7 @@ func (s *Server) RemoveServerConn(cts *ServerConn) error {
 
 	delete(s.cts_map, cts.Id)
 	delete(s.cts_map_by_addr, cts.RemoteAddr)
-	if cts.Token != "" { delete(s.cts_map_by_token, cts.Token) }
+	if cts.ClientToken != "" { delete(s.cts_map_by_token, cts.ClientToken) }
 	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.cts_mtx.Unlock()
 
@@ -1651,7 +1651,7 @@ func (s *Server) RemoveServerConnByAddr(addr net.Addr) (*ServerConn, error) {
 	}
 	delete(s.cts_map, cts.Id)
 	delete(s.cts_map_by_addr, cts.RemoteAddr)
-	if cts.Token != "" { delete(s.cts_map_by_token, cts.Token) }
+	if cts.ClientToken != "" { delete(s.cts_map_by_token, cts.ClientToken) }
 	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.cts_mtx.Unlock()
 
@@ -1659,7 +1659,7 @@ func (s *Server) RemoveServerConnByAddr(addr net.Addr) (*ServerConn, error) {
 	return cts, nil
 }
 
-func (s *Server) RemoveServerConnByToken(token string) (*ServerConn, error) {
+func (s *Server) RemoveServerConnByClientToken(token string) (*ServerConn, error) {
 	var cts *ServerConn
 	var ok bool
 
@@ -1672,7 +1672,7 @@ func (s *Server) RemoveServerConnByToken(token string) (*ServerConn, error) {
 	}
 	delete(s.cts_map, cts.Id)
 	delete(s.cts_map_by_addr, cts.RemoteAddr)
-	delete(s.cts_map_by_token, cts.Token) // no Empty check becuase an empty token is never found in the map
+	delete(s.cts_map_by_token, cts.ClientToken) // no Empty check becuase an empty token is never found in the map
 	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.cts_mtx.Unlock()
 
@@ -1706,7 +1706,7 @@ func (s *Server) FindServerConnByAddr(addr net.Addr) *ServerConn {
 	return cts
 }
 
-func (s *Server) FindServerConnByToken(token string) *ServerConn {
+func (s *Server) FindServerConnByClientToken(token string) *ServerConn {
 	var cts *ServerConn
 	var ok bool
 
@@ -1842,8 +1842,8 @@ func (s *Server) FindServerConnByIdStr(conn_id string) (*ServerConn, error) {
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		//return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()); }
-		cts = s.FindServerConnByToken(conn_id) // if not numeric, attempt to use it as a token
+		//return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error());
+		cts = s.FindServerConnByClientToken(conn_id) // if not numeric, attempt to use it as a token
 		if cts == nil { return nil, fmt.Errorf("non-existent connection token '%s'", conn_id) }
 	} else {
 		cts = s.FindServerConnById(ConnId(conn_nid))

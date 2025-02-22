@@ -46,6 +46,7 @@ type ClientConnConfig struct {
 	Routes      []ClientRouteConfig
 	ServerSeedTmout time.Duration
 	ServerAuthority string // http2 :authority header
+	ClientToken string
 }
 
 type ClientConnConfigActive struct {
@@ -944,6 +945,7 @@ func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	var c_seed Seed
 	var s_seed *Seed
 	var p *peer.Peer
+	var client_token string
 	var ok bool
 	var err error
 	var opts []grpc.DialOption
@@ -1010,13 +1012,15 @@ start_over:
 
 	cts.psc = &GuardedPacketStreamClient{Hodu_PacketStreamClient: psc}
 
-	if cts.C.token != "" {
-		err = cts.psc.Send(MakeConnDescPacket(cts.C.token))
+	client_token = cts.cfg.ClientToken
+	if client_token == "" { client_token = cts.C.token }
+	if client_token != "" {
+		err = cts.psc.Send(MakeConnDescPacket(client_token))
 		if err != nil {
-			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send conn-desc(%s) to server[%d] %s - %s", cts.C.token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
+			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send conn-desc(%s) to server[%d] %s - %s", client_token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
 			goto reconnect_to_server
 		} else {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sending conn-desc(%s) to server[%d] %s", cts.C.token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sending conn-desc(%s) to server[%d] %s", client_token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
 		}
 	}
 
@@ -1332,10 +1336,10 @@ func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
 		time_taken = time.Now().Sub(start_time)
 
 		if status_code > 0 {
-			if err == nil {
-				c.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
-			} else {
+			if err != nil {
 				c.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+			} else {
+				c.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
 			}
 		}
 	})
@@ -1570,20 +1574,6 @@ func (c *Client) FindClientRouteById(conn_id ConnId, route_id RouteId) *ClientRo
 	return cts.FindClientRouteById(route_id)
 }
 
-func (c *Client) FindClientConnByIdStr(conn_id string) (*ClientConn, error) {
-	var conn_nid uint64
-	var cts *ClientConn
-	var err error
-
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
-	if err != nil { return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()); }
-
-	cts = c.FindClientConnById(ConnId(conn_nid))
-	if cts == nil { return nil, fmt.Errorf("non-existent connection id %d", conn_nid) }
-
-	return cts, nil
-}
-
 func (c *Client) FindClientRouteByServerPeerSvcPortId(conn_id ConnId, port_id PortId) *ClientRoute {
 	var cts *ClientConn
 	var ok bool
@@ -1621,6 +1611,64 @@ func (c *Client) FindClientPeerConnById(conn_id ConnId, route_id RouteId, peer_i
 	}
 
 	return r.FindClientPeerConnById(peer_id)
+}
+
+func (c *Client) FindClientConnByIdStr(conn_id string) (*ClientConn, error) {
+	var conn_nid uint64
+	var cts *ClientConn
+	var err error
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	if err != nil {
+		return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error());
+		//cts = c.FindClientConnByToken(conn_id) // if not numeric, attempt to use it as a token
+		//if cts == nil { return nil, fmt.Errorf("non-existent connection token '%s'", conn_id) }
+	} else {
+		cts = c.FindClientConnById(ConnId(conn_nid))
+		if cts == nil { return nil, fmt.Errorf("non-existent connection id %d", conn_nid) }
+	}
+
+	return cts, nil
+}
+
+func (c *Client) FindClientRouteByIdStr(conn_id string, route_id string) (*ClientRoute, error) {
+	var r *ClientRoute
+	var conn_nid uint64
+	var route_nid uint64
+	var err error
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	if err != nil { return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()) }
+
+	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
+	if err != nil { return nil, fmt.Errorf("invalid route id %s - %s", route_id, err.Error()) }
+
+	r = c.FindClientRouteById(ConnId(conn_nid), RouteId(route_nid))
+	if r == nil { return nil, fmt.Errorf("route(%d,%d) not found", conn_nid, route_nid) }
+
+	return r, nil
+}
+
+func (c *Client) FindClientPeerConnByIdStr(conn_id string, route_id string, peer_id string) (*ClientPeerConn, error) {
+	var p *ClientPeerConn
+	var conn_nid uint64
+	var route_nid uint64
+	var peer_nid uint64
+	var err error
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	if err != nil { return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()) }
+
+	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
+	if err != nil { return nil, fmt.Errorf("invalid route id %s - %s", route_id, err.Error()) }
+
+	peer_nid, err = strconv.ParseUint(peer_id, 10, int(unsafe.Sizeof(PeerId(0)) * 8))
+	if err != nil { return nil, fmt.Errorf("invalid peer id %s - %s", peer_id, err.Error()) }
+
+	p = c.FindClientPeerConnById(ConnId(conn_nid), RouteId(route_nid), PeerId(peer_nid))
+	if p == nil { return nil, fmt.Errorf("peer(%d,%d,%d) not found", conn_nid, route_nid, peer_nid) }
+
+	return p, nil
 }
 
 func (c *Client) ReqStop() {

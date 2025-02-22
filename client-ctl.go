@@ -24,7 +24,8 @@ import "unsafe"
  */
 
 type json_in_client_conn struct {
-	ServerAddrs []string `json:"server-addrs"`
+	ServerAddrs []string `json:"server-addrs"` // multiple addresses for round-robin connection re-attempts
+	ClientToken string `json:"client-token"`
 }
 
 type json_in_client_route struct {
@@ -97,8 +98,6 @@ type client_ctl_token struct {
 
 type client_ctl_client_conns struct {
 	client_ctl
-	//c *Client
-	//id string
 }
 
 type client_ctl_client_conns_id struct {
@@ -268,18 +267,18 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			// as it's tricky to handle erroneous cases in creating the client routes
 			// after hacing connected to the server. therefore, the json_in_client_conn
 			// type contains a server address field only.
-			var s json_in_client_conn
+			var in_cc json_in_client_conn
 			var cc ClientConnConfig
 			var cts *ClientConn
 
-			err = json.NewDecoder(req.Body).Decode(&s)
-			if err != nil || len(s.ServerAddrs) <= 0 {
+			err = json.NewDecoder(req.Body).Decode(&in_cc)
+			if err != nil || len(in_cc.ServerAddrs) <= 0 {
 				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 				goto done
 			}
 
-			cc.ServerAddrs = s.ServerAddrs
-			//cc.PeerAddrs = s.PeerAddrs
+			cc.ServerAddrs = in_cc.ServerAddrs
+			cc.ClientToken = in_cc.ClientToken
 			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
@@ -315,28 +314,19 @@ oops:
 func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
-	var err error
 	var conn_id string
-	var conn_nid uint64
 	var je *json.Encoder
 	var cts *ClientConn
+	var err error
 
 	c = ctl.c
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
-
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	cts, err = c.FindClientConnByIdStr(conn_id)
 	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id})
-		goto oops
-	}
-
-	cts = c.FindClientConnById(ConnId(conn_nid))
-	if cts == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: "non-existent connection id - " + conn_id})
+		je.Encode(JsonErrmsg{Text: err.Error()})
 		goto oops
 	}
 
@@ -394,28 +384,19 @@ oops:
 func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
-	var err error
 	var conn_id string
-	var conn_nid uint64
 	var je *json.Encoder
 	var cts *ClientConn
+	var err error
 
 	c = ctl.c
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
-
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	cts, err = c.FindClientConnByIdStr(conn_id)
 	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id })
-		goto oops
-	}
-
-	cts = c.FindClientConnById(ConnId(conn_nid))
-	if cts == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: "non-existent connection id - " + conn_id})
+		je.Encode(JsonErrmsg{Text: err.Error()})
 		goto oops
 	}
 
@@ -518,45 +499,21 @@ oops:
 func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
-	var err error
 	var conn_id string
 	var route_id string
-	var conn_nid uint64
-	var route_nid uint64
 	var je *json.Encoder
-	var cts *ClientConn
 	var r *ClientRoute
+	var err error
 
 	c = ctl.c
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
-
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	r, err = c.FindClientRouteByIdStr(conn_id, route_id)
 	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id})
-		goto oops
-	}
-	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
-	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong route id - " + route_id})
-		goto oops
-	}
-
-	cts = c.FindClientConnById(ConnId(conn_nid))
-	if cts == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: "non-existent connection id - " + conn_id})
-		goto oops
-	}
-
-	r = cts.FindClientRouteById(RouteId(route_nid))
-	if r == nil {
-		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: "non-existent route id - " + route_id})
+		je.Encode(JsonErrmsg{Text: err.Error()})
 		goto oops
 	}
 
@@ -730,37 +687,21 @@ oops:
 func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
-	var err error
 	var conn_id string
 	var route_id string
-	var conn_nid uint64
-	var route_nid uint64
 	var je *json.Encoder
 	var r *ClientRoute
+	var err error
 
 	c = ctl.c
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
-
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	r, err = c.FindClientRouteByIdStr(conn_id, route_id)
 	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id})
-		goto oops
-	}
-	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
-	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong route id - " + route_id})
-		goto oops
-	}
-
-	r = c.FindClientRouteById(ConnId(conn_nid), RouteId(route_nid))
-	if r == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: "non-existent connection/route id - " + conn_id + "/" + route_id})
+		je.Encode(JsonErrmsg{Text: err.Error()})
 		goto oops
 	}
 
@@ -805,15 +746,12 @@ oops:
 func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
-	var err error
 	var conn_id string
 	var route_id string
 	var peer_id string
-	var conn_nid uint64
-	var route_nid uint64
-	var peer_nid uint64
 	var je *json.Encoder
 	var p *ClientPeerConn
+	var err error
 
 	c = ctl.c
 	je = json.NewEncoder(w)
@@ -821,30 +759,10 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
 	peer_id = req.PathValue("peer_id")
-
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	p, err = c.FindClientPeerConnByIdStr(conn_id, route_id, peer_id)
 	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id})
-		goto oops
-	}
-	route_nid, err = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
-	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong route id - " + route_id})
-		goto oops
-	}
-	peer_nid, err = strconv.ParseUint(peer_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
-	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong peer id - " + peer_id})
-		goto oops
-	}
-
-	p = c.FindClientPeerConnById(ConnId(conn_nid), RouteId(route_nid), PeerId(peer_nid))
-	if p == nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: "non-existent connection/route/peer id - " + conn_id + "/" + route_id + "/" + peer_id})
+		je.Encode(JsonErrmsg{Text: err.Error()})
 		goto oops
 	}
 

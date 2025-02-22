@@ -202,7 +202,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					Id: cts.Id,
 					ClientAddr: cts.RemoteAddr.String(),
 					ServerAddr: cts.LocalAddr.String(),
-					ClientToken: cts.Token,
+					ClientToken: cts.ClientToken,
 					Routes: jsp,
 				})
 				cts.route_mtx.Unlock()
@@ -270,7 +270,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				Id: cts.Id,
 				ClientAddr: cts.RemoteAddr.String(),
 				ServerAddr: cts.LocalAddr.String(),
-				ClientToken: cts.Token,
+				ClientToken: cts.ClientToken,
 				Routes: jsp,
 			}
 			cts.route_mtx.Unlock()
