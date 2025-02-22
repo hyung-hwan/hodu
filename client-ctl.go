@@ -585,7 +585,6 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 	var err error
 	var conn_id string
 	var port_id string
-	var conn_nid uint64
 	var port_nid uint64
 	var je *json.Encoder
 	var cts *ClientConn
@@ -597,12 +596,6 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 	conn_id = req.PathValue("conn_id")
 	port_id = req.PathValue("port_id")
 
-	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
-	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong connection id - " + conn_id})
-		goto oops
-	}
 	port_nid, err = strconv.ParseUint(port_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
@@ -610,10 +603,10 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 		goto oops
 	}
 
-	cts = c.FindClientConnById(ConnId(conn_nid))
-	if cts == nil {
+	cts, err = c.FindClientConnByIdStr(conn_id)
+	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: "non-existent connection id - " + conn_id})
+		je.Encode(JsonErrmsg{Text: err.Error()})
 		goto oops
 	}
 
