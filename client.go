@@ -1582,9 +1582,7 @@ func (c *Client) FindClientRouteByServerPeerSvcPortId(conn_id ConnId, port_id Po
 	defer c.cts_mtx.Unlock()
 
 	cts, ok = c.cts_map[conn_id]
-	if !ok {
-		return nil
-	}
+	if !ok { return nil }
 
 	return cts.FindClientRouteByServerPeerSvcPortId(port_id)
 }
@@ -1645,6 +1643,24 @@ func (c *Client) FindClientRouteByIdStr(conn_id string, route_id string) (*Clien
 
 	r = c.FindClientRouteById(ConnId(conn_nid), RouteId(route_nid))
 	if r == nil { return nil, fmt.Errorf("route(%d,%d) not found", conn_nid, route_nid) }
+
+	return r, nil
+}
+
+func (c *Client) FindClientRouteByServerPeerSvcPortIdStr(conn_id string, port_id string) (*ClientRoute, error) {
+	var conn_nid uint64
+	var port_nid uint64
+	var r *ClientRoute
+	var err error
+
+	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
+	if err != nil { return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error()) }
+
+	port_nid, err = strconv.ParseUint(port_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
+	if err != nil { return nil, fmt.Errorf("invalid port id %s - %s", port_id, err.Error()) }
+
+	r = c.FindClientRouteByServerPeerSvcPortId(ConnId(conn_nid), PortId(port_nid))
+	if r == nil { return nil, fmt.Errorf("non-existent route(%d,%d)", conn_nid, port_nid) }
 
 	return r, nil
 }

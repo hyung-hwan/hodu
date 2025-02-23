@@ -3,10 +3,8 @@ package hodu
 import "encoding/json"
 import "fmt"
 import "net/http"
-import "strconv"
 import "strings"
 import "time"
-import "unsafe"
 
 /*
  *                       POST                 GET            PUT            DELETE
@@ -234,11 +232,13 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				jsp = make([]json_out_client_route, 0)
 				cts.route_mtx.Lock()
 				for _, r = range cts.route_map {
+					var spla string = ""
+					if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
 					jsp = append(jsp, json_out_client_route{
 						Id: r.Id,
 						ClientPeerAddr: r.PeerAddr,
 						ClientPeerName: r.PeerName,
-						ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+						ServerPeerListenAddr: spla,
 						ServerPeerNet: r.ServerPeerNet,
 						ServerPeerOption: r.ServerPeerOption.String(),
 						Lifetime: DurationToSecString(r.Lifetime),
@@ -339,11 +339,13 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			jsp = make([]json_out_client_route, 0)
 			cts.route_mtx.Lock()
 			for _, r = range cts.route_map {
+				var spla string = ""
+				if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
 				jsp = append(jsp, json_out_client_route{
 					Id: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
-					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+					ServerPeerListenAddr: spla,
 					ServerPeerNet: r.ServerPeerNet,
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(r.Lifetime),
@@ -408,11 +410,13 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			jsp = make([]json_out_client_route, 0)
 			cts.route_mtx.Lock()
 			for _, r = range cts.route_map {
+				var spla string = ""
+				if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
 				jsp = append(jsp, json_out_client_route{
 					Id: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
-					ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+					ServerPeerListenAddr: spla,
 					ServerPeerNet: r.ServerPeerNet,
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(r.Lifetime),
@@ -519,12 +523,14 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 	switch req.Method {
 		case http.MethodGet:
+			var spla string = ""
+			if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			err = je.Encode(json_out_client_route{
 				Id: r.Id,
 				ClientPeerAddr: r.PeerAddr,
 				ClientPeerName: r.PeerName,
-				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+				ServerPeerListenAddr: spla,
 				ServerPeerNet: r.ServerPeerNet,
 				ServerPeerOption: r.ServerPeerOption.String(),
 				Lifetime: DurationToSecString(r.Lifetime),
@@ -582,49 +588,34 @@ oops:
 func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
-	var err error
 	var conn_id string
 	var port_id string
-	var port_nid uint64
 	var je *json.Encoder
-	var cts *ClientConn
 	var r *ClientRoute
+	var err error
 
 	c = ctl.c
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
 	port_id = req.PathValue("port_id")
-
-	port_nid, err = strconv.ParseUint(port_id, 10, int(unsafe.Sizeof(PortId(0)) * 8))
-	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
-		je.Encode(JsonErrmsg{Text: "wrong route id - " + port_id})
-		goto oops
-	}
-
-	cts, err = c.FindClientConnByIdStr(conn_id)
+	r, err = c.FindClientRouteByServerPeerSvcPortIdStr(conn_id, port_id)
 	if err != nil {
 		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
 		je.Encode(JsonErrmsg{Text: err.Error()})
 		goto oops
 	}
 
-	r = cts.FindClientRouteByServerPeerSvcPortId(PortId(port_nid))
-	if r == nil {
-		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: "non-existent server peer port id - " + port_id})
-		goto oops
-	}
-
 	switch req.Method {
 		case http.MethodGet:
+			var spla string = ""
+			if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			err = je.Encode(json_out_client_route{
 				Id: r.Id,
 				ClientPeerAddr: r.PeerAddr,
 				ClientPeerName: r.PeerName,
-				ServerPeerListenAddr: r.server_peer_listen_addr.String(),
+				ServerPeerListenAddr: spla,
 				ServerPeerNet: r.ServerPeerNet,
 				ServerPeerOption: r.ServerPeerOption.String(),
 				Lifetime: DurationToSecString(r.Lifetime),
