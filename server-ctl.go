@@ -629,7 +629,7 @@ func (ctl *server_ctl_notices_id) ServeHTTP(w http.ResponseWriter, req *http.Req
 			// no check if noti.Text is empty as i want an empty message to be delivered too.
 			err = cts.pss.Send(MakeConnNoticePacket(noti.Text))
 			if err != nil {
-				err = fmt.Errorf("failed to send conn_notice text to %s - %s", noti.Text, cts.RemoteAddr, err.Error())
+				err = fmt.Errorf("failed to send conn_notice text '%s' to %s - %s", noti.Text, cts.RemoteAddr, err.Error())
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
 				je.Encode(JsonErrmsg{Text: err.Error()})
 				goto oops

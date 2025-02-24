@@ -1,6 +1,7 @@
 package hodu
 
 import "runtime"
+import "strings"
 import "github.com/prometheus/client_golang/prometheus"
 
 type ServerCollector struct {
@@ -16,7 +17,8 @@ type ServerCollector struct {
 func NewServerCollector(server *Server) ServerCollector {
 	var prefix string
 
-	prefix = server.Name() + "_"
+	// prometheus doesn't like a dash. change it to an underscore
+	prefix = strings.ReplaceAll(server.Name(), "-", "_") + "_"
 	return ServerCollector{
 		server: server,
 
