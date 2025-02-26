@@ -105,12 +105,12 @@ func (ctl *server_ctl) Id() string {
 }
 
 func (ctl *server_ctl) Cors(req *http.Request) bool {
-	return ctl.s.cfg.CtlCors
+	return ctl.s.Cfg.CtlCors
 }
 
 func (ctl *server_ctl) Authenticate(req *http.Request) (int, string) {
-	if ctl.noauth || ctl.s.cfg.CtlAuth == nil { return http.StatusOK, "" }
-	return ctl.s.cfg.CtlAuth.Authenticate(req)
+	if ctl.noauth || ctl.s.Cfg.CtlAuth == nil { return http.StatusOK, "" }
+	return ctl.s.Cfg.CtlAuth.Authenticate(req)
 }
 
 // ------------------------------------
@@ -131,7 +131,7 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			var tok string
 			var now time.Time
 
-			if s.cfg.CtlAuth == nil || !s.cfg.CtlAuth.Enabled || s.cfg.CtlAuth.TokenRsaKey == nil {
+			if s.Cfg.CtlAuth == nil || !s.Cfg.CtlAuth.Enabled || s.Cfg.CtlAuth.TokenRsaKey == nil {
 				status_code = WriteJsonRespHeader(w, http.StatusForbidden)
 				err = fmt.Errorf("auth not enabled or token rsa key not set")
 				je.Encode(JsonErrmsg{Text: err.Error()})
@@ -140,8 +140,8 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 
 			now = time.Now()
 			claim.IssuedAt = now.Unix()
-			claim.ExpiresAt = now.Add(s.cfg.CtlAuth.TokenTtl).Unix()
-			jwt = NewJWT(s.cfg.CtlAuth.TokenRsaKey, &claim)
+			claim.ExpiresAt = now.Add(s.Cfg.CtlAuth.TokenTtl).Unix()
+			jwt = NewJWT(s.Cfg.CtlAuth.TokenRsaKey, &claim)
 			tok, err = jwt.SignRS512()
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
