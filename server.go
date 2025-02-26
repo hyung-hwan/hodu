@@ -1916,3 +1916,28 @@ func (s *Server) AddCtlMetricsCollector(col prometheus.Collector) error {
 func (s *Server) RemoveCtlMetricsCollector(col prometheus.Collector) bool {
 	return s.promreg.Unregister(col)
 }
+
+func (s *Server) SendNotice(id_str string, text string) error {
+	var cts *ServerConn
+	var err error
+
+	if id_str != "" {
+		cts, err = s.FindServerConnByIdStr(id_str) // this function accepts connection id as well as the token.
+		if err != nil { return err }
+		err = cts.pss.Send(MakeConnNoticePacket(text))
+		if err != nil {
+			return fmt.Errorf("failed to send conn_notice text '%s' to %s - %s", text, cts.RemoteAddr, err.Error())
+		}
+	} else {
+		s.cts_mtx.Lock()
+		// TODO: what if this loop takes too long? in that case,
+		//       lock is held for long. think about how to handle this.
+		for _, cts = range s.cts_map {
+			cts.pss.Send(MakeConnNoticePacket(text))
+			// let's not care about an error when broacasting a notice to all connections
+		}
+		s.cts_mtx.Unlock()
+	}
+
+	return nil
+}

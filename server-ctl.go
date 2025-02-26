@@ -560,10 +560,11 @@ oops:
 func (ctl *server_ctl_notices) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
-	var cts *ServerConn
+	var je *json.Encoder
 	var err error
 
 	s = ctl.s
+	je = json.NewEncoder(w)
 
 	switch req.Method {
 		case http.MethodPost:
@@ -575,13 +576,13 @@ func (ctl *server_ctl_notices) ServeHTTP(w http.ResponseWriter, req *http.Reques
 				goto oops
 			}
 
-			// TODO: what if this loop takes too long? in that case, lock is held for long. think about how to handle this.
-			s.cts_mtx.Lock()
-			for _, cts = range s.cts_map {
-				cts.pss.Send(MakeConnNoticePacket(noti.Text))
-				// let's not care about an error when broacasting a notice to all connections
+			err = s.SendNotice("", noti.Text)
+			if err != nil {
+				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
 			}
-			s.cts_mtx.Unlock()
+
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 
 		default:
@@ -601,7 +602,6 @@ func (ctl *server_ctl_notices_id) ServeHTTP(w http.ResponseWriter, req *http.Req
 	var s *Server
 	var status_code int
 	var conn_id string
-	var cts *ServerConn
 	var je *json.Encoder
 	var err error
 
@@ -609,12 +609,6 @@ func (ctl *server_ctl_notices_id) ServeHTTP(w http.ResponseWriter, req *http.Req
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id") // server connection
-	cts, err = s.FindServerConnByIdStr(conn_id)
-	if err != nil {
-		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
-		je.Encode(JsonErrmsg{Text: err.Error()})
-		goto oops
-	}
 
 	switch req.Method {
 		case http.MethodPost:
@@ -626,10 +620,8 @@ func (ctl *server_ctl_notices_id) ServeHTTP(w http.ResponseWriter, req *http.Req
 				goto oops
 			}
 
-			// no check if noti.Text is empty as i want an empty message to be delivered too.
-			err = cts.pss.Send(MakeConnNoticePacket(noti.Text))
+			err = s.SendNotice(conn_id, noti.Text)
 			if err != nil {
-				err = fmt.Errorf("failed to send conn_notice text '%s' to %s - %s", noti.Text, cts.RemoteAddr, err.Error())
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
 				je.Encode(JsonErrmsg{Text: err.Error()})
 				goto oops

@@ -1193,6 +1193,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Notice)
 				if ok {
+					cts.C.log.Write(cts.Sid, LOG_DEBUG, "conn_notice message '%s' received from %s", x.Notice.Text, cts.remote_addr)
 					if cts.C.conn_notice != nil {
 						cts.C.conn_notice.Handle(cts, x.Notice.Text)
 					}
