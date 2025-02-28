@@ -487,7 +487,7 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 
 		case http.MethodDelete:
 			r.ReqStopAllServerPeerConns()
-			status_code = WriteEmptyRespHeader(w, http.StatusOK)
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
 
 		default:
 			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
