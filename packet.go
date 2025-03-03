@@ -67,6 +67,10 @@ func MakeConnDescPacket(token string) *Packet {
 	return &Packet{Kind: PACKET_KIND_CONN_DESC,U: &Packet_Conn{Conn: &ConnDesc{Token: token}}}
 }
 
+func MakeConnErrorPacket(error_id uint32, msg string) *Packet {
+	return &Packet{Kind: PACKET_KIND_CONN_ERROR, U: &Packet_ConnErr{ConnErr: &ConnError{ErrorId: error_id, Text: msg}}}
+}
+
 func MakeConnNoticePacket(msg string) *Packet {
-	return &Packet{Kind: PACKET_KIND_CONN_NOTICE, U: &Packet_Notice{Notice: &ConnNotice{Text: msg}}}
+	return &Packet{Kind: PACKET_KIND_CONN_NOTICE, U: &Packet_ConnNoti{ConnNoti: &ConnNotice{Text: msg}}}
 }

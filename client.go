@@ -1187,15 +1187,27 @@ start_over:
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid peer_data event from %s", cts.remote_addr)
 				}
 
+			case PACKET_KIND_CONN_ERROR:
+				var x *Packet_ConnErr
+				var ok bool
+				x, ok = pkt.U.(*Packet_ConnErr)
+				if ok {
+					cts.C.log.Write(cts.Sid, LOG_ERROR, "Received conn_error(%d, %s) event from %s", x.ConnErr.ErrorId, x.ConnErr.Text, cts.remote_addr)
+					// if no retry goto done.. othersise reconnect...
+					goto done
+				} else {
+					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_error event from %s", cts.remote_addr)
+				}
+
 			case PACKET_KIND_CONN_NOTICE:
 				// the connection from the client to a peer has been established
-				var x *Packet_Notice
+				var x *Packet_ConnNoti
 				var ok bool
-				x, ok = pkt.U.(*Packet_Notice)
+				x, ok = pkt.U.(*Packet_ConnNoti)
 				if ok {
-					cts.C.log.Write(cts.Sid, LOG_DEBUG, "conn_notice message '%s' received from %s", x.Notice.Text, cts.remote_addr)
+					cts.C.log.Write(cts.Sid, LOG_DEBUG, "conn_notice message '%s' received from %s", x.ConnNoti.Text, cts.remote_addr)
 					if cts.C.conn_notice != nil {
-						cts.C.conn_notice.Handle(cts, x.Notice.Text)
+						cts.C.conn_notice.Handle(cts, x.ConnNoti.Text)
 					}
 				} else {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_notice packet from %s", cts.remote_addr)

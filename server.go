@@ -754,11 +754,13 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				if ok {
 					if x.Conn.Token == "" {
 						cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc packet from %s - blank token", cts.RemoteAddr)
+						cts.pss.Send(MakeConnErrorPacket(1, "blank token refused"))
 						cts.ReqStop() // TODO: is this desirable to disconnect?
 					} else if x.Conn.Token != cts.ClientToken {
 						_, err = strconv.ParseUint(x.Conn.Token, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 						if err == nil { // this is not != nil. this is to check if the token is numeric
 							cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc packet from %s - numeric token '%s'", cts.RemoteAddr, x.Conn.Token)
+							cts.pss.Send(MakeConnErrorPacket(1, "numeric token refused"))
 							cts.ReqStop() // TODO: is this desirable to disconnect?
 						} else {
 							cts.S.cts_mtx.Lock()
@@ -767,6 +769,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 								// error
 								cts.S.cts_mtx.Unlock()
 								cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc packet from %s - duplicate token '%s'", cts.RemoteAddr, x.Conn.Token)
+								cts.pss.Send(MakeConnErrorPacket(1, "duplicate token refused"))
 								cts.ReqStop() // TODO: is this desirable to disconnect?
 							} else {
 								if cts.ClientToken != "" { delete(cts.S.cts_map_by_token, cts.ClientToken) }
@@ -783,12 +786,12 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 
 			case PACKET_KIND_CONN_NOTICE:
 				// the connection from the client to a peer has been established
-				var x *Packet_Notice
+				var x *Packet_ConnNoti
 				var ok bool
-				x, ok = pkt.U.(*Packet_Notice)
+				x, ok = pkt.U.(*Packet_ConnNoti)
 				if ok {
 					if cts.S.conn_notice != nil {
-						cts.S.conn_notice.Handle(cts, x.Notice.Text)
+						cts.S.conn_notice.Handle(cts, x.ConnNoti.Text)
 					}
 				} else {
 					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_notice packet from %s", cts.RemoteAddr)
