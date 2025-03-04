@@ -24,6 +24,7 @@ import "time"
 type json_in_client_conn struct {
 	ServerAddrs []string `json:"server-addrs"` // multiple addresses for round-robin connection re-attempts
 	ClientToken string `json:"client-token"`
+	CloseOnConnErrorEvent bool `json:"close-on-conn-error-event"`
 }
 
 type json_in_client_route struct {
@@ -50,6 +51,7 @@ type json_out_client_conn struct {
 	CurrentServerIndex int `json:"current-server-index"`
 	ServerAddr string `json:"server-addr"` // actual server address
 	ClientAddr string `json:"client-addr"`
+	ClientToken string `json:"client-token"`
 	Routes []json_out_client_route `json:"routes"`
 }
 
@@ -251,6 +253,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					CurrentServerIndex: cts.cfg.Index,
 					ServerAddr: cts.remote_addr,
 					ClientAddr: cts.local_addr,
+					ClientToken: cts.Token,
 					Routes: jsp,
 				})
 				cts.route_mtx.Unlock()
@@ -279,6 +282,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 
 			cc.ServerAddrs = in_cc.ServerAddrs
 			cc.ClientToken = in_cc.ClientToken
+			cc.CloseOnConnErrorEvent = in_cc.CloseOnConnErrorEvent
 			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
@@ -358,6 +362,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				CurrentServerIndex: cts.cfg.Index,
 				ServerAddr: cts.local_addr,
 				ClientAddr: cts.remote_addr,
+				ClientToken: cts.Token,
 				Routes: jsp,
 			}
 			cts.route_mtx.Unlock()

@@ -47,6 +47,7 @@ type ClientConnConfig struct {
 	ServerSeedTmout time.Duration
 	ServerAuthority string // http2 :authority header
 	ClientToken string
+	CloseOnConnErrorEvent bool
 }
 
 type ClientConnConfigActive struct {
@@ -131,6 +132,7 @@ type ClientConn struct {
 	Id            ConnId
 	Sid           string // id rendered in string
 	State         ClientConnState
+	Token         string
 
 	local_addr    string
 	remote_addr   string
@@ -945,7 +947,6 @@ func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	var c_seed Seed
 	var s_seed *Seed
 	var p *peer.Peer
-	var client_token string
 	var ok bool
 	var err error
 	var opts []grpc.DialOption
@@ -1009,18 +1010,18 @@ start_over:
 	cts.C.log.Write(cts.Sid, LOG_INFO, "Got packet stream from server[%d] %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
 
 	cts.State = CLIENT_CONN_CONNECTED
+	cts.Token = cts.cfg.ClientToken
+	if cts.Token == "" { cts.Token = cts.C.token }
 
 	cts.psc = &GuardedPacketStreamClient{Hodu_PacketStreamClient: psc}
 
-	client_token = cts.cfg.ClientToken
-	if client_token == "" { client_token = cts.C.token }
-	if client_token != "" {
-		err = cts.psc.Send(MakeConnDescPacket(client_token))
+	if cts.Token != "" {
+		err = cts.psc.Send(MakeConnDescPacket(cts.Token))
 		if err != nil {
-			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send conn-desc(%s) to server[%d] %s - %s", client_token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
+			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send conn-desc(%s) to server[%d] %s - %s", cts.Token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
 			goto reconnect_to_server
 		} else {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sending conn-desc(%s) to server[%d] %s", client_token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sending conn-desc(%s) to server[%d] %s", cts.Token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
 		}
 	}
 
@@ -1193,8 +1194,7 @@ start_over:
 				x, ok = pkt.U.(*Packet_ConnErr)
 				if ok {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Received conn_error(%d, %s) event from %s", x.ConnErr.ErrorId, x.ConnErr.Text, cts.remote_addr)
-					// if no retry goto done.. othersise reconnect...
-					goto done
+					if cts.cfg.CloseOnConnErrorEvent { goto done }
 				} else {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_error event from %s", cts.remote_addr)
 				}

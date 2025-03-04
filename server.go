@@ -769,7 +769,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 								// error
 								cts.S.cts_mtx.Unlock()
 								cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_desc packet from %s - duplicate token '%s'", cts.RemoteAddr, x.Conn.Token)
-								cts.pss.Send(MakeConnErrorPacket(1, "duplicate token refused"))
+								cts.pss.Send(MakeConnErrorPacket(1, fmt.Sprintf("duplicate token refused - %s", x.Conn.Token)))
 								cts.ReqStop() // TODO: is this desirable to disconnect?
 							} else {
 								if cts.ClientToken != "" { delete(cts.S.cts_map_by_token, cts.ClientToken) }
@@ -846,6 +846,7 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 done:
 	cts.ReqStop() // just in case
 	cts.route_wg.Wait()
+	cts.S.log.Write(cts.Sid, LOG_INFO, "End of connection task")
 }
 
 func (cts *ServerConn) ReqStop() {
