@@ -7,6 +7,7 @@ import "fmt"
 import "log"
 import "net"
 import "net/http"
+import "slices"
 import "strconv"
 import "sync"
 import "sync/atomic"
@@ -24,10 +25,10 @@ import "github.com/prometheus/client_golang/prometheus/promhttp"
 
 type PacketStreamClient grpc.BidiStreamingClient[Packet, Packet]
 
-type ClientConnMap = map[ConnId]*ClientConn
-type ClientRouteMap = map[RouteId]*ClientRoute
-type ClientPeerConnMap = map[PeerId]*ClientPeerConn
-type ClientPeerCancelFuncMap = map[PeerId]context.CancelFunc
+type ClientConnMap map[ConnId]*ClientConn
+type ClientRouteMap map[RouteId]*ClientRoute
+type ClientPeerConnMap map[PeerId]*ClientPeerConn
+type ClientPeerCancelFuncMap map[PeerId]context.CancelFunc
 
 // --------------------------------------------------------------------
 type ClientRouteConfig struct {
@@ -1282,6 +1283,44 @@ func (cts *ClientConn) ReportEvent(route_id RouteId, pts_id PeerId, event_type P
 	cts.route_mtx.Unlock()
 
 	return r.ReportEvent(pts_id, event_type, event_data)
+}
+
+// --------------------------------------------------------------------
+
+func (m ClientPeerConnMap) get_sorted_keys() []PeerId {
+	var ks []PeerId
+	var peer *ClientPeerConn
+
+	ks = make([]PeerId, 0, len(m))
+	for _, peer = range m {
+		ks = append(ks, peer.conn_id)
+	}
+	slices.Sort(ks)
+	return ks
+}
+
+func (m ClientRouteMap) get_sorted_keys() []RouteId {
+	var ks []RouteId
+	var route *ClientRoute
+
+	ks = make([]RouteId, 0, len(m))
+	for _, route = range m {
+		ks = append(ks, route.Id)
+	}
+	slices.Sort(ks)
+	return ks
+}
+
+func (m ClientConnMap) get_sorted_keys() []ConnId {
+	var ks []ConnId
+	var cts *ClientConn
+
+	ks = make([]ConnId, 0, len(m))
+	for _, cts = range m {
+		ks = append(ks, cts.Id)
+	}
+	slices.Sort(ks)
+	return ks
 }
 
 // --------------------------------------------------------------------

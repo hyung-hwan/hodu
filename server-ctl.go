@@ -177,18 +177,22 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 
 	switch req.Method {
 		case http.MethodGet:
-			var cts *ServerConn
 			var js []json_out_server_conn
+			var ci ConnId
 
 			js = make([]json_out_server_conn, 0)
 			s.cts_mtx.Lock()
-			for _, cts = range s.cts_map {
-				var r *ServerRoute
+			for _, ci = range s.cts_map.get_sorted_keys() {
+				var cts *ServerConn
 				var jsp []json_out_server_route
+				var ri RouteId
 
+				cts = s.cts_map[ci]
 				jsp = make([]json_out_server_route, 0)
 				cts.route_mtx.Lock()
-				for _, r = range cts.route_map {
+				for _, ri = range cts.route_map.get_sorted_keys() {
+					var r *ServerRoute
+					r = cts.route_map[ri]
 					jsp = append(jsp, json_out_server_route{
 						Id: r.Id,
 						ClientPeerAddr: r.PtcAddr,
@@ -198,6 +202,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ServerPeerOption: r.SvcOption.String(),
 					})
 				}
+				cts.route_mtx.Unlock()
 				js = append(js, json_out_server_conn{
 					Id: cts.Id,
 					ClientAddr: cts.RemoteAddr.String(),
@@ -205,7 +210,6 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					ClientToken: cts.ClientToken,
 					Routes: jsp,
 				})
-				cts.route_mtx.Unlock()
 			}
 			s.cts_mtx.Unlock()
 
@@ -250,13 +254,16 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 
 	switch req.Method {
 		case http.MethodGet:
-			var r *ServerRoute
 			var jsp []json_out_server_route
 			var js *json_out_server_conn
+			var ri RouteId
 
 			jsp = make([]json_out_server_route, 0)
 			cts.route_mtx.Lock()
-			for _, r = range cts.route_map {
+			for _, ri = range cts.route_map.get_sorted_keys() {
+				var r *ServerRoute
+
+				r = cts.route_map[ri]
 				jsp = append(jsp, json_out_server_route{
 					Id: r.Id,
 					ClientPeerAddr: r.PtcAddr,
@@ -266,6 +273,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ServerPeerOption: r.SvcOption.String(),
 				})
 			}
+			cts.route_mtx.Unlock()
 			js = &json_out_server_conn{
 				Id: cts.Id,
 				ClientAddr: cts.RemoteAddr.String(),
@@ -273,7 +281,6 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				ClientToken: cts.ClientToken,
 				Routes: jsp,
 			}
-			cts.route_mtx.Unlock()
 
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(js); err != nil { goto oops }
@@ -317,12 +324,15 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 
 	switch req.Method {
 		case http.MethodGet:
-			var r *ServerRoute
 			var jsp []json_out_server_route
+			var ri RouteId
 
 			jsp = make([]json_out_server_route, 0)
 			cts.route_mtx.Lock()
-			for _, r = range cts.route_map {
+			for _, ri = range cts.route_map.get_sorted_keys() {
+				var r *ServerRoute
+
+				r = cts.route_map[ri]
 				jsp = append(jsp, json_out_server_route{
 					Id: r.Id,
 					ClientPeerAddr: r.PtcAddr,
@@ -466,12 +476,14 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 
 	switch req.Method {
 		case http.MethodGet:
-			var p *ServerPeerConn
 			var jcp []json_out_server_peer
+			var pi PeerId
 
 			jcp = make([]json_out_server_peer, 0)
 			r.pts_mtx.Lock()
-			for _, p = range r.pts_map {
+			for _, pi = range r.pts_map.get_sorted_keys() {
+				var p *ServerPeerConn
+				p = r.pts_map[pi];
 				jcp = append(jcp, json_out_server_peer{
 					Id: p.conn_id,
 					ServerPeerAddr: p.conn.RemoteAddr().String(),

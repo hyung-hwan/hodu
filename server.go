@@ -9,6 +9,7 @@ import "log"
 import "net"
 import "net/http"
 import "net/netip"
+import "slices"
 import "strconv"
 import "sync"
 import "sync/atomic"
@@ -33,12 +34,12 @@ const HS_ID_WPX string = "wpx"
 const HS_ID_PXY string = "pxy"
 const HS_ID_PXY_WS string = "pxy-ws"
 
-type ServerConnMapByAddr = map[net.Addr]*ServerConn
-type ServerConnMapByClientToken = map[string]*ServerConn
-type ServerConnMap = map[ConnId]*ServerConn
-type ServerRouteMap = map[RouteId]*ServerRoute
-type ServerPeerConnMap = map[PeerId]*ServerPeerConn
-type ServerSvcPortMap = map[PortId]ConnRouteId
+type ServerConnMapByAddr map[net.Addr]*ServerConn
+type ServerConnMapByClientToken map[string]*ServerConn
+type ServerConnMap map[ConnId]*ServerConn
+type ServerRouteMap map[RouteId]*ServerRoute
+type ServerPeerConnMap map[PeerId]*ServerPeerConn
+type ServerSvcPortMap map[PortId]ConnRouteId
 
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
@@ -957,6 +958,42 @@ func (cc *ConnCatcher) HandleConn(ctx context.Context, cs stats.ConnStats) {
 	}
 }
 
+// ------------------------------------
+func (m ServerPeerConnMap) get_sorted_keys() []PeerId {
+	var ks []PeerId
+	var peer *ServerPeerConn
+
+	ks = make([]PeerId, 0, len(m))
+	for _, peer = range m {
+		ks = append(ks, peer.conn_id)
+	}
+	slices.Sort(ks)
+	return ks
+}
+
+func (m ServerRouteMap) get_sorted_keys() []RouteId {
+	var ks []RouteId
+	var route *ServerRoute
+
+	ks = make([]RouteId, 0, len(m))
+	for _, route = range m {
+		ks = append(ks, route.Id)
+	}
+	slices.Sort(ks)
+	return ks
+}
+
+func (m ServerConnMap) get_sorted_keys() []ConnId {
+	var ks []ConnId
+	var cts *ServerConn
+
+	ks = make([]ConnId, 0, len(m))
+	for _, cts = range m {
+		ks = append(ks, cts.Id)
+	}
+	slices.Sort(ks)
+	return ks
+}
 // ------------------------------------
 
 type wrappedStream struct {
