@@ -483,7 +483,7 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 			r.pts_mtx.Lock()
 			for _, pi = range r.pts_map.get_sorted_keys() {
 				var p *ServerPeerConn
-				p = r.pts_map[pi];
+				p = r.pts_map[pi]
 				jcp = append(jcp, json_out_server_peer{
 					Id: p.conn_id,
 					ServerPeerAddr: p.conn.RemoteAddr().String(),

@@ -351,7 +351,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				var r *ClientRoute
 				var spla string = ""
 
-				r = cts.route_map[ri];
+				r = cts.route_map[ri]
 				if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
 				jsp = append(jsp, json_out_client_route{
 					Id: r.Id,

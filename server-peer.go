@@ -170,8 +170,8 @@ func (spc *ServerPeerConn) ReportEvent(event_type PACKET_KIND, event_data interf
 			pd, ok = event_data.(*PeerDesc)
 			if !ok {
 				// something wrong. leave it unknown.
-				spc.client_peer_laddr = "";
-				spc.client_peer_raddr = "";
+				spc.client_peer_laddr = ""
+				spc.client_peer_raddr = ""
 			} else {
 				spc.client_peer_laddr = pd.LocalAddrStr
 				spc.client_peer_raddr = pd.RemoteAddrStr

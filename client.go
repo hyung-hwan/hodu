@@ -1670,7 +1670,7 @@ func (c *Client) FindClientConnByIdStr(conn_id string) (*ClientConn, error) {
 
 	conn_nid, err = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 	if err != nil {
-		return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error());
+		return nil, fmt.Errorf("invalid connection id %s - %s", conn_id, err.Error())
 		//cts = c.FindClientConnByToken(conn_id) // if not numeric, attempt to use it as a token
 		//if cts == nil { return nil, fmt.Errorf("non-existent connection token '%s'", conn_id) }
 	} else {

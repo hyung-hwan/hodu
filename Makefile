@@ -85,4 +85,4 @@ cmd/tls.key:
 cmd/rsa.key:
 	openssl genrsa -traditional -out cmd/rsa.key 2048
 
-.PHONY: clean test
+.PHONY: all clean test
