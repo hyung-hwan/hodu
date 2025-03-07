@@ -50,6 +50,12 @@ type json_out_server_stats struct {
 	SshProxySessions int64 `json:"pxy-ssh-sessions"`
 }
 
+// this is a more specialized variant of json_in_notice
+type json_in_server_notice struct {
+	Client string `json:"client"`
+	Text string `json:"text"`
+}
+
 // ------------------------------------
 
 type server_ctl struct {
@@ -580,7 +586,7 @@ func (ctl *server_ctl_notices) ServeHTTP(w http.ResponseWriter, req *http.Reques
 
 	switch req.Method {
 		case http.MethodPost:
-			var noti json_in_notice
+			var noti json_in_server_notice
 
 			err = json.NewDecoder(req.Body).Decode(&noti)
 			if err != nil {
@@ -588,7 +594,7 @@ func (ctl *server_ctl_notices) ServeHTTP(w http.ResponseWriter, req *http.Reques
 				goto oops
 			}
 
-			err = s.SendNotice("", noti.Text)
+			err = s.SendNotice(noti.Client, noti.Text)
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
 				je.Encode(JsonErrmsg{Text: err.Error()})
