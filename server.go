@@ -371,7 +371,7 @@ func (r *ServerRoute) FindServerPeerConnById(peer_id PeerId) *ServerPeerConn {
 	return c
 }
 
-func (r *ServerRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_data interface{}) error {
+func (r *ServerRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event_data interface{}) error {
 	var spc *ServerPeerConn
 	var ok bool
 
@@ -383,7 +383,7 @@ func (r *ServerRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_d
 	}
 	r.pts_mtx.Unlock()
 
-	return spc.ReportEvent(event_type, event_data)
+	return spc.ReportPacket(packet_type, event_data)
 }
 // ------------------------------------
 
@@ -560,7 +560,7 @@ func (cts *ServerConn) ReqStopAllServerRoutes() {
 	cts.route_mtx.Unlock()
 }
 
-func (cts *ServerConn) ReportEvent(route_id RouteId, pts_id PeerId, event_type PACKET_KIND, event_data interface{}) error {
+func (cts *ServerConn) ReportPacket(route_id RouteId, pts_id PeerId, packet_type PACKET_KIND, event_data interface{}) error {
 	var r *ServerRoute
 	var ok bool
 
@@ -572,7 +572,7 @@ func (cts *ServerConn) ReportEvent(route_id RouteId, pts_id PeerId, event_type P
 	}
 	cts.route_mtx.Unlock()
 
-	return r.ReportEvent(pts_id, event_type, event_data)
+	return r.ReportPacket(pts_id, packet_type, event_data)
 }
 
 func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
@@ -671,7 +671,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STARTED, x.Peer)
+					err = cts.ReportPacket(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STARTED, x.Peer)
 					if err != nil {
 						cts.S.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle peer_started event from %s for peer(%d,%d,%s,%s) - %s",
@@ -691,7 +691,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_ABORTED, x.Peer)
+					err = cts.ReportPacket(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_ABORTED, x.Peer)
 					if err != nil {
 						cts.S.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle peer_aborted event from %s for peer(%d,%d,%s,%s) - %s",
@@ -712,7 +712,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STOPPED, x.Peer)
+					err = cts.ReportPacket(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STOPPED, x.Peer)
 					if err != nil {
 						cts.S.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle peer_stopped event from %s for peer(%d,%d,%s,%s) - %s",
@@ -733,7 +733,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				var ok bool
 				x, ok = pkt.U.(*Packet_Data)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Data.RouteId), PeerId(x.Data.PeerId), PACKET_KIND_PEER_DATA, x.Data.Data)
+					err = cts.ReportPacket(RouteId(x.Data.RouteId), PeerId(x.Data.PeerId), PACKET_KIND_PEER_DATA, x.Data.Data)
 					if err != nil {
 						cts.S.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle peer_data event from %s for peer(%d,%d) - %s",

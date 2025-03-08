@@ -160,9 +160,9 @@ func (spc *ServerPeerConn) ReqStop() {
 	}
 }
 
-func (spc *ServerPeerConn) ReportEvent(event_type PACKET_KIND, event_data interface{}) error {
+func (spc *ServerPeerConn) ReportPacket(packet_type PACKET_KIND, event_data interface{}) error {
 
-	switch event_type {
+	switch packet_type {
 		case PACKET_KIND_PEER_STARTED:
 			var ok bool
 			var pd *PeerDesc

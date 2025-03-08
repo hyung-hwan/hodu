@@ -344,7 +344,7 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	var err error
 
 	// this task on the route object do actual data manipulation
-	// most useful works are triggered by ReportEvent() and done by ConnectToPeer()
+	// most useful works are triggered by ReportPacket() and done by ConnectToPeer()
 	// it merely implements some timeout if set.
 	defer wg.Done()
 
@@ -528,10 +528,10 @@ func (r *ClientRoute) DisconnectFromPeer(ptc *ClientPeerConn) error {
 	return nil
 }
 
-func (r *ClientRoute) ReportEvent(pts_id PeerId, event_type PACKET_KIND, event_data interface{}) error {
+func (r *ClientRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event_data interface{}) error {
 	var err error
 
-	switch event_type {
+	switch packet_type {
 		case PACKET_KIND_ROUTE_STARTED:
 			var ok bool
 			var rd *RouteDesc
@@ -1074,7 +1074,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Route)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Route.RouteId), 0, pkt.Kind, x.Route)
+					err = cts.ReportPacket(RouteId(x.Route.RouteId), 0, pkt.Kind, x.Route)
 					if err != nil {
 						cts.C.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle route_started event(%d,%s) from %s - %s",
@@ -1093,7 +1093,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Route)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Route.RouteId), 0, pkt.Kind, x.Route)
+					err = cts.ReportPacket(RouteId(x.Route.RouteId), 0, pkt.Kind, x.Route)
 					if err != nil {
 						cts.C.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle route_stopped event(%d,%s) from %s - %s",
@@ -1113,7 +1113,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STARTED, x.Peer)
+					err = cts.ReportPacket(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STARTED, x.Peer)
 					if err != nil {
 						cts.C.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle peer_started event from %s for peer(%d,%d,%s,%s) - %s",
@@ -1136,7 +1136,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STOPPED, x.Peer)
+					err = cts.ReportPacket(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_STOPPED, x.Peer)
 					if err != nil {
 						cts.C.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle peer_stopped event from %s for peer(%d,%d,%s,%s) - %s",
@@ -1155,7 +1155,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Peer)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_EOF, x.Peer)
+					err = cts.ReportPacket(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), PACKET_KIND_PEER_EOF, x.Peer)
 					if err != nil {
 						cts.C.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle peer_eof event from %s for peer(%d,%d,%s,%s) - %s",
@@ -1175,7 +1175,7 @@ start_over:
 				var ok bool
 				x, ok = pkt.U.(*Packet_Data)
 				if ok {
-					err = cts.ReportEvent(RouteId(x.Data.RouteId), PeerId(x.Data.PeerId), PACKET_KIND_PEER_DATA, x.Data.Data)
+					err = cts.ReportPacket(RouteId(x.Data.RouteId), PeerId(x.Data.PeerId), PACKET_KIND_PEER_DATA, x.Data.Data)
 					if err != nil {
 						cts.C.log.Write(cts.Sid, LOG_ERROR,
 							"Failed to handle peer_data event from %s for peer(%d,%d) - %s",
@@ -1270,7 +1270,7 @@ reconnect_to_server:
 	goto start_over // and reconnect
 }
 
-func (cts *ClientConn) ReportEvent(route_id RouteId, pts_id PeerId, event_type PACKET_KIND, event_data interface{}) error {
+func (cts *ClientConn) ReportPacket(route_id RouteId, pts_id PeerId, packet_type PACKET_KIND, event_data interface{}) error {
 	var r *ClientRoute
 	var ok bool
 
@@ -1282,7 +1282,7 @@ func (cts *ClientConn) ReportEvent(route_id RouteId, pts_id PeerId, event_type P
 	}
 	cts.route_mtx.Unlock()
 
-	return r.ReportEvent(pts_id, event_type, event_data)
+	return r.ReportPacket(pts_id, packet_type, event_data)
 }
 
 // --------------------------------------------------------------------
