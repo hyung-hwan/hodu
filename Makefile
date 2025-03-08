@@ -9,6 +9,7 @@ NAME=hodu
 VERSION=1.0.0
 
 SRCS=\
+	bulletin.go \
 	client.go \
 	client-ctl.go \
 	client-metrics.go \
