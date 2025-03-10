@@ -67,6 +67,33 @@ type ServerConfig struct {
 	WpxTls *tls.Config
 }
 
+const SERVER_EVENT_TOPIC_CONN string = "conn"
+const SERVER_EVENT_TOPIC_ROUTE string = "route"
+const SERVER_EVENT_TOPIC_PEER string = "peer"
+
+type ServerEventKind int
+const (
+	SERVER_EVENT_CONN_ADDED = iota
+	SERVER_EVENT_CONN_DELETED
+	SERVER_EVENT_ROUTE_ADDED
+	SERVER_EVENT_ROUTE_DELETED
+	SERVER_EVENT_PEER_ADDED
+	SERVER_EVENT_PEER_DELETED
+)
+
+type ServerEventDesc struct {
+	Conn ConnId
+	Route RouteId
+	Peer PeerId
+}
+
+type ServerEvent struct {
+	Kind ServerEventKind
+	Desc ServerEventDesc
+}
+
+type ServerEventBulletin = Bulletin[ServerEvent]
+
 type Server struct {
 	UnimplementedHoduServer
 	Named
@@ -111,6 +138,8 @@ type Server struct {
 
 	svc_port_mtx     sync.Mutex
 	svc_port_map     ServerSvcPortMap
+
+	bulletin         *ServerEventBulletin
 
 	promreg *prometheus.Registry
 	stats struct {
@@ -847,6 +876,15 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 done:
 	cts.ReqStop() // just in case
 	cts.route_wg.Wait()
+	/*
+	cts.S.bulletin.Publish(
+		SERVER_EVENT_TOPIC_CONN,
+		ServerEvent{
+			Kind: SERVER_EVENT_CONN_DELETED,
+			Desc: ServerEventDesc{ Conn: cts.Id },
+		},
+	)*/
+	// Don't detached the cts task as a go-routine as this function
 	cts.S.log.Write(cts.Sid, LOG_INFO, "End of connection task")
 }
 
@@ -902,6 +940,15 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 	if err != nil {
 		return fmt.Errorf("unable to add client %s - %s", p.Addr.String(), err.Error())
 	}
+
+	/*
+	s.bulletin.Publish(
+		SERVER_EVENT_TOPIC_CONN,
+		ServerEvent{
+			Kind: SERVER_EVENT_CONN_ADDED,
+			Desc: ServerEventDesc{ Conn: cts.Id },
+		},
+	)*/
 
 	// Don't detached the cts task as a go-routine as this function
 	// is invoked as a go-routine by the grpc server.
@@ -1173,6 +1220,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.svc_port_map = make(ServerSvcPortMap)
 	s.stop_chan = make(chan bool, 8)
 	s.stop_req.Store(false)
+	s.bulletin = NewBulletin[ServerEvent]()
 
 /*
 	creds, err := credentials.NewServerTLSFromFile(data.Path("x509/server_cert.pem"), data.Path("x509/server_key.pem"))
@@ -1244,16 +1292,20 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		websocket.Handler(func(ws *websocket.Conn) { s.pxy_ws.ServeWebsocket(ws) }))
 	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{server_ctl{s: &s, id: HS_ID_PXY, noauth: true}}))
+	s.pxy_mux.Handle("/_ssh/xterm.js",
+		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "xterm.js"}))
+	s.pxy_mux.Handle("/_ssh/xterm.js.map",
+		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "_notfound"}))
+	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js",
+		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "xterm-addon-fit.js"}))
+	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js.map",
+		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "_notfound"}))
+	s.pxy_mux.Handle("/_ssh/xterm.css",
+		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "xterm.css"}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/",
 		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "_redirect"}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/",
 		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "xterm.html"}))
-	s.pxy_mux.Handle("/_ssh/xterm.js",
-		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "xterm.js"}))
-	s.pxy_mux.Handle("/_ssh/xterm-addon-fit.js",
-		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "xterm-addon-fit.js"}))
-	s.pxy_mux.Handle("/_ssh/xterm.css",
-		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "xterm.css"}))
 	s.pxy_mux.Handle("/_ssh/",
 		s.WrapHttpHandler(&server_proxy_xterm_file{server_proxy: server_proxy{s: &s, id: HS_ID_PXY}, file: "_forbidden"}))
 	s.pxy_mux.Handle("/favicon.ico",
@@ -1397,6 +1449,7 @@ task_loop:
 		}
 	}
 
+	s.bulletin.Close()
 	s.ReqStop()
 
 	s.rpc_wg.Wait()

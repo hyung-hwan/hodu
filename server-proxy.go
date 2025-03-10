@@ -535,8 +535,12 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 			w.Header().Set("Location", req.URL.Path + "_/")
 			w.WriteHeader(status_code)
 
+
 		case "_forbidden":
 			status_code = WriteEmptyRespHeader(w, http.StatusForbidden)
+
+		case "_notfound":
+			status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
 
 		default:
 			status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
