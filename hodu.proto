@@ -32,26 +32,26 @@ enum ROUTE_OPTION {
 message RouteDesc {
 	uint32 RouteId = 1;
 
-	// C->S(ROUTE_START): client-side peer address
-	// S->C(ROUTE_STARTED): server-side listening address
+	// C->S(ROUTE_START/STOP): client-side peer address
+	// S->C(ROUTE_STARTED/STOPPED): server-side listening address
 	string TargetAddrStr = 2;
 
-	// C->S(ROUTE_START): human-readable name of client-side peer
-	// S->C(ROUTE_STARTED): clone as sent by C
+	// C->S(ROUTE_START/STOPPED): human-readable name of client-side peer
+	// S->C(ROUTE_STARTED/STOPPED): clone as sent by C
 	string TargetName= 3;
 
-	// C->S(ROUTE_START): desired listening option on the server-side(e.g. tcp, tcp4, tcp6) +
+	// C->S(ROUTE_START): requested listening option on the server-side(e.g. tcp, tcp4, tcp6) +
 	//                    hint to the service-side peer(e.g. local) +
 	//                    hint to the client-side peer(e.g. tty, http, https)
 	// S->C(ROUTE_STARTED): cloned as sent by C.
 	uint32 ServiceOption = 4;
 
-	// C->S(ROUTE_START): desired lisening address on the service-side
+	// C->S(ROUTE_START): requested lisening address on the service-side
 	// S->C(ROUTE_STARTED): cloned as sent by C
 	string ServiceAddrStr = 5;
 
-	// C->S(ROUTE_START): permitted network of server-side peers.
-	// S->C(ROUTE_STARTED): cloned as sent by C.
+	// C->S(ROUTE_START): requested permitted network of server-side peers.
+	// S->C(ROUTE_STARTED): actual permitted network of server-side peers
 	string ServiceNetStr = 6;
 };
 

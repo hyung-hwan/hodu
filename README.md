@@ -29,8 +29,8 @@
     "client-peer-addr": "192.168.1.104:22",
     "client-peer-name": "Star gate",
     "server-peer-option": "tcp4 ssh",
-    "server-peer-service-addr": "0.0.0.0:0",
-    "server-peer-service-net": "",
+    "server-peer-svc-addr": "0.0.0.0:0",
+    "server-peer-svc-net": "",
     "lifetime": "0"
 }
 ```

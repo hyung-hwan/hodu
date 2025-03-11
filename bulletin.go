@@ -1,6 +1,7 @@
 package hodu
 
 import "container/list"
+import "container/ring"
 import "errors"
 import "sync"
 
@@ -19,11 +20,19 @@ type Bulletin[T interface{}] struct {
 	sbsc_map BulletinSubscriptionMap
 	sbsc_mtx sync.RWMutex
 	closed bool
+
+	r_mtx sync.RWMutex
+	r *ring.Ring
+	r_capa int
+	r_full bool
 }
 
-func NewBulletin[T interface{}]() *Bulletin[T] {
+func NewBulletin[T interface{}](capa int) *Bulletin[T] {
 	return &Bulletin[T]{
 		sbsc_map: make(BulletinSubscriptionMap, 0),
+		r: ring.New(capa),
+		r_capa: capa,
+		r_full: false,
 	}
 }
 
@@ -134,3 +143,30 @@ func (b *Bulletin[T]) Publish(topic string, data T) {
 	b.sbsc_mtx.Unlock()
 }
 
+func (b *Bulletin[T]) Enqueue(topic string, data T) {
+	b.r_mtx.Lock()
+	b.r.Value = data // update the value at the current position
+	b.r = b.r.Next() // move the current position
+	b.r_mtx.Unlock()
+}
+
+func (b *Bulletin[T]) Dequeue() {
+	b.r_mtx.Lock()
+	b.r_mtx.Unlock()
+}
+
+/*
+func (b *Bulletin[T]) RunTask(wg *sync.WaitGroup) {
+	var done bool
+	var msg T
+	var ok bool
+
+	defer wg.Done()
+
+	for !done {
+		select {
+			case msg, ok = <- b.C:
+				if !ok { done = true }
+		}
+	}
+}*/

@@ -108,6 +108,7 @@ type Server struct {
 
 	ext_mtx          sync.Mutex
 	ext_svcs         []Service
+	ext_closed       bool
 
 	pxy_ws           *server_proxy_ssh_ws
 	pxy_mux          *http.ServeMux
@@ -1220,7 +1221,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.svc_port_map = make(ServerSvcPortMap)
 	s.stop_chan = make(chan bool, 8)
 	s.stop_req.Store(false)
-	s.bulletin = NewBulletin[ServerEvent]()
+	s.bulletin = NewBulletin[ServerEvent](1000)
 
 /*
 	creds, err := credentials.NewServerTLSFromFile(data.Path("x509/server_cert.pem"), data.Path("x509/server_key.pem"))
@@ -1954,6 +1955,11 @@ func (s *Server) StartService(cfg interface{}) {
 
 func (s *Server) StartExtService(svc Service, data interface{}) {
 	s.ext_mtx.Lock()
+	if s.ext_closed {
+		// don't start it if it's already closed
+		s.ext_mtx.Unlock()
+		return
+	}
 	s.ext_svcs = append(s.ext_svcs, svc)
 	s.ext_mtx.Unlock()
 	s.wg.Add(1)
@@ -1978,9 +1984,12 @@ func (s *Server) StartWpxService() {
 func (s *Server) StopServices() {
 	var ext_svc Service
 	s.ReqStop()
+	s.ext_mtx.Lock()
 	for _, ext_svc = range s.ext_svcs {
 		ext_svc.StopServices()
 	}
+	s.ext_closed = true
+	s.ext_mtx.Unlock()
 }
 
 func (s *Server) FixServices() {

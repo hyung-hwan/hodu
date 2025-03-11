@@ -32,8 +32,12 @@ type json_in_client_route struct {
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
-	ServerPeerServiceAddr string `json:"server-peer-service-addr"` // desired listening address on the server side
-	ServerPeerServiceNet string `json:"server-peer-service-net"` // permitted network in prefix notation
+
+	// the following two fields in the input structure is the requested values.
+	// the actual values are returned in json_out_clinet_route and may be different from the requested ones
+	ServerPeerSvcAddr string `json:"server-peer-svc-addr"` // requested listening address on the server side - not actual
+	ServerPeerSvcNet string `json:"server-peer-svc-net"` // requested permitted network in prefix notation - not actual
+
 	Lifetime string `json:"lifetime"`
 }
 
@@ -65,8 +69,12 @@ type json_out_client_route struct {
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
-	ServerPeerListenAddr string `json:"server-peer-service-addr"`
-	ServerPeerNet string `json:"server-peer-service-net"`
+
+	// These two values are actual addresses and networks listening on peer service port
+	// and may be different from the requested values conveyed in json_in_client_route.
+	ServerPeerSvcAddr string `json:"server-peer-svc-addr"`
+	ServerPeerSvcNet string `json:"server-peer-svc-net"`
+
 	Lifetime string `json:"lifetime"`
 	LifetimeStart int64 `json:"lifetime-start"`
 }
@@ -231,34 +239,40 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				var cts *ClientConn
 				var jsp []json_out_client_route
 				var ri RouteId
+				var local_addr string
+				var remote_addr string
 
 				cts = c.cts_map[ci]
 				jsp = make([]json_out_client_route, 0)
 				cts.route_mtx.Lock()
 				for _, ri = range cts.route_map.get_sorted_keys() {
 					var r *ClientRoute
-					var spla string = ""
+					var lftsta time.Time
+					var lftdur time.Duration
 
 					r = cts.route_map[ri]
-					if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
+
+					lftsta, lftdur = r.GetLifetimeInfo()
 					jsp = append(jsp, json_out_client_route{
 						Id: r.Id,
 						ClientPeerAddr: r.PeerAddr,
 						ClientPeerName: r.PeerName,
-						ServerPeerListenAddr: spla,
-						ServerPeerNet: r.ServerPeerNet,
+						ServerPeerSvcAddr: r.ServerPeerSvcAddr,
+						ServerPeerSvcNet: r.ServerPeerSvcNet,
 						ServerPeerOption: r.ServerPeerOption.String(),
-						Lifetime: DurationToSecString(r.Lifetime),
-						LifetimeStart: r.LifetimeStart.Unix(),
+						Lifetime: DurationToSecString(lftdur),
+						LifetimeStart: lftsta.Unix(),
 					})
 				}
 				cts.route_mtx.Unlock()
+
+				local_addr, remote_addr = cts.GetAddrInfo()
 				js = append(js, json_out_client_conn{
 					Id: cts.Id,
 					ReqServerAddrs: cts.cfg.ServerAddrs,
 					CurrentServerIndex: cts.cfg.Index,
-					ServerAddr: cts.remote_addr,
-					ClientAddr: cts.local_addr,
+					ServerAddr: remote_addr,
+					ClientAddr: local_addr,
 					ClientToken: cts.Token,
 					Routes: jsp,
 				})
@@ -344,33 +358,38 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			var jsp []json_out_client_route
 			var js *json_out_client_conn
 			var ri RouteId
+			var local_addr string
+			var remote_addr string
 
 			jsp = make([]json_out_client_route, 0)
 			cts.route_mtx.Lock()
 			for _, ri = range cts.route_map.get_sorted_keys() {
 				var r *ClientRoute
-				var spla string = ""
+				var lftsta time.Time
+				var lftdur time.Duration
 
 				r = cts.route_map[ri]
-				if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
+
+				lftsta, lftdur = r.GetLifetimeInfo()
 				jsp = append(jsp, json_out_client_route{
 					Id: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
-					ServerPeerListenAddr: spla,
-					ServerPeerNet: r.ServerPeerNet,
+					ServerPeerSvcAddr: r.ServerPeerSvcAddr,
+					ServerPeerSvcNet: r.ServerPeerSvcNet,
 					ServerPeerOption: r.ServerPeerOption.String(),
-					Lifetime: DurationToSecString(r.Lifetime),
-					LifetimeStart: r.LifetimeStart.Unix(),
+					Lifetime: DurationToSecString(lftdur),
+					LifetimeStart: lftsta.Unix(),
 				})
 			}
 			cts.route_mtx.Unlock()
+			local_addr, remote_addr = cts.GetAddrInfo()
 			js = &json_out_client_conn{
 				Id: cts.Id,
 				ReqServerAddrs: cts.cfg.ServerAddrs,
 				CurrentServerIndex: cts.cfg.Index,
-				ServerAddr: cts.local_addr,
-				ClientAddr: cts.remote_addr,
+				ServerAddr: local_addr,
+				ClientAddr: remote_addr,
 				ClientToken: cts.Token,
 				Routes: jsp,
 			}
@@ -424,19 +443,21 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			cts.route_mtx.Lock()
 			for _, ri = range cts.route_map.get_sorted_keys() {
 				var r *ClientRoute
-				var spla string = ""
+				var lftsta time.Time
+				var lftdur time.Duration
 
 				r = cts.route_map[ri]
-				if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
+
+				lftsta, lftdur = r.GetLifetimeInfo()
 				jsp = append(jsp, json_out_client_route{
 					Id: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
-					ServerPeerListenAddr: spla,
-					ServerPeerNet: r.ServerPeerNet,
+					ServerPeerSvcAddr: r.ServerPeerSvcAddr,
+					ServerPeerSvcNet: r.ServerPeerSvcNet,
 					ServerPeerOption: r.ServerPeerOption.String(),
-					Lifetime: DurationToSecString(r.Lifetime),
-					LifetimeStart: r.LifetimeStart.Unix(),
+					Lifetime: DurationToSecString(lftdur),
+					LifetimeStart: lftsta.Unix(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -482,8 +503,8 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				PeerAddr: jcr.ClientPeerAddr,
 				PeerName: jcr.ClientPeerName,
 				Option: server_peer_option,
-				ServiceAddr: jcr.ServerPeerServiceAddr,
-				ServiceNet: jcr.ServerPeerServiceNet,
+				ServiceAddr: jcr.ServerPeerSvcAddr,
+				ServiceNet: jcr.ServerPeerSvcNet,
 				Lifetime: lifetime,
 				Static: false,
 			}
@@ -539,19 +560,21 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 	switch req.Method {
 		case http.MethodGet:
-			var spla string = ""
-			if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
+			var lftsta time.Time
+			var lftdur time.Duration
+
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
+
+			lftsta, lftdur = r.GetLifetimeInfo()
 			err = je.Encode(json_out_client_route{
 				Id: r.Id,
 				ClientPeerAddr: r.PeerAddr,
 				ClientPeerName: r.PeerName,
-				ServerPeerListenAddr: spla,
-				ServerPeerNet: r.ServerPeerNet,
+				ServerPeerSvcAddr: r.ServerPeerSvcAddr,
+				ServerPeerSvcNet: r.ServerPeerSvcNet,
 				ServerPeerOption: r.ServerPeerOption.String(),
-				Lifetime: DurationToSecString(r.Lifetime),
-				LifetimeStart: r.LifetimeStart.Unix(),
-
+				Lifetime: DurationToSecString(lftdur),
+				LifetimeStart: lftsta.Unix(),
 			})
 			if err != nil { goto oops }
 
@@ -624,18 +647,21 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 
 	switch req.Method {
 		case http.MethodGet:
-			var spla string = ""
-			if r.server_peer_listen_addr != nil { spla = r.server_peer_listen_addr.String() }
+			var lftsta time.Time
+			var lftdur time.Duration
+
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
+
+			lftsta, lftdur = r.GetLifetimeInfo()
 			err = je.Encode(json_out_client_route{
 				Id: r.Id,
 				ClientPeerAddr: r.PeerAddr,
 				ClientPeerName: r.PeerName,
-				ServerPeerListenAddr: spla,
-				ServerPeerNet: r.ServerPeerNet,
+				ServerPeerSvcAddr: r.ServerPeerSvcAddr,
+				ServerPeerSvcNet: r.ServerPeerSvcNet,
 				ServerPeerOption: r.ServerPeerOption.String(),
-				Lifetime: DurationToSecString(r.Lifetime),
-				LifetimeStart: r.LifetimeStart.Unix(),
+				Lifetime: DurationToSecString(lftdur),
+				LifetimeStart: lftsta.Unix(),
 			})
 			if err != nil { goto oops }
 

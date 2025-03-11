@@ -14,7 +14,7 @@ func TestBulletin(t *testing.T) {
 	var nmsgs1 int
 	var nmsgs2 int
 
-	b = hodu.NewBulletin[string]()
+	b = hodu.NewBulletin[string](100)
 
 	s1, _ = b.Subscribe("t1")
 	s2, _ = b.Subscribe("t2")

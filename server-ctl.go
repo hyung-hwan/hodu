@@ -28,8 +28,8 @@ type json_out_server_route struct {
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
-	ServerPeerServiceAddr string `json:"server-peer-service-addr"` // actual listening address
-	ServerPeerServiceNet string `json:"server-peer-service-net"`
+	ServerPeerServiceAddr string `json:"server-peer-svc-addr"` // actual listening address
+	ServerPeerServiceNet string `json:"server-peer-svc-net"`
 }
 
 type json_out_server_peer struct {
