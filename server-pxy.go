@@ -30,23 +30,23 @@ var xterm_css []byte
 //go:embed xterm.html
 var xterm_html string
 
-type server_proxy struct {
+type server_pxy struct {
 	s *Server
 	id string
 }
 
-type server_proxy_http_main struct {
-	server_proxy
+type server_pxy_http_main struct {
+	server_pxy
 	prefix string
 }
 
-type server_proxy_xterm_file struct {
-	server_proxy
+type server_pxy_xterm_file struct {
+	server_pxy
 	file string
 }
 
-type server_proxy_http_wpx struct {
-	server_proxy
+type server_pxy_http_wpx struct {
+	server_pxy
 }
 
 // this is minimal information for wpx to work
@@ -186,15 +186,15 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 
 // ------------------------------------
 
-func (pxy *server_proxy) Id() string {
+func (pxy *server_pxy) Id() string {
 	return pxy.id
 }
 
-func (pxy *server_proxy) Cors(req *http.Request) bool {
+func (pxy *server_pxy) Cors(req *http.Request) bool {
 	return false
 }
 
-func (pxy *server_proxy) Authenticate(req *http.Request) (int, string) {
+func (pxy *server_pxy) Authenticate(req *http.Request) (int, string) {
 	return http.StatusOK, ""
 }
 
@@ -204,7 +204,7 @@ func prevent_follow_redirect (req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-func (pxy *server_proxy_http_main) get_route_proxy_info(req *http.Request, in_wpx_mode bool) (*ServerRouteProxyInfo, error) {
+func (pxy *server_pxy_http_main) get_route_proxy_info(req *http.Request, in_wpx_mode bool) (*ServerRouteProxyInfo, error) {
 	var conn_id string
 	var route_id string
 	var r *ServerRoute
@@ -244,7 +244,7 @@ func (pxy *server_proxy_http_main) get_route_proxy_info(req *http.Request, in_wp
 	return pi, nil
 }
 
-func (pxy *server_proxy_http_main) serve_upgraded(w http.ResponseWriter, req *http.Request, proxy_res *http.Response) error {
+func (pxy *server_pxy_http_main) serve_upgraded(w http.ResponseWriter, req *http.Request, proxy_res *http.Response) error {
 	var err_chan chan error
 	var proxy_res_body io.ReadWriteCloser
 	var rc *http.ResponseController
@@ -295,7 +295,7 @@ func (pxy *server_proxy_http_main) serve_upgraded(w http.ResponseWriter, req *ht
 	return err
 }
 
-func (pxy *server_proxy_http_main) addr_to_transport (ctx context.Context, addr *net.TCPAddr) (*http.Transport, error) {
+func (pxy *server_pxy_http_main) addr_to_transport (ctx context.Context, addr *net.TCPAddr) (*http.Transport, error) {
 	var dialer *net.Dialer
 	var waitctx context.Context
 	var cancel_wait context.CancelFunc
@@ -318,7 +318,7 @@ func (pxy *server_proxy_http_main) addr_to_transport (ctx context.Context, addr 
 	}, nil
 }
 
-func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *ServerRouteProxyInfo) *url.URL {
+func (pxy *server_pxy_http_main) req_to_proxy_url (req *http.Request, r *ServerRouteProxyInfo) *url.URL {
 	var proxy_proto string
 	var proxy_url_path string
 
@@ -343,7 +343,7 @@ func (pxy *server_proxy_http_main) req_to_proxy_url (req *http.Request, r *Serve
 	}
 }
 
-func (pxy *server_proxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var pi *ServerRouteProxyInfo
 	var status_code int
@@ -448,7 +448,7 @@ oops:
 
 // ------------------------------------
 
-func (pxy *server_proxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+func (pxy *server_pxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var status_code int
 //	var err error
 
@@ -464,12 +464,12 @@ func (pxy *server_proxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Req
 }
 // ------------------------------------
 
-type server_proxy_xterm_session_info struct {
+type server_pxy_xterm_session_info struct {
 	ConnId string
 	RouteId string
 }
 
-func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
 	var err error
@@ -522,7 +522,7 @@ func (pxy *server_proxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.R
 			} else {
 				status_code = WriteHtmlRespHeader(w, http.StatusOK)
 				tmpl.Execute(w,
-					&server_proxy_xterm_session_info{
+					&server_pxy_xterm_session_info{
 						ConnId: conn_id,
 						RouteId: route_id,
 					})
@@ -554,8 +554,7 @@ oops:
 }
 
 // ------------------------------------
-
-type server_proxy_ssh_ws struct {
+type server_pxy_ssh_ws struct {
 	s *Server
 	ws *websocket.Conn
 	id string
@@ -566,10 +565,14 @@ type json_ssh_ws_event struct {
 	Data []string `json:"data"`
 }
 
+func (pxy *server_pxy_ssh_ws) Id() string {
+	return pxy.id
+}
+
 // TODO: put this task to sync group.
 // TODO: put the above proxy task to sync group too.
 
-func (pxy *server_proxy_ssh_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
+func (pxy *server_pxy_ssh_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
 	var msg []byte
 	var err error
 
@@ -578,7 +581,7 @@ func (pxy *server_proxy_ssh_ws) send_ws_data(ws *websocket.Conn, type_val string
 	return err
 }
 
-func (pxy *server_proxy_ssh_ws) connect_ssh (ctx context.Context, username string, password string, r *ServerRoute) ( *ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
+func (pxy *server_pxy_ssh_ws) connect_ssh (ctx context.Context, username string, password string, r *ServerRoute) ( *ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
 	var cc *ssh.ClientConfig
 	var addr *net.TCPAddr
 	var dialer *net.Dialer
@@ -639,7 +642,7 @@ oops:
 	return nil, nil, nil, nil, err
 }
 
-func (pxy *server_proxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) {
+func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var s *Server
 	var req *http.Request
 	var conn_id string
@@ -801,9 +804,6 @@ done:
 	if sess != nil { sess.Close() }
 	if c != nil { c.Close() }
 	wg.Wait()
-	if err != nil {
-		s.log.Write(pxy.id, LOG_ERROR, "[%s] %s %s - %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
-	} else {
-		s.log.Write(pxy.id, LOG_DEBUG, "[%s] %s %s - ended", req.RemoteAddr, req.Method, req.URL.String())
-	}
+
+	return http.StatusOK, err
 }
