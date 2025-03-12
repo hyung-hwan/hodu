@@ -3,7 +3,10 @@ package hodu
 import "encoding/json"
 import "fmt"
 import "net/http"
+import "sync"
 import "time"
+
+import "golang.org/x/net/websocket"
 
 type ServerTokenClaim struct {
 	ExpiresAt int64 `json:"exp"`
@@ -101,6 +104,10 @@ type server_ctl_notices_id struct {
 }
 
 type server_ctl_stats struct {
+	server_ctl
+}
+
+type server_ctl_ws struct {
 	server_ctl
 }
 
@@ -689,4 +696,86 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 
 oops:
 	return status_code, err
+}
+
+// ------------------------------------
+type json_ctl_ws_event struct {
+	Type string `json:"type"`
+	Data []string `json:"data"`
+}
+
+func (pxy *server_ctl_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
+	var msg []byte
+	var err error
+
+	msg, err = json.Marshal(json_ssh_ws_event{Type: type_val, Data: []string{ data } })
+	if err == nil { err = websocket.Message.Send(ws, msg) }
+	return err
+}
+
+func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
+	var s *Server
+	var wg sync.WaitGroup
+	var sbsc *ServerEventSubscription
+	var err error
+
+	s = ctl.s
+	sbsc, err = s.bulletin.Subscribe("")
+	if err != nil { goto done }
+
+	wg.Add(1)
+	go func() {
+          var c chan *ServerEvent
+		var err error
+
+          defer wg.Done()
+          c = sbsc.C
+
+          for c != nil {
+			var e *ServerEvent
+			var ok bool
+
+			e, ok = <- c
+			if ok {
+				fmt.Printf ("s1: %+v\n", e)
+				err = ctl.send_ws_data(ws, "server", fmt.Sprintf("%d,%d,%d", e.Desc.Conn, e.Desc.Route, e.Desc.Peer))
+				if err != nil {
+					// TODO: logging...
+					c = nil
+				}
+			} else {
+				// most likely sbcs.C is closed. if not readable, break the loop
+				c = nil
+			}
+		}
+
+		ws.Close() // hack to break the recv loop. don't care about double closes
+     }()
+
+ws_recv_loop:
+	for {
+		var msg []byte
+		err = websocket.Message.Receive(ws, &msg)
+		if err != nil { goto done }
+
+		if len(msg) > 0 {
+			var ev json_ssh_ws_event
+			err = json.Unmarshal(msg, &ev)
+			if err == nil {
+				switch ev.Type {
+					case "open":
+					case "close":
+						break ws_recv_loop
+				}
+			}
+		}
+	}
+
+done:
+	// Ubsubscribe() to break the internal event reception
+	// goroutine as well as for cleanup
+	s.bulletin.Unsubscribe(sbsc)
+	ws.Close()
+	wg.Wait()
+	return http.StatusOK, err // TODO: change code...
 }

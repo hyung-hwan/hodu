@@ -92,7 +92,8 @@ type ServerEvent struct {
 	Desc ServerEventDesc
 }
 
-type ServerEventBulletin = Bulletin[ServerEvent]
+type ServerEventBulletin = Bulletin[*ServerEvent]
+type ServerEventSubscription = BulletinSubscription[*ServerEvent]
 
 type Server struct {
 	UnimplementedHoduServer
@@ -118,6 +119,7 @@ type Server struct {
 	wpx_mux          *http.ServeMux
 	wpx              []*http.Server // proxy server than handles http/https only
 
+	ctl_ws           *server_ctl_ws
 	ctl_mux          *http.ServeMux
 	ctl              []*http.Server // control server
 
@@ -877,14 +879,12 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 done:
 	cts.ReqStop() // just in case
 	cts.route_wg.Wait()
-	/*
-	cts.S.bulletin.Publish(
-		SERVER_EVENT_TOPIC_CONN,
-		ServerEvent{
+	cts.S.bulletin.Enqueue(
+		&ServerEvent{
 			Kind: SERVER_EVENT_CONN_DELETED,
 			Desc: ServerEventDesc{ Conn: cts.Id },
 		},
-	)*/
+	)
 	// Don't detached the cts task as a go-routine as this function
 	cts.S.log.Write(cts.Sid, LOG_INFO, "End of connection task")
 }
@@ -942,14 +942,12 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 		return fmt.Errorf("unable to add client %s - %s", p.Addr.String(), err.Error())
 	}
 
-	/*
-	s.bulletin.Publish(
-		SERVER_EVENT_TOPIC_CONN,
-		ServerEvent{
+	s.bulletin.Enqueue(
+		&ServerEvent{
 			Kind: SERVER_EVENT_CONN_ADDED,
 			Desc: ServerEventDesc{ Conn: cts.Id },
 		},
-	)*/
+	)
 
 	// Don't detached the cts task as a go-routine as this function
 	// is invoked as a go-routine by the grpc server.
@@ -1122,7 +1120,12 @@ type ServerHttpHandler interface {
 	Id() string
 	Cors(req *http.Request) bool
 	Authenticate(req *http.Request) (int, string)
-	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
+	ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error)
+}
+
+type ServerWebsocketHandler interface {
+	Id() string
+	ServeWebsocket(ws *websocket.Conn) (int, error)
 }
 
 func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
@@ -1177,6 +1180,33 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 	})
 }
 
+func (s *Server) WrapWebsocketHandler(handler ServerWebsocketHandler) websocket.Handler {
+	return websocket.Handler(func(ws *websocket.Conn) {
+		var status_code int
+		var err error
+		var start_time time.Time
+		var time_taken time.Duration
+		var req *http.Request
+
+		req = ws.Request()
+		start_time = time.Now()
+		s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s [ws]", req.RemoteAddr, req.Method, req.URL.String())
+
+		status_code, err = handler.ServeWebsocket(ws)
+		// it looks like the websocket handler never comes down here...
+
+		time_taken = time.Now().Sub(start_time)
+
+		if status_code > 0 {
+			if err != nil {
+				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s [ws] %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+			} else {
+				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s [ws] %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
+			}
+		}
+	})
+}
+
 func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfig) (*Server, error) {
 	var s Server
 	var l *net.TCPListener
@@ -1221,15 +1251,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.svc_port_map = make(ServerSvcPortMap)
 	s.stop_chan = make(chan bool, 8)
 	s.stop_req.Store(false)
-	s.bulletin = NewBulletin[ServerEvent](1000)
-
-/*
-	creds, err := credentials.NewServerTLSFromFile(data.Path("x509/server_cert.pem"), data.Path("x509/server_key.pem"))
-	if err != nil {
-	  log.Fatalf("failed to create credentials: %v", err)
-	}
-	gs = grpc.NewServer(grpc.Creds(creds))
-*/
+	s.bulletin = NewBulletin[*ServerEvent](&s, 1024)
 
 	opts = append(opts, grpc.StatsHandler(&ConnCatcher{server: &s}))
 	if s.Cfg.RpcTls != nil { opts = append(opts, grpc.Creds(credentials.NewTLS(s.Cfg.RpcTls))) }
@@ -1273,6 +1295,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.promreg.MustRegister(NewServerCollector(&s))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/metrics",
 		promhttp.HandlerFor(s.promreg, promhttp.HandlerOpts{ EnableOpenMetrics: true }))
+
+	//s.ctl_ws = &server_ctl_ws{server_ctl{s: &s, id: HS_ID_CTL}}
+	s.ctl_mux.Handle("/_ctl/events",
+		s.WrapWebsocketHandler(&server_ctl_ws{server_ctl{s: &s, id: HS_ID_CTL}}))
 
 	s.ctl = make([]*http.Server, len(cfg.CtlAddrs))
 	for i = 0; i < len(cfg.CtlAddrs); i++ {
@@ -1450,7 +1476,6 @@ task_loop:
 		}
 	}
 
-	s.bulletin.Close()
 	s.ReqStop()
 
 	s.rpc_wg.Wait()
@@ -1600,6 +1625,8 @@ func (s *Server) ReqStop() {
 		var l *net.TCPListener
 		var cts *ServerConn
 		var hs *http.Server
+
+		s.bulletin.Block()
 
 		// call cancellation function before anything else
 		// to break sub-tasks relying on this server context.
@@ -1950,6 +1977,8 @@ func (s *Server) FindServerConnByIdStr(conn_id string) (*ServerConn, error) {
 
 func (s *Server) StartService(cfg interface{}) {
 	s.wg.Add(1)
+	go s.bulletin.RunTask(&s.wg)
+	s.wg.Add(1)
 	go s.RunTask(&s.wg)
 }
 
@@ -1984,6 +2013,7 @@ func (s *Server) StartWpxService() {
 func (s *Server) StopServices() {
 	var ext_svc Service
 	s.ReqStop()
+	s.bulletin.ReqStop()
 	s.ext_mtx.Lock()
 	for _, ext_svc = range s.ext_svcs {
 		ext_svc.StopServices()
