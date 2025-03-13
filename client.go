@@ -134,11 +134,10 @@ type ClientConn struct {
 	State         atomic.Int32 // ClientConnState
 	Token         string
 
-	addr_mtx      sync.Mutex // because the following fields are updated concurrently
-	local_addr    string
-	remote_addr   string
-	local_addr_p  string // not reset when disconnected. used mostly in writing log messages without addr_mtx
-	remote_addr_p string // not reset when disconnected. used mostly in writing log messages without addr_mtx
+	local_addr    Atom[string]
+	remote_addr   Atom[string]
+	local_addr_p  string
+	remote_addr_p string
 
 	conn         *grpc.ClientConn // grpc connection to the server
 	hdc           HoduClient
@@ -952,11 +951,9 @@ func (cts *ClientConn) disconnect_from_server(logmsg bool) {
 		// if it's called from ReqStop(), we don't really
 		// need to care about it.
 
-		cts.addr_mtx.Lock()
-		cts.local_addr = ""
-		cts.remote_addr = ""
+		cts.local_addr.Set("")
+		cts.remote_addr.Set("")
 		// don't reset cts.local_addr_p and cts.remote_addr_p
-		cts.addr_mtx.Unlock()
 
 		cts.discon_mtx.Unlock()
 	}
@@ -967,12 +964,6 @@ func (cts *ClientConn) ReqStop() {
 		cts.disconnect_from_server(false)
 		cts.stop_chan <- true
 	}
-}
-
-func (cts *ClientConn) GetAddrInfo() (string, string) {
-	cts.addr_mtx.Lock()
-	defer cts.addr_mtx.Unlock()
-	return cts.local_addr, cts.remote_addr
 }
 
 func timed_interceptor(tmout time.Duration) grpc.UnaryClientInterceptor {
@@ -1052,12 +1043,10 @@ start_over:
 
 	p, ok = peer.FromContext(psc.Context())
 	if ok {
-		cts.addr_mtx.Lock()
-		cts.remote_addr = p.Addr.String()
-		cts.local_addr = p.LocalAddr.String()
-		cts.remote_addr_p = cts.remote_addr
-		cts.local_addr_p = cts.local_addr
-		cts.addr_mtx.Unlock()
+		cts.remote_addr.Set(p.Addr.String())
+		cts.local_addr.Set(p.LocalAddr.String())
+		cts.remote_addr_p = cts.remote_addr.Get()
+		cts.local_addr_p = cts.local_addr.Get()
 	}
 
 	cts.C.log.Write(cts.Sid, LOG_INFO, "Got packet stream from server[%d] %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])

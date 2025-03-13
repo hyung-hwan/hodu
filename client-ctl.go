@@ -239,8 +239,6 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				var cts *ClientConn
 				var jsp []json_out_client_route
 				var ri RouteId
-				var local_addr string
-				var remote_addr string
 
 				cts = c.cts_map[ci]
 				jsp = make([]json_out_client_route, 0)
@@ -266,13 +264,12 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				}
 				cts.route_mtx.Unlock()
 
-				local_addr, remote_addr = cts.GetAddrInfo()
 				js = append(js, json_out_client_conn{
 					Id: cts.Id,
 					ReqServerAddrs: cts.cfg.ServerAddrs,
 					CurrentServerIndex: cts.cfg.Index,
-					ServerAddr: remote_addr,
-					ClientAddr: local_addr,
+					ServerAddr: cts.remote_addr.Get(),
+					ClientAddr: cts.local_addr.Get(),
 					ClientToken: cts.Token,
 					Routes: jsp,
 				})
@@ -358,8 +355,6 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			var jsp []json_out_client_route
 			var js *json_out_client_conn
 			var ri RouteId
-			var local_addr string
-			var remote_addr string
 
 			jsp = make([]json_out_client_route, 0)
 			cts.route_mtx.Lock()
@@ -383,13 +378,13 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				})
 			}
 			cts.route_mtx.Unlock()
-			local_addr, remote_addr = cts.GetAddrInfo()
+
 			js = &json_out_client_conn{
 				Id: cts.Id,
 				ReqServerAddrs: cts.cfg.ServerAddrs,
 				CurrentServerIndex: cts.cfg.Index,
-				ServerAddr: local_addr,
-				ClientAddr: remote_addr,
+				ServerAddr: cts.remote_addr.Get(),
+				ClientAddr: cts.local_addr.Get(),
 				ClientToken: cts.Token,
 				Routes: jsp,
 			}

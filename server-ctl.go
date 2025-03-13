@@ -31,8 +31,8 @@ type json_out_server_route struct {
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
-	ServerPeerServiceAddr string `json:"server-peer-svc-addr"` // actual listening address
-	ServerPeerServiceNet string `json:"server-peer-svc-net"`
+	ServerPeerSvcAddr string `json:"server-peer-svc-addr"` // actual listening address
+	ServerPeerSvcNet string `json:"server-peer-svc-net"`
 }
 
 type json_out_server_peer struct {
@@ -210,8 +210,8 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						Id: r.Id,
 						ClientPeerAddr: r.PtcAddr,
 						ClientPeerName: r.PtcName,
-						ServerPeerServiceAddr: r.SvcAddr.String(),
-						ServerPeerServiceNet: r.SvcPermNet.String(),
+						ServerPeerSvcAddr: r.SvcAddr.String(),
+						ServerPeerSvcNet: r.SvcPermNet.String(),
 						ServerPeerOption: r.SvcOption.String(),
 					})
 				}
@@ -220,7 +220,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					Id: cts.Id,
 					ClientAddr: cts.RemoteAddr.String(),
 					ServerAddr: cts.LocalAddr.String(),
-					ClientToken: cts.ClientToken,
+					ClientToken: cts.ClientToken.Get(),
 					Routes: jsp,
 				})
 			}
@@ -281,8 +281,8 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					Id: r.Id,
 					ClientPeerAddr: r.PtcAddr,
 					ClientPeerName: r.PtcName,
-					ServerPeerServiceAddr: r.SvcAddr.String(),
-					ServerPeerServiceNet: r.SvcPermNet.String(),
+					ServerPeerSvcAddr: r.SvcAddr.String(),
+					ServerPeerSvcNet: r.SvcPermNet.String(),
 					ServerPeerOption: r.SvcOption.String(),
 				})
 			}
@@ -291,7 +291,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				Id: cts.Id,
 				ClientAddr: cts.RemoteAddr.String(),
 				ServerAddr: cts.LocalAddr.String(),
-				ClientToken: cts.ClientToken,
+				ClientToken: cts.ClientToken.Get(),
 				Routes: jsp,
 			}
 
@@ -350,8 +350,8 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					Id: r.Id,
 					ClientPeerAddr: r.PtcAddr,
 					ClientPeerName: r.PtcName,
-					ServerPeerServiceAddr: r.SvcAddr.String(),
-					ServerPeerServiceNet: r.SvcPermNet.String(),
+					ServerPeerSvcAddr: r.SvcAddr.String(),
+					ServerPeerSvcNet: r.SvcPermNet.String(),
 					ServerPeerOption: r.SvcOption.String(),
 				})
 			}
@@ -437,8 +437,8 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				Id: r.Id,
 				ClientPeerAddr: r.PtcAddr,
 				ClientPeerName: r.PtcName,
-				ServerPeerServiceAddr: r.SvcAddr.String(),
-				ServerPeerServiceNet: r.SvcPermNet.String(),
+				ServerPeerSvcAddr: r.SvcAddr.String(),
+				ServerPeerSvcNet: r.SvcPermNet.String(),
 				ServerPeerOption: r.SvcOption.String(),
 			})
 			if err != nil { goto oops }
@@ -699,19 +699,6 @@ oops:
 }
 
 // ------------------------------------
-type json_ctl_ws_event struct {
-	Type string `json:"type"`
-	Data []string `json:"data"`
-}
-
-func (pxy *server_ctl_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
-	var msg []byte
-	var err error
-
-	msg, err = json.Marshal(json_ssh_ws_event{Type: type_val, Data: []string{ data } })
-	if err == nil { err = websocket.Message.Send(ws, msg) }
-	return err
-}
 
 func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var s *Server
@@ -719,6 +706,7 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var sbsc *ServerEventSubscription
 	var status_code int
 	var err error
+	var xerr error
 
 	s = ctl.s
 
@@ -740,7 +728,6 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		}
 
 		status_code, _ = ctl.s.Cfg.CtlAuth.Authenticate(req)
-fmt.Printf ("status code %d\n", status_code)
 		if status_code != http.StatusOK {
 			goto done
 		}
@@ -760,14 +747,20 @@ fmt.Printf ("status code %d\n", status_code)
           for c != nil {
 			var e *ServerEvent
 			var ok bool
+			var msg[] byte
 
 			e, ok = <- c
 			if ok {
-			// TODO: handle this part better
-				err = ctl.send_ws_data(ws, "server", fmt.Sprintf("%d,%d,%d", e.Desc.Conn, e.Desc.Route, e.Desc.Peer))
+				msg, err = json.Marshal(e)
 				if err != nil {
-					// TODO: logging...
+					xerr = fmt.Errorf("failed to marshal event - %+v - %s", e, err.Error())
 					c = nil
+				} else {
+					err = websocket.Message.Send(ws, msg)
+					if err != nil {
+						xerr = fmt.Errorf("failed to send message - %s", err.Error())
+						c = nil
+					}
 				}
 			} else {
 				// most likely sbcs.C is closed. if not readable, break the loop
@@ -785,15 +778,7 @@ ws_recv_loop:
 		if err != nil { break ws_recv_loop }
 
 		if len(msg) > 0 {
-			var ev json_ssh_ws_event
-			err = json.Unmarshal(msg, &ev)
-			if err == nil {
-				switch ev.Type {
-					case "open":
-					case "close":
-						break ws_recv_loop
-				}
-			}
+			// do nothing. discard received messages
 		}
 	}
 
@@ -804,5 +789,6 @@ ws_recv_loop:
 done:
 	ws.Close()
 	wg.Wait()
+	if err == nil && xerr != nil { err = xerr }
 	return http.StatusOK, err
 }
