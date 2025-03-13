@@ -595,6 +595,10 @@ func (pxy *server_pxy_ssh_ws) connect_ssh (ctx context.Context, username string,
 	var out io.Reader // ooutput from target
 	var err error
 
+	// [NOTE]
+	// There is no authentication implemented for this websocket endpoint
+	// I suppose authentication should be done at the ssh layer.
+	// However, this can open doors to DoS attacks.
 	cc = &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{ ssh.Password(password) },

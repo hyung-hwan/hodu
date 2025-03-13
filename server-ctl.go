@@ -717,9 +717,35 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var s *Server
 	var wg sync.WaitGroup
 	var sbsc *ServerEventSubscription
+	var status_code int
 	var err error
 
 	s = ctl.s
+
+	// handle authentication using the first message.
+	// end this task if authentication fails.
+	if !ctl.noauth && ctl.s.Cfg.CtlAuth != nil {
+		var req *http.Request
+
+		req = ws.Request()
+		if req.Header.Get("Authorization") == "" {
+			var token string
+			token = req.FormValue("token")
+			if token != "" {
+				// websocket doesn't actual have extra headers except a few fixed
+				// ones. add "Authorization" header from the query paramerer and
+				// compose a fake header to reuse the same Authentication() function
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+			}
+		}
+
+		status_code, _ = ctl.s.Cfg.CtlAuth.Authenticate(req)
+fmt.Printf ("status code %d\n", status_code)
+		if status_code != http.StatusOK {
+			goto done
+		}
+	}
+
 	sbsc, err = s.bulletin.Subscribe("")
 	if err != nil { goto done }
 
@@ -737,7 +763,7 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 			e, ok = <- c
 			if ok {
-				fmt.Printf ("s1: %+v\n", e)
+			// TODO: handle this part better
 				err = ctl.send_ws_data(ws, "server", fmt.Sprintf("%d,%d,%d", e.Desc.Conn, e.Desc.Route, e.Desc.Peer))
 				if err != nil {
 					// TODO: logging...
@@ -756,7 +782,7 @@ ws_recv_loop:
 	for {
 		var msg []byte
 		err = websocket.Message.Receive(ws, &msg)
-		if err != nil { goto done }
+		if err != nil { break ws_recv_loop }
 
 		if len(msg) > 0 {
 			var ev json_ssh_ws_event
@@ -771,11 +797,12 @@ ws_recv_loop:
 		}
 	}
 
-done:
 	// Ubsubscribe() to break the internal event reception
 	// goroutine as well as for cleanup
 	s.bulletin.Unsubscribe(sbsc)
+
+done:
 	ws.Close()
 	wg.Wait()
-	return http.StatusOK, err // TODO: change code...
+	return http.StatusOK, err
 }

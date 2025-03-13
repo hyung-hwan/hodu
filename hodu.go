@@ -378,6 +378,10 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 				} else if rule.Action == HTTP_ACCESS_REJECT {
 					return http.StatusForbidden, ""
 				}
+
+				// HTTP_ACCESS_AUTH_REQUIRED.
+				// move on to authentication if enabled. acceped if disabled
+				break
 			}
 		}
 	}
