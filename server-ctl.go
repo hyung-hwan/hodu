@@ -23,6 +23,7 @@ type json_out_server_conn struct {
 	ServerAddr string `json:"server-addr"`
 	ClientAddr string `json:"client-addr"`
 	ClientToken string `json:"client-token"`
+	CreatedMilli int64 `json:"created-milli"`
 	Routes []json_out_server_route `json:"routes"`
 }
 
@@ -33,6 +34,7 @@ type json_out_server_route struct {
 	ServerPeerOption string `json:"server-peer-option"`
 	ServerPeerSvcAddr string `json:"server-peer-svc-addr"` // actual listening address
 	ServerPeerSvcNet string `json:"server-peer-svc-net"`
+	CreatedMilli int64 `json:"created-milli"`
 }
 
 type json_out_server_peer struct {
@@ -41,6 +43,7 @@ type json_out_server_peer struct {
 	ServerLocalAddr string `json:"server-local-addr"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientLocalAddr string `json:"client-local-addr"`
+	CreatedMilli int64 `json:"created-milli"`
 }
 
 type json_out_server_stats struct {
@@ -213,6 +216,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ServerPeerSvcAddr: r.SvcAddr.String(),
 						ServerPeerSvcNet: r.SvcPermNet.String(),
 						ServerPeerOption: r.SvcOption.String(),
+						CreatedMilli: r.Created.UnixMilli(),
 					})
 				}
 				cts.route_mtx.Unlock()
@@ -221,6 +225,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					ClientAddr: cts.RemoteAddr.String(),
 					ServerAddr: cts.LocalAddr.String(),
 					ClientToken: cts.ClientToken.Get(),
+					CreatedMilli: cts.Created.UnixMilli(),
 					Routes: jsp,
 				})
 			}
@@ -284,6 +289,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ServerPeerSvcAddr: r.SvcAddr.String(),
 					ServerPeerSvcNet: r.SvcPermNet.String(),
 					ServerPeerOption: r.SvcOption.String(),
+					CreatedMilli: r.Created.UnixMilli(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -292,6 +298,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				ClientAddr: cts.RemoteAddr.String(),
 				ServerAddr: cts.LocalAddr.String(),
 				ClientToken: cts.ClientToken.Get(),
+				CreatedMilli: cts.Created.UnixMilli(),
 				Routes: jsp,
 			}
 
@@ -353,6 +360,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ServerPeerSvcAddr: r.SvcAddr.String(),
 					ServerPeerSvcNet: r.SvcPermNet.String(),
 					ServerPeerOption: r.SvcOption.String(),
+					CreatedMilli: r.Created.UnixMilli(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -440,6 +448,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ServerPeerSvcAddr: r.SvcAddr.String(),
 				ServerPeerSvcNet: r.SvcPermNet.String(),
 				ServerPeerOption: r.SvcOption.String(),
+				CreatedMilli: r.Created.UnixMilli(),
 			})
 			if err != nil { goto oops }
 
@@ -501,8 +510,9 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 					Id: p.conn_id,
 					ServerPeerAddr: p.conn.RemoteAddr().String(),
 					ServerLocalAddr: p.conn.LocalAddr().String(),
-					ClientPeerAddr: p.client_peer_raddr,
-					ClientLocalAddr: p.client_peer_laddr,
+					ClientPeerAddr: p.client_peer_raddr.Get(),
+					ClientLocalAddr: p.client_peer_laddr.Get(),
+					CreatedMilli: p.Created.UnixMilli(),
 				})
 			}
 			r.pts_mtx.Unlock()
@@ -558,8 +568,9 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 				Id: p.conn_id,
 				ServerPeerAddr: p.conn.RemoteAddr().String(),
 				ServerLocalAddr: p.conn.LocalAddr().String(),
-				ClientPeerAddr: p.client_peer_raddr,
-				ClientLocalAddr: p.client_peer_laddr,
+				ClientPeerAddr: p.client_peer_raddr.Get(),
+				ClientLocalAddr: p.client_peer_laddr.Get(),
+				CreatedMilli: p.Created.UnixMilli(),
 			}
 
 			status_code = WriteJsonRespHeader(w, http.StatusOK)

@@ -70,10 +70,13 @@ type ServerConfig struct {
 type ServerEventKind int
 const (
 	SERVER_EVENT_CONN_ADDED = iota
+	SERVER_EVENT_CONN_UPDATED
 	SERVER_EVENT_CONN_DELETED
 	SERVER_EVENT_ROUTE_ADDED
+	SERVER_EVENT_ROUTE_UPDATED
 	SERVER_EVENT_ROUTE_DELETED
 	SERVER_EVENT_PEER_ADDED
+	SERVER_EVENT_PEER_UPDATED
 	SERVER_EVENT_PEER_DELETED
 )
 
@@ -87,6 +90,7 @@ type ServerEventConnAdded struct {
 	ServerAddr string `json:"server-addr"`
 	ClientAddr string `json:"client-addr"`
 	ClientToken string `json:"client-token"`
+	CreatedMilli int64 `json:"created-milli"`
 }
 
 type ServerEventConnDeleted struct {
@@ -101,11 +105,29 @@ type ServerEventRouteAdded struct {
 	ServerPeerOption string `json:"server-peer-option"`
 	ServerPeerSvcAddr string `json:"server-peer-svc-addr"`
 	ServerPeerSvcNet string `json:"server-peer-svc-net"`
+	CreatedMilli int64 `json:"created-milli"`
 }
 
 type ServerEventRouteDeleted struct {
 	Conn  ConnId `json:"conn-id"`
 	Route RouteId `json:"route-id"`
+}
+
+type ServerEventPeerAdded struct {
+	Conn  ConnId `json:"conn-id"`
+	Route RouteId `json:"route-id"`
+	Peer  PeerId `json:"peer-id"`
+	ServerPeerAddr string `json:"server-peer-addr"`
+	ServerLocalAddr string `json:"server-local-addr"`
+	ClientPeerAddr string `json:"client-peer-addr"`
+	ClientLocalAddr string `json:"client-local-addr"`
+	CreatedMilli int64 `json:"created-milli"`
+}
+
+type ServerEventPeerDeleted struct {
+	Conn  ConnId `json:"conn-id"`
+	Route RouteId `json:"route-id"`
+	Peer  PeerId `json:"peer-id"`
 }
 
 type ServerEventBulletin = Bulletin[*ServerEvent]
@@ -176,6 +198,7 @@ type ServerConn struct {
 	S            *Server
 	Id            ConnId
 	Sid           string // for logging
+	Created       time.Time
 	ClientToken   Atom[string] // provided by client
 
 	RemoteAddr    net.Addr // client address that created this structure
@@ -194,6 +217,7 @@ type ServerConn struct {
 type ServerRoute struct {
 	Cts        *ServerConn
 	Id          RouteId
+	Created     time.Time
 
 	svc_l      *net.TCPListener
 	SvcAddr    *net.TCPAddr // actual listening address
@@ -270,6 +294,7 @@ func NewServerRoute(cts *ServerConn, id RouteId, option RouteOption, ptc_addr st
 
 	r.Cts = cts
 	r.Id = id
+	r.Created = time.Now()
 	r.svc_l = l
 	r.SvcAddr = svcaddr
 	r.SvcReqAddr = svc_requested_addr
@@ -320,6 +345,21 @@ func (r *ServerRoute) AddNewServerPeerConn(c *net.TCPConn) (*ServerPeerConn, err
 	r.pts_map[pts.conn_id] = pts
 	r.Cts.S.stats.peers.Add(1)
 
+	r.Cts.S.bulletin.Enqueue(
+		&ServerEvent{
+			Kind: SERVER_EVENT_PEER_ADDED,
+			Data: &ServerEventPeerAdded{
+				Conn: r.Cts.Id,
+				Route: r.Id,
+				Peer: pts.conn_id,
+				ServerPeerAddr: pts.conn.RemoteAddr().String(),
+				ServerLocalAddr: pts.conn.LocalAddr().String(),
+				ClientPeerAddr: pts.client_peer_raddr.Get(),
+				ClientLocalAddr: pts.client_peer_laddr.Get(),
+				CreatedMilli: pts.Created.UnixMilli(),
+			},
+		},
+	)
 	return pts, nil
 }
 
@@ -537,6 +577,7 @@ func (cts *ServerConn) AddNewServerRoute(route_id RouteId, proto RouteOption, pt
                     ServerPeerSvcAddr: r.SvcAddr.String(),
                     ServerPeerSvcNet: r.SvcPermNet.String(),
                     ServerPeerOption: r.SvcOption.String(),
+				CreatedMilli: r.Created.UnixMilli(),
 			},
 		},
 	)
@@ -996,6 +1037,7 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 				ServerAddr: cts.LocalAddr.String(),
 				ClientAddr: cts.RemoteAddr.String(),
 				ClientToken: cts.ClientToken.Get(),
+				CreatedMilli: cts.Created.UnixMilli(),
 			 },
 		},
 	)
@@ -1713,6 +1755,7 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 	var ok bool
 
 	cts.S = s
+	cts.Created = time.Now()
 	cts.route_map = make(ServerRouteMap)
 	cts.RemoteAddr = *remote_addr
 	cts.LocalAddr = *local_addr

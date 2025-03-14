@@ -13,6 +13,7 @@ type ServerPeerConn struct {
 	route     *ServerRoute
 	conn_id   PeerId
 	conn      *net.TCPConn
+	Created   time.Time
 
 	stop_chan chan bool
 	stop_req  atomic.Bool
@@ -21,8 +22,8 @@ type ServerPeerConn struct {
 	client_peer_started atomic.Bool
 	client_peer_stopped atomic.Bool
 	client_peer_eof atomic.Bool
-	client_peer_laddr string
-	client_peer_raddr string
+	client_peer_laddr Atom[string]
+	client_peer_raddr Atom[string]
 }
 
 func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id PeerId) *ServerPeerConn {
@@ -31,6 +32,7 @@ func NewServerPeerConn(r *ServerRoute, c *net.TCPConn, id PeerId) *ServerPeerCon
 	spc.route = r
 	spc.conn = c
 	spc.conn_id = id
+	spc.Created = time.Now()
 
 	spc.stop_chan = make(chan bool, 8)
 	spc.stop_req.Store(false)
@@ -143,6 +145,15 @@ done:
 done_without_stop:
 	spc.ReqStop()
 	spc.route.RemoveServerPeerConn(spc)
+
+	spc.route.Cts.S.bulletin.Enqueue(
+		&ServerEvent{
+			Kind: SERVER_EVENT_PEER_DELETED,
+			Data: &ServerEventPeerDeleted {
+				Conn: spc.route.Cts.Id, Route: spc.route.Id, Peer: spc.conn_id,
+			},
+		},
+	)
 }
 
 func (spc *ServerPeerConn) ReqStop() {
@@ -170,16 +181,32 @@ func (spc *ServerPeerConn) ReportPacket(packet_type PACKET_KIND, event_data inte
 			pd, ok = event_data.(*PeerDesc)
 			if !ok {
 				// something wrong. leave it unknown.
-				spc.client_peer_laddr = ""
-				spc.client_peer_raddr = ""
+				spc.client_peer_laddr.Set("")
+				spc.client_peer_raddr.Set("")
 			} else {
-				spc.client_peer_laddr = pd.LocalAddrStr
-				spc.client_peer_raddr = pd.RemoteAddrStr
+				spc.client_peer_laddr.Set(pd.LocalAddrStr)
+				spc.client_peer_raddr.Set(pd.RemoteAddrStr)
 			}
 
 			if spc.client_peer_started.CompareAndSwap(false, true) {
 				spc.client_peer_status_chan <- true
 			}
+
+			spc.route.Cts.S.bulletin.Enqueue(
+				&ServerEvent{
+					Kind: SERVER_EVENT_PEER_UPDATED,
+					Data: &ServerEventPeerAdded{
+						Conn: spc.route.Cts.Id,
+						Route: spc.route.Id,
+						Peer: spc.conn_id,
+						ServerPeerAddr: spc.conn.RemoteAddr().String(),
+						ServerLocalAddr: spc.conn.LocalAddr().String(),
+						ClientPeerAddr: spc.client_peer_raddr.Get(),
+						ClientLocalAddr: spc.client_peer_laddr.Get(),
+						CreatedMilli: spc.Created.UnixMilli(),
+					},
+				},
+			)
 
 		case PACKET_KIND_PEER_ABORTED:
 			spc.ReqStop()
