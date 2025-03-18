@@ -1,5 +1,6 @@
 package hodu
 
+import "container/list"
 import "context"
 import "errors"
 import "io"
@@ -10,10 +11,12 @@ import "sync/atomic"
 import "time"
 
 type ServerPeerConn struct {
-	route     *ServerRoute
-	conn_id   PeerId
-	conn      *net.TCPConn
-	Created   time.Time
+	route    *ServerRoute
+	conn_id  PeerId
+	conn     *net.TCPConn
+	Created  time.Time
+
+	node_in_server *list.Element
 
 	stop_chan chan bool
 	stop_req  atomic.Bool
@@ -145,6 +148,11 @@ done:
 done_without_stop:
 	spc.ReqStop()
 	spc.route.RemoveServerPeerConn(spc)
+
+	spc.route.Cts.S.pts_mtx.Lock()
+	spc.route.Cts.S.pts_list.Remove(spc.node_in_server)
+	spc.node_in_server = nil
+	spc.route.Cts.S.pts_mtx.Unlock()
 
 	spc.route.Cts.S.bulletin.Enqueue(
 		&ServerEvent{

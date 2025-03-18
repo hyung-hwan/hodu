@@ -1,5 +1,6 @@
 package hodu
 
+import "container/list"
 import "context"
 import "crypto/tls"
 import "errors"
@@ -162,7 +163,6 @@ type Server struct {
 	rpc_wg           sync.WaitGroup
 	rpc_svr          *grpc.Server
 
-	pts_limit        int // global pts limit
 	cts_limit        int
 	cts_next_id      ConnId
 	cts_mtx          sync.Mutex
@@ -170,6 +170,10 @@ type Server struct {
 	cts_map_by_addr  ServerConnMapByAddr
 	cts_map_by_token ServerConnMapByClientToken
 	cts_wg           sync.WaitGroup
+
+	pts_limit        int // global pts limit
+	pts_mtx          sync.Mutex
+	pts_list         *list.List
 
 	log              Logger
 	conn_notice      ServerConnNoticeHandler
@@ -344,6 +348,10 @@ func (r *ServerRoute) AddNewServerPeerConn(c *net.TCPConn) (*ServerPeerConn, err
 	pts = NewServerPeerConn(r, c, assigned_id)
 	r.pts_map[pts.conn_id] = pts
 	r.Cts.S.stats.peers.Add(1)
+
+	r.Cts.S.pts_mtx.Lock()
+	pts.node_in_server = r.Cts.S.pts_list.PushBack(pts)
+	r.Cts.S.pts_mtx.Unlock()
 
 	r.Cts.S.bulletin.Enqueue(
 		&ServerEvent{
@@ -1351,6 +1359,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.Cfg = cfg
 	s.ext_svcs = make([]Service, 0, 1)
 	s.pts_limit = cfg.MaxPeers
+	s.pts_list = list.New()
 	s.cts_limit = cfg.RpcMaxConns
 	s.cts_next_id = 1
 	s.cts_map = make(ServerConnMap)
@@ -1388,6 +1397,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id_peers{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id_peers_id{server_ctl{s: &s, id: HS_ID_CTL}}))
+	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-peers",
+		s.WrapHttpHandler(&server_ctl_server_peers{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/notices",
 		s.WrapHttpHandler(&server_ctl_notices{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/notices/{conn_id}",

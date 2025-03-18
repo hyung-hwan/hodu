@@ -1,5 +1,6 @@
 package hodu
 
+import "container/list"
 import "encoding/json"
 import "fmt"
 import "net/http"
@@ -101,6 +102,10 @@ type server_ctl_server_conns_id_routes_id_peers_id struct {
 	server_ctl
 }
 
+type server_ctl_server_peers struct {
+	server_ctl
+}
+
 type server_ctl_notices struct {
 	server_ctl
 }
@@ -196,7 +201,6 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 	s = ctl.s
 	je = json.NewEncoder(w)
 
-	q = req.URL.Query()
 	q = req.URL.Query()
 	routes, err = strconv.ParseBool(strings.ToLower(q.Get("routes")))
 	if err != nil { routes = false }
@@ -604,6 +608,53 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 
 		default:
 			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+func (ctl *server_ctl_server_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var je *json.Encoder
+	var err error
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var js []ServerEventPeerAdded
+			var e *list.Element
+
+			js = make([]ServerEventPeerAdded, 0)
+			s.pts_mtx.Lock()
+			for e = s.pts_list.Front(); e != nil; e = e.Next() {
+				var pts *ServerPeerConn
+				pts = e.Value.(*ServerPeerConn)
+				js = append(js, ServerEventPeerAdded{ // TODO: rename or create an alias type?
+					Conn: pts.route.Cts.Id,
+					Route: pts.route.Id,
+					Peer: pts.conn_id,
+					ServerPeerAddr: pts.conn.RemoteAddr().String(),
+					ServerLocalAddr: pts.conn.LocalAddr().String(),
+					ClientPeerAddr: pts.client_peer_raddr.Get(),
+					ClientLocalAddr: pts.client_peer_laddr.Get(),
+					CreatedMilli: pts.Created.UnixMilli(),
+				})
+			}
+			s.pts_mtx.Unlock()
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(js); err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
 //done:
