@@ -889,6 +889,19 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 								cts.S.cts_map_by_token[x.Conn.Token] = cts
 								cts.S.cts_mtx.Unlock()
 								cts.S.log.Write(cts.Sid, LOG_INFO, "client(%d) %s - token set to '%s'", cts.Id, cts.RemoteAddr, x.Conn.Token)
+
+								cts.S.bulletin.Enqueue(
+									&ServerEvent{
+										Kind: SERVER_EVENT_CONN_UPDATED,
+										Data: &ServerEventConnAdded{
+											Conn: cts.Id,
+											ServerAddr: cts.LocalAddr.String(),
+											ClientAddr: cts.RemoteAddr.String(),
+											ClientToken: cts.ClientToken.Get(),
+											CreatedMilli: cts.Created.UnixMilli(),
+										},
+									},
+								)
 							}
 						}
 					}
