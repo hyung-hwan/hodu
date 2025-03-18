@@ -3,6 +3,9 @@ package hodu
 import "encoding/json"
 import "fmt"
 import "net/http"
+import "net/url"
+import "strconv"
+import "strings"
 import "sync"
 import "time"
 
@@ -24,7 +27,7 @@ type json_out_server_conn struct {
 	ClientAddr string `json:"client-addr"`
 	ClientToken string `json:"client-token"`
 	CreatedMilli int64 `json:"created-milli"`
-	Routes []json_out_server_route `json:"routes"`
+	Routes []json_out_server_route `json:"routes,omitempty"`
 }
 
 type json_out_server_route struct {
@@ -184,12 +187,19 @@ oops:
 
 func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
+	var q url.Values
 	var status_code int
 	var je *json.Encoder
+	var routes bool
 	var err error
 
 	s = ctl.s
 	je = json.NewEncoder(w)
+
+	q = req.URL.Query()
+	q = req.URL.Query()
+	routes, err = strconv.ParseBool(strings.ToLower(q.Get("routes")))
+	if err != nil { routes = false }
 
 	switch req.Method {
 		case http.MethodGet:
@@ -204,22 +214,25 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				var ri RouteId
 
 				cts = s.cts_map[ci]
-				jsp = make([]json_out_server_route, 0)
-				cts.route_mtx.Lock()
-				for _, ri = range cts.route_map.get_sorted_keys() {
-					var r *ServerRoute
-					r = cts.route_map[ri]
-					jsp = append(jsp, json_out_server_route{
-						Id: r.Id,
-						ClientPeerAddr: r.PtcAddr,
-						ClientPeerName: r.PtcName,
-						ServerPeerSvcAddr: r.SvcAddr.String(),
-						ServerPeerSvcNet: r.SvcPermNet.String(),
-						ServerPeerOption: r.SvcOption.String(),
-						CreatedMilli: r.Created.UnixMilli(),
-					})
+				if routes {
+					jsp = make([]json_out_server_route, 0)
+					cts.route_mtx.Lock()
+					for _, ri = range cts.route_map.get_sorted_keys() {
+						var r *ServerRoute
+						r = cts.route_map[ri]
+						jsp = append(jsp, json_out_server_route{
+							Id: r.Id,
+							ClientPeerAddr: r.PtcAddr,
+							ClientPeerName: r.PtcName,
+							ServerPeerSvcAddr: r.SvcAddr.String(),
+							ServerPeerSvcNet: r.SvcPermNet.String(),
+							ServerPeerOption: r.SvcOption.String(),
+							CreatedMilli: r.Created.UnixMilli(),
+						})
+					}
+					cts.route_mtx.Unlock()
 				}
-				cts.route_mtx.Unlock()
+
 				js = append(js, json_out_server_conn{
 					Id: cts.Id,
 					ClientAddr: cts.RemoteAddr.String(),
@@ -253,14 +266,20 @@ oops:
 
 func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
+	var q url.Values
 	var status_code int
-	var err error
 	var je *json.Encoder
 	var conn_id string
 	var cts *ServerConn
+	var routes bool
+	var err error
 
 	s = ctl.s
 	je = json.NewEncoder(w)
+
+	q = req.URL.Query()
+	routes, err = strconv.ParseBool(strings.ToLower(q.Get("routes")))
+	if err != nil { routes = false }
 
 	conn_id = req.PathValue("conn_id")
 	cts, err = s.FindServerConnByIdStr(conn_id)
@@ -270,29 +289,32 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 		goto oops
 	}
 
+
 	switch req.Method {
 		case http.MethodGet:
 			var jsp []json_out_server_route
 			var js *json_out_server_conn
 			var ri RouteId
 
-			jsp = make([]json_out_server_route, 0)
-			cts.route_mtx.Lock()
-			for _, ri = range cts.route_map.get_sorted_keys() {
-				var r *ServerRoute
+			if routes {
+				jsp = make([]json_out_server_route, 0)
+				cts.route_mtx.Lock()
+				for _, ri = range cts.route_map.get_sorted_keys() {
+					var r *ServerRoute
 
-				r = cts.route_map[ri]
-				jsp = append(jsp, json_out_server_route{
-					Id: r.Id,
-					ClientPeerAddr: r.PtcAddr,
-					ClientPeerName: r.PtcName,
-					ServerPeerSvcAddr: r.SvcAddr.String(),
-					ServerPeerSvcNet: r.SvcPermNet.String(),
-					ServerPeerOption: r.SvcOption.String(),
-					CreatedMilli: r.Created.UnixMilli(),
-				})
+					r = cts.route_map[ri]
+					jsp = append(jsp, json_out_server_route{
+						Id: r.Id,
+						ClientPeerAddr: r.PtcAddr,
+						ClientPeerName: r.PtcName,
+						ServerPeerSvcAddr: r.SvcAddr.String(),
+						ServerPeerSvcNet: r.SvcPermNet.String(),
+						ServerPeerOption: r.SvcOption.String(),
+						CreatedMilli: r.Created.UnixMilli(),
+					})
+				}
+				cts.route_mtx.Unlock()
 			}
-			cts.route_mtx.Unlock()
 			js = &json_out_server_conn{
 				Id: cts.Id,
 				ClientAddr: cts.RemoteAddr.String(),

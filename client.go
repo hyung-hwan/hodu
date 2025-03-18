@@ -1924,6 +1924,7 @@ func (c *Client) FixServices() {
 
 func (c *Client) WaitForTermination() {
 	c.wg.Wait()
+	c.log.Write("", LOG_INFO, "End of service")
 }
 
 func (c *Client) WriteLog(id string, level LogLevel, fmtstr string, args ...interface{}) {

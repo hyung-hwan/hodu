@@ -1024,6 +1024,10 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 		return fmt.Errorf("failed to get peer from packet stream context")
 	}
 
+	if s.stop_req.Load() {
+		return fmt.Errorf("new conneciton prohibited after stop - %s", p.Addr.String())
+	}
+
 	cts, err = s.AddNewServerConn(&p.Addr, &p.LocalAddr, strm)
 	if err != nil {
 		return fmt.Errorf("unable to add client %s - %s", p.Addr.String(), err.Error())
@@ -1042,7 +1046,7 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 		},
 	)
 
-	// Don't detached the cts task as a go-routine as this function
+	// Don't detach the cts task as a go-routine as this function
 	// is invoked as a go-routine by the grpc server.
 	s.cts_wg.Add(1)
 	cts.RunTask(&s.cts_wg)
@@ -1553,7 +1557,7 @@ func (s *Server) RunTask(wg *sync.WaitGroup) {
 		go s.run_grpc_server(idx, &s.rpc_wg)
 	}
 
-	// most the work is done by in separate goroutines (s.run_grp_server)
+	// most work is done by in separate goroutines (s.run_grp_server)
 	// this loop serves as a placeholder to prevent the logic flow from
 	// descening down to s.ReqStop()
 task_loop:
@@ -2117,6 +2121,7 @@ func (s *Server) FixServices() {
 
 func (s *Server) WaitForTermination() {
 	s.wg.Wait()
+	s.log.Write("", LOG_INFO, "End of service")
 }
 
 func (s *Server) WriteLog(id string, level LogLevel, fmtstr string, args ...interface{}) {
