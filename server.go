@@ -176,7 +176,7 @@ type Server struct {
 	pts_list         *list.List
 
 	log              Logger
-	conn_notice      ServerConnNoticeHandler
+	conn_notice_handlers []ServerConnNoticeHandler
 
 	svc_port_mtx     sync.Mutex
 	svc_port_map     ServerSvcPortMap
@@ -923,8 +923,11 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				var ok bool
 				x, ok = pkt.U.(*Packet_ConnNoti)
 				if ok {
-					if cts.S.conn_notice != nil {
-						cts.S.conn_notice.Handle(cts, x.ConnNoti.Text)
+					if cts.S.conn_notice_handlers != nil {
+						var handler ServerConnNoticeHandler
+						for _, handler = range cts.S.conn_notice_handlers {
+							handler.Handle(cts, x.ConnNoti.Text)
+						}
 					}
 				} else {
 					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_notice packet from %s", cts.RemoteAddr)
@@ -2152,8 +2155,8 @@ func (s *Server) WriteLog(id string, level LogLevel, fmtstr string, args ...inte
 	s.log.Write(id, level, fmtstr, args...)
 }
 
-func (s *Server) SetConnNoticeHandler(handler ServerConnNoticeHandler) {
-	s.conn_notice = handler
+func (s *Server) SetConnNoticeHandlers(handlers []ServerConnNoticeHandler) {
+	s.conn_notice_handlers = handlers
 }
 
 func (s *Server) AddCtlHandler(path string, handler ServerHttpHandler) {

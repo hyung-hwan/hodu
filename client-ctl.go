@@ -270,7 +270,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					CurrentServerIndex: cts.cfg.Index,
 					ServerAddr: cts.remote_addr.Get(),
 					ClientAddr: cts.local_addr.Get(),
-					ClientToken: cts.Token,
+					ClientToken: cts.Token.Get(),
 					Routes: jsp,
 				})
 			}
@@ -385,7 +385,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				CurrentServerIndex: cts.cfg.Index,
 				ServerAddr: cts.remote_addr.Get(),
 				ClientAddr: cts.local_addr.Get(),
-				ClientToken: cts.Token,
+				ClientToken: cts.Token.Get(),
 				Routes: jsp,
 			}
 
