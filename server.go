@@ -175,6 +175,9 @@ type Server struct {
 	pts_mtx          sync.Mutex
 	pts_list         *list.List
 
+	route_mtx        sync.Mutex
+	route_list       *list.List
+
 	log              Logger
 	conn_notice_handlers []ServerConnNoticeHandler
 
@@ -222,6 +225,8 @@ type ServerRoute struct {
 	Cts        *ServerConn
 	Id          RouteId
 	Created     time.Time
+
+	node_in_server *list.Element
 
 	svc_l      *net.TCPListener
 	SvcAddr    *net.TCPAddr // actual listening address
@@ -430,6 +435,11 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 
 	r.Cts.RemoveServerRoute(r) // final phase...
 
+	r.Cts.S.route_mtx.Lock()
+	r.Cts.S.route_list.Remove(r.node_in_server)
+	r.node_in_server = nil
+	r.Cts.S.route_mtx.Unlock()
+
 	r.Cts.S.bulletin.Enqueue(
 		&ServerEvent{
 			Kind: SERVER_EVENT_ROUTE_DELETED,
@@ -573,6 +583,10 @@ func (cts *ServerConn) AddNewServerRoute(route_id RouteId, proto RouteOption, pt
 	cts.route_map[route_id] = r
 	cts.S.stats.routes.Add(1)
 	cts.route_mtx.Unlock()
+
+	cts.S.route_mtx.Lock()
+	r.node_in_server = cts.S.route_list.PushBack(r)
+	cts.S.route_mtx.Unlock()
 
 	cts.S.bulletin.Enqueue(
 		&ServerEvent{
@@ -1363,6 +1377,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.ext_svcs = make([]Service, 0, 1)
 	s.pts_limit = cfg.MaxPeers
 	s.pts_list = list.New()
+	s.route_list = list.New()
 	s.cts_limit = cfg.RpcMaxConns
 	s.cts_next_id = 1
 	s.cts_map = make(ServerConnMap)
@@ -1400,6 +1415,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id_peers{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id_peers_id{server_ctl{s: &s, id: HS_ID_CTL}}))
+	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-routes",
+		s.WrapHttpHandler(&server_ctl_server_routes{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-peers",
 		s.WrapHttpHandler(&server_ctl_server_peers{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/notices",

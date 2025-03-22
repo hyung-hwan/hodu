@@ -23,7 +23,7 @@ type json_out_token struct {
 }
 
 type json_out_server_conn struct {
-	Id ConnId `json:"id"`
+	CId ConnId `json:"conn-id"`
 	ServerAddr string `json:"server-addr"`
 	ClientAddr string `json:"client-addr"`
 	ClientToken string `json:"client-token"`
@@ -32,7 +32,8 @@ type json_out_server_conn struct {
 }
 
 type json_out_server_route struct {
-	Id RouteId `json:"id"`
+	CId ConnId `json:"conn-id"`
+	RId RouteId `json:"route-id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
@@ -42,7 +43,9 @@ type json_out_server_route struct {
 }
 
 type json_out_server_peer struct {
-	Id PeerId `json:"id"`
+	CId ConnId `json:"conn-id"`
+	RId RouteId `json:"route-id"`
+	PId PeerId `json:"peer-id"`
 	ServerPeerAddr string `json:"server-peer-addr"`
 	ServerLocalAddr string `json:"server-local-addr"`
 	ClientPeerAddr string `json:"client-peer-addr"`
@@ -99,6 +102,10 @@ type server_ctl_server_conns_id_routes_id_peers struct {
 }
 
 type server_ctl_server_conns_id_routes_id_peers_id struct {
+	server_ctl
+}
+
+type server_ctl_server_routes struct {
 	server_ctl
 }
 
@@ -225,7 +232,8 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						var r *ServerRoute
 						r = cts.route_map[ri]
 						jsp = append(jsp, json_out_server_route{
-							Id: r.Id,
+							CId: cts.Id,
+							RId: r.Id,
 							ClientPeerAddr: r.PtcAddr,
 							ClientPeerName: r.PtcName,
 							ServerPeerSvcAddr: r.SvcAddr.String(),
@@ -238,7 +246,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				}
 
 				js = append(js, json_out_server_conn{
-					Id: cts.Id,
+					CId: cts.Id,
 					ClientAddr: cts.RemoteAddr.String(),
 					ServerAddr: cts.LocalAddr.String(),
 					ClientToken: cts.ClientToken.Get(),
@@ -308,7 +316,8 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 
 					r = cts.route_map[ri]
 					jsp = append(jsp, json_out_server_route{
-						Id: r.Id,
+						CId: cts.Id,
+						RId: r.Id,
 						ClientPeerAddr: r.PtcAddr,
 						ClientPeerName: r.PtcName,
 						ServerPeerSvcAddr: r.SvcAddr.String(),
@@ -320,7 +329,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				cts.route_mtx.Unlock()
 			}
 			js = &json_out_server_conn{
-				Id: cts.Id,
+				CId: cts.Id,
 				ClientAddr: cts.RemoteAddr.String(),
 				ServerAddr: cts.LocalAddr.String(),
 				ClientToken: cts.ClientToken.Get(),
@@ -380,7 +389,8 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 
 				r = cts.route_map[ri]
 				jsp = append(jsp, json_out_server_route{
-					Id: r.Id,
+					CId: cts.Id,
+					RId: r.Id,
 					ClientPeerAddr: r.PtcAddr,
 					ClientPeerName: r.PtcName,
 					ServerPeerSvcAddr: r.SvcAddr.String(),
@@ -468,7 +478,8 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		case http.MethodGet:
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			err = je.Encode(json_out_server_route{
-				Id: r.Id,
+				CId: r.Cts.Id,
+				RId: r.Id,
 				ClientPeerAddr: r.PtcAddr,
 				ClientPeerName: r.PtcName,
 				ServerPeerSvcAddr: r.SvcAddr.String(),
@@ -533,7 +544,9 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 				var p *ServerPeerConn
 				p = r.pts_map[pi]
 				jcp = append(jcp, json_out_server_peer{
-					Id: p.conn_id,
+					CId: r.Cts.Id,
+					RId: r.Id,
+					PId: p.conn_id,
 					ServerPeerAddr: p.conn.RemoteAddr().String(),
 					ServerLocalAddr: p.conn.LocalAddr().String(),
 					ClientPeerAddr: p.client_peer_raddr.Get(),
@@ -591,7 +604,9 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 			var jcp *json_out_server_peer
 
 			jcp = &json_out_server_peer{
-				Id: p.conn_id,
+				CId: p.route.Cts.Id,
+				RId: p.route.Id,
+				PId: p.conn_id,
 				ServerPeerAddr: p.conn.RemoteAddr().String(),
 				ServerLocalAddr: p.conn.LocalAddr().String(),
 				ClientPeerAddr: p.client_peer_raddr.Get(),
@@ -616,6 +631,53 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 oops:
 	return status_code, err
 }
+// ------------------------------------
+
+func (ctl *server_ctl_server_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var je *json.Encoder
+	var err error
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var js []json_out_server_route
+			var e *list.Element
+
+			js = make([]json_out_server_route, 0)
+			s.route_mtx.Lock()
+			for e = s.route_list.Front(); e != nil; e = e.Next() {
+				var r *ServerRoute
+				r = e.Value.(*ServerRoute)
+				js = append(js, json_out_server_route{
+					CId: r.Cts.Id,
+					RId: r.Id,
+					ClientPeerAddr: r.PtcAddr,
+					ClientPeerName: r.PtcName,
+					ServerPeerSvcAddr: r.SvcAddr.String(),
+					ServerPeerSvcNet: r.SvcPermNet.String(),
+					ServerPeerOption: r.SvcOption.String(),
+					CreatedMilli: r.Created.UnixMilli(),
+				})
+			}
+			s.route_mtx.Unlock()
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(js); err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
 
 // ------------------------------------
 func (ctl *server_ctl_server_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
@@ -629,18 +691,18 @@ func (ctl *server_ctl_server_peers) ServeHTTP(w http.ResponseWriter, req *http.R
 
 	switch req.Method {
 		case http.MethodGet:
-			var js []ServerEventPeerAdded
+			var js []json_out_server_peer
 			var e *list.Element
 
-			js = make([]ServerEventPeerAdded, 0)
+			js = make([]json_out_server_peer, 0)
 			s.pts_mtx.Lock()
 			for e = s.pts_list.Front(); e != nil; e = e.Next() {
 				var pts *ServerPeerConn
 				pts = e.Value.(*ServerPeerConn)
-				js = append(js, ServerEventPeerAdded{ // TODO: rename or create an alias type?
-					Conn: pts.route.Cts.Id,
-					Route: pts.route.Id,
-					Peer: pts.conn_id,
+				js = append(js, json_out_server_peer{
+					CId: pts.route.Cts.Id,
+					RId: pts.route.Id,
+					PId: pts.conn_id,
 					ServerPeerAddr: pts.conn.RemoteAddr().String(),
 					ServerLocalAddr: pts.conn.LocalAddr().String(),
 					ClientPeerAddr: pts.client_peer_raddr.Get(),

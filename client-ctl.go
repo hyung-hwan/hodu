@@ -28,7 +28,7 @@ type json_in_client_conn struct {
 }
 
 type json_in_client_route struct {
-	Id RouteId `json:"id"` // 0 for auto-assignement.
+	RId RouteId `json:"route-id"` // 0 for auto-assignement.
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
@@ -42,15 +42,15 @@ type json_in_client_route struct {
 }
 
 type json_in_client_route_update struct {
-	Lifetime string `sjon:"lifetime"`
+	Lifetime string `json:"lifetime"`
 }
 
 type json_out_client_conn_id struct {
-	Id ConnId `json:"id"`
+	CId ConnId `json:"conn-id"`
 }
 
 type json_out_client_conn struct {
-	Id ConnId `json:"id"`
+	CId ConnId `json:"conn-id"`
 	ReqServerAddrs []string `json:"req-server-addrs"` // server addresses requested. may include a domain name
 	CurrentServerIndex int `json:"current-server-index"`
 	ServerAddr string `json:"server-addr"` // actual server address
@@ -60,12 +60,13 @@ type json_out_client_conn struct {
 }
 
 type json_out_client_route_id struct {
-	Id    RouteId `json:"id"`
-	CtsId ConnId  `json:"conn-id"`
+	CId  ConnId  `json:"conn-id"`
+	RId  RouteId `json:"route-id"`
 }
 
 type json_out_client_route struct {
-	Id RouteId `json:"id"`
+	CId ConnId `json:"conn-id"`
+	RId RouteId `json:"route-id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientPeerName string `json:"client-peer-name"`
 	ServerPeerOption string `json:"server-peer-option"`
@@ -80,7 +81,9 @@ type json_out_client_route struct {
 }
 
 type json_out_client_peer struct {
-	Id PeerId `json:"id"`
+	CId ConnId `json:"conn-id"`
+	RId RouteId `json:"route-id"`
+	PId PeerId `json:"peer-id"`
 	ClientPeerAddr string `json:"client-peer-addr"`
 	ClientLocalAddr string `json:"client-local-addr"`
 	ServerPeerAddr string `json:"server-peer-addr"`
@@ -252,7 +255,8 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 
 					lftsta, lftdur = r.GetLifetimeInfo()
 					jsp = append(jsp, json_out_client_route{
-						Id: r.Id,
+						CId: cts.Id,
+						RId: r.Id,
 						ClientPeerAddr: r.PeerAddr,
 						ClientPeerName: r.PeerName,
 						ServerPeerSvcAddr: r.ServerPeerSvcAddr,
@@ -265,7 +269,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				cts.route_mtx.Unlock()
 
 				js = append(js, json_out_client_conn{
-					Id: cts.Id,
+					CId: cts.Id,
 					ReqServerAddrs: cts.cfg.ServerAddrs,
 					CurrentServerIndex: cts.cfg.Index,
 					ServerAddr: cts.remote_addr.Get(),
@@ -306,7 +310,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 				goto oops
 			} else {
 				status_code = WriteJsonRespHeader(w, http.StatusCreated)
-				if err = je.Encode(json_out_client_conn_id{Id: cts.Id}); err != nil { goto oops }
+				if err = je.Encode(json_out_client_conn_id{CId: cts.Id}); err != nil { goto oops }
 			}
 
 		case http.MethodDelete:
@@ -367,7 +371,8 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 
 				lftsta, lftdur = r.GetLifetimeInfo()
 				jsp = append(jsp, json_out_client_route{
-					Id: r.Id,
+					CId: cts.Id,
+					RId: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
 					ServerPeerSvcAddr: r.ServerPeerSvcAddr,
@@ -380,7 +385,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 			cts.route_mtx.Unlock()
 
 			js = &json_out_client_conn{
-				Id: cts.Id,
+				CId: cts.Id,
 				ReqServerAddrs: cts.cfg.ServerAddrs,
 				CurrentServerIndex: cts.cfg.Index,
 				ServerAddr: cts.remote_addr.Get(),
@@ -445,7 +450,8 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 
 				lftsta, lftdur = r.GetLifetimeInfo()
 				jsp = append(jsp, json_out_client_route{
-					Id: r.Id,
+					CId: r.cts.Id,
+					RId: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
 					ServerPeerSvcAddr: r.ServerPeerSvcAddr,
@@ -494,7 +500,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 			}
 
 			rc = &ClientRouteConfig{
-				Id: jcr.Id,
+				Id: jcr.RId,
 				PeerAddr: jcr.ClientPeerAddr,
 				PeerName: jcr.ClientPeerName,
 				Option: server_peer_option,
@@ -511,7 +517,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				goto oops
 			} else {
 				status_code = WriteJsonRespHeader(w, http.StatusCreated)
-				if err = je.Encode(json_out_client_route_id{Id: r.Id, CtsId: r.cts.Id}); err != nil { goto oops }
+				if err = je.Encode(json_out_client_route_id{RId: r.Id, CId: r.cts.Id}); err != nil { goto oops }
 			}
 
 		case http.MethodDelete:
@@ -562,7 +568,8 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 			lftsta, lftdur = r.GetLifetimeInfo()
 			err = je.Encode(json_out_client_route{
-				Id: r.Id,
+				CId: r.cts.Id,
+				RId: r.Id,
 				ClientPeerAddr: r.PeerAddr,
 				ClientPeerName: r.PeerName,
 				ServerPeerSvcAddr: r.ServerPeerSvcAddr,
@@ -649,7 +656,8 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 
 			lftsta, lftdur = r.GetLifetimeInfo()
 			err = je.Encode(json_out_client_route{
-				Id: r.Id,
+				CId: r.cts.Id,
+				RId: r.Id,
 				ClientPeerAddr: r.PeerAddr,
 				ClientPeerName: r.PeerName,
 				ServerPeerSvcAddr: r.ServerPeerSvcAddr,
@@ -738,7 +746,9 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 
 				p = r.ptc_map[pi]
 				jcp = append(jcp, json_out_client_peer{
-					Id: p.conn_id,
+					CId: r.cts.Id,
+					RId: r.Id,
+					PId: p.conn_id,
 					ClientPeerAddr: p.conn.RemoteAddr().String(),
 					ClientLocalAddr: p.conn.LocalAddr().String(),
 					ServerPeerAddr: p.pts_raddr,
@@ -795,7 +805,9 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 			var jcp *json_out_client_peer
 
 			jcp = &json_out_client_peer{
-				Id: p.conn_id,
+				CId: p.route.cts.Id,
+				RId: p.route.Id,
+				PId: p.conn_id,
 				ClientPeerAddr: p.conn.RemoteAddr().String(),
 				ClientLocalAddr: p.conn.LocalAddr().String(),
 				ServerPeerAddr: p.pts_raddr,
