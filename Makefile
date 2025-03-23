@@ -47,8 +47,8 @@ CMD_SRCS=\
 all: $(NAME)
 
 $(NAME): $(DATA) $(SRCS) $(CMD_DATA) $(CMD_SRCS)
-	##CGO_ENABLED=0 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)'" -o $@ $(CMD_SRCS)
-	CGO_ENABLED=1 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)'" -o $@ $(CMD_SRCS)
+	CGO_ENABLED=0 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)'" -o $@ $(CMD_SRCS)
+	##CGO_ENABLED=1 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)'" -o $@ $(CMD_SRCS)
 	##CGO_ENABLED=1 go build -x -ldflags "-X 'main.HODU_NAME=$(NAME)' -X 'main.HODU_VERSION=$(VERSION)' -linkmode external -extldflags=-static" -o $@ $(CMD_SRCS)
 
 $(NAME).debug: $(DATA) $(SRCS) $(CMD_DATA) $(CMD_SRCS)
