@@ -17,6 +17,7 @@ type ServerPeerConn struct {
 	Created  time.Time
 
 	node_in_server *list.Element
+	node_in_conn *list.Element
 
 	stop_chan chan bool
 	stop_req  atomic.Bool
@@ -153,6 +154,11 @@ done_without_stop:
 	spc.route.Cts.S.pts_list.Remove(spc.node_in_server)
 	spc.node_in_server = nil
 	spc.route.Cts.S.pts_mtx.Unlock()
+
+	spc.route.Cts.pts_mtx.Lock()
+	spc.route.Cts.pts_list.Remove(spc.node_in_conn)
+	spc.node_in_conn = nil
+	spc.route.Cts.pts_mtx.Unlock()
 
 	spc.route.Cts.S.bulletin.Enqueue(
 		&ServerEvent{

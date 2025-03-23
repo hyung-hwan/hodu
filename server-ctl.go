@@ -105,6 +105,10 @@ type server_ctl_server_conns_id_routes_id_peers_id struct {
 	server_ctl
 }
 
+type server_ctl_server_conns_id_peers struct {
+	server_ctl
+}
+
 type server_ctl_server_routes struct {
 	server_ctl
 }
@@ -631,6 +635,64 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 oops:
 	return status_code, err
 }
+// ------------------------------------
+
+func (ctl *server_ctl_server_conns_id_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var err error
+	var conn_id string
+	var je *json.Encoder
+	var cts *ServerConn
+
+	s = ctl.s
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	cts, err = s.FindServerConnByIdStr(conn_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			var jsp []json_out_server_peer
+			var e *list.Element
+
+			jsp = make([]json_out_server_peer, 0)
+			cts.pts_mtx.Lock()
+			for e = cts.pts_list.Front(); e != nil; e = e.Next() {
+				var pts *ServerPeerConn
+				pts = e.Value.(*ServerPeerConn)
+				jsp = append(jsp, json_out_server_peer{
+					CId: pts.route.Cts.Id,
+					RId: pts.route.Id,
+					PId: pts.conn_id,
+					ServerPeerAddr: pts.conn.RemoteAddr().String(),
+					ServerLocalAddr: pts.conn.LocalAddr().String(),
+					ClientPeerAddr: pts.client_peer_raddr.Get(),
+					ClientLocalAddr: pts.client_peer_laddr.Get(),
+					CreatedMilli: pts.Created.UnixMilli(),
+				})
+			}
+			cts.pts_mtx.Unlock()
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(jsp); err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
 // ------------------------------------
 
 func (ctl *server_ctl_server_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {

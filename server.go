@@ -216,6 +216,9 @@ type ServerConn struct {
 	route_map     ServerRouteMap
 	route_wg      sync.WaitGroup
 
+	pts_mtx       sync.Mutex
+	pts_list      *list.List
+
 	wg            sync.WaitGroup
 	stop_req      atomic.Bool
 	stop_chan     chan bool
@@ -357,6 +360,10 @@ func (r *ServerRoute) AddNewServerPeerConn(c *net.TCPConn) (*ServerPeerConn, err
 	r.Cts.S.pts_mtx.Lock()
 	pts.node_in_server = r.Cts.S.pts_list.PushBack(pts)
 	r.Cts.S.pts_mtx.Unlock()
+
+	r.Cts.pts_mtx.Lock()
+	pts.node_in_conn = r.Cts.pts_list.PushBack(pts)
+	r.Cts.pts_mtx.Unlock()
 
 	r.Cts.S.bulletin.Enqueue(
 		&ServerEvent{
@@ -1415,6 +1422,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id_peers{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id_peers_id{server_ctl{s: &s, id: HS_ID_CTL}}))
+	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/peers",
+		s.WrapHttpHandler(&server_ctl_server_conns_id_peers{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-routes",
 		s.WrapHttpHandler(&server_ctl_server_routes{server_ctl{s: &s, id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-peers",
@@ -1811,6 +1820,7 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 
 	cts.stop_req.Store(false)
 	cts.stop_chan = make(chan bool, 8)
+	cts.pts_list = list.New()
 
 	s.cts_mtx.Lock()
 
