@@ -1070,6 +1070,9 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 	}
 
 	if s.stop_req.Load() {
+		// this check should still suffer race condition
+		// becuase this function itself runs as a goroutine and is fired
+		// from the grpc server code without synchronizing with hodu.
 		return fmt.Errorf("new conneciton prohibited after stop - %s", p.Addr.String())
 	}
 
@@ -1382,9 +1385,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	s.Cfg = cfg
 	s.ext_svcs = make([]Service, 0, 1)
-	s.pts_limit = cfg.MaxPeers
-	s.pts_list = list.New()
 	s.route_list = list.New()
+	s.pts_list = list.New()
+	s.pts_limit = cfg.MaxPeers
 	s.cts_limit = cfg.RpcMaxConns
 	s.cts_next_id = 1
 	s.cts_map = make(ServerConnMap)

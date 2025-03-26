@@ -54,6 +54,17 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 	cpc.route.cts.psc.Send(MakePeerStoppedPacket(cpc.route.Id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String())) // nothing much to do upon failure. no error check here
 	cpc.ReqStop()
 	cpc.route.RemoveClientPeerConn(cpc)
+
+	cpc.route.cts.C.ptc_mtx.Lock()
+	cpc.route.cts.C.ptc_list.Remove(cpc.node_in_client)
+	cpc.node_in_client = nil
+	cpc.route.cts.C.ptc_mtx.Unlock()
+
+	cpc.route.cts.ptc_mtx.Lock()
+	cpc.route.cts.ptc_list.Remove(cpc.node_in_conn)
+	cpc.node_in_conn = nil
+	cpc.route.cts.ptc_mtx.Unlock()
+
 	return nil
 }
 

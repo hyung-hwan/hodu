@@ -920,7 +920,7 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 	// handle authentication using the first message.
 	// end this task if authentication fails.
-	if !ctl.noauth && ctl.s.Cfg.CtlAuth != nil {
+	if !ctl.noauth && s.Cfg.CtlAuth != nil {
 		var req *http.Request
 
 		req = ws.Request()
@@ -935,7 +935,7 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 			}
 		}
 
-		status_code, _ = ctl.s.Cfg.CtlAuth.Authenticate(req)
+		status_code, _ = s.Cfg.CtlAuth.Authenticate(req)
 		if status_code != http.StatusOK {
 			goto done
 		}

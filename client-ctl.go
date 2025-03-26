@@ -1,10 +1,14 @@
 package hodu
 
+import "container/list"
 import "encoding/json"
 import "fmt"
 import "net/http"
 import "strings"
+import "sync"
 import "time"
+
+import "golang.org/x/net/websocket"
 
 /*
  *                       POST                 GET            PUT            DELETE
@@ -56,7 +60,8 @@ type json_out_client_conn struct {
 	ServerAddr string `json:"server-addr"` // actual server address
 	ClientAddr string `json:"client-addr"`
 	ClientToken string `json:"client-token"`
-	Routes []json_out_client_route `json:"routes"`
+	CreatedMilli int64 `json:"created-milli"`
+	Routes []json_out_client_route `json:"routes,omitempty"`
 }
 
 type json_out_client_route_id struct {
@@ -78,6 +83,7 @@ type json_out_client_route struct {
 
 	Lifetime string `json:"lifetime"`
 	LifetimeStart int64 `json:"lifetime-start"`
+	CreatedMilli int64 `json:"created-milli"`
 }
 
 type json_out_client_peer struct {
@@ -88,6 +94,7 @@ type json_out_client_peer struct {
 	ClientLocalAddr string `json:"client-local-addr"`
 	ServerPeerAddr string `json:"server-peer-addr"`
 	ServerLocalAddr string `json:"server-local-addr"`
+	CreatedMilli int64 `json:"created-milli"`
 }
 
 type json_out_client_stats struct {
@@ -101,6 +108,7 @@ type json_out_client_stats struct {
 type client_ctl struct {
 	c *Client
 	id string
+	noauth bool // override the auth configuration if true
 }
 
 type client_ctl_token struct {
@@ -135,6 +143,18 @@ type client_ctl_client_conns_id_routes_id_peers_id struct {
 	client_ctl
 }
 
+type client_ctl_client_conns_id_peers struct {
+	client_ctl
+}
+
+type client_ctl_client_routes struct {
+	client_ctl
+}
+
+type client_ctl_client_peers struct {
+	client_ctl
+}
+
 type client_ctl_notices struct {
 	client_ctl
 }
@@ -144,6 +164,10 @@ type client_ctl_notices_id struct {
 }
 
 type client_ctl_stats struct {
+	client_ctl
+}
+
+type client_ctl_ws struct {
 	client_ctl
 }
 
@@ -228,13 +252,6 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 		case http.MethodGet:
 			var js []json_out_client_conn
 			var ci ConnId
-//			var q url.Values
-
-//			q = req.URL.Query()
-
-// TODO: brief listing vs full listing
-//			if q.Get("brief") == "true" {
-//			}
 
 			js = make([]json_out_client_conn, 0)
 			c.cts_mtx.Lock()
@@ -264,6 +281,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ServerPeerOption: r.ServerPeerOption.String(),
 						Lifetime: DurationToSecString(lftdur),
 						LifetimeStart: lftsta.Unix(),
+						CreatedMilli: r.Created.UnixMilli(),
 					})
 				}
 				cts.route_mtx.Unlock()
@@ -275,6 +293,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					ServerAddr: cts.remote_addr.Get(),
 					ClientAddr: cts.local_addr.Get(),
 					ClientToken: cts.Token.Get(),
+					CreatedMilli: cts.Created.UnixMilli(),
 					Routes: jsp,
 				})
 			}
@@ -380,6 +399,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
 					LifetimeStart: lftsta.Unix(),
+					CreatedMilli: r.Created.UnixMilli(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -391,6 +411,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 				ServerAddr: cts.remote_addr.Get(),
 				ClientAddr: cts.local_addr.Get(),
 				ClientToken: cts.Token.Get(),
+				CreatedMilli: cts.Created.UnixMilli(),
 				Routes: jsp,
 			}
 
@@ -459,6 +480,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
 					LifetimeStart: lftsta.Unix(),
+					CreatedMilli: r.Created.UnixMilli(),
 				})
 			}
 			cts.route_mtx.Unlock()
@@ -577,6 +599,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ServerPeerOption: r.ServerPeerOption.String(),
 				Lifetime: DurationToSecString(lftdur),
 				LifetimeStart: lftsta.Unix(),
+				CreatedMilli: r.Created.UnixMilli(),
 			})
 			if err != nil { goto oops }
 
@@ -753,6 +776,7 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers) ServeHTTP(w http.Response
 					ClientLocalAddr: p.conn.LocalAddr().String(),
 					ServerPeerAddr: p.pts_raddr,
 					ServerLocalAddr: p.pts_laddr,
+					CreatedMilli: p.Created.UnixMilli(),
 				})
 			}
 			r.ptc_mtx.Unlock()
@@ -812,6 +836,7 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 				ClientLocalAddr: p.conn.LocalAddr().String(),
 				ServerPeerAddr: p.pts_raddr,
 				ServerLocalAddr: p.pts_laddr,
+				CreatedMilli: p.Created.UnixMilli(),
 			}
 
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
@@ -823,6 +848,167 @@ func (ctl *client_ctl_client_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 
 		default:
 			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_client_conns_id_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var c *Client
+	var status_code int
+	var err error
+	var conn_id string
+	var je *json.Encoder
+	var cts *ClientConn
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	conn_id = req.PathValue("conn_id")
+	cts, err = c.FindClientConnByIdStr(conn_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			var jsp []json_out_client_peer
+			var e *list.Element
+
+			jsp = make([]json_out_client_peer, 0)
+			cts.ptc_mtx.Lock()
+			for e = cts.ptc_list.Front(); e != nil; e = e.Next() {
+				var ptc *ClientPeerConn
+				ptc = e.Value.(*ClientPeerConn)
+				jsp = append(jsp, json_out_client_peer{
+					CId: ptc.route.cts.Id,
+					RId: ptc.route.Id,
+					PId: ptc.conn_id,
+					ClientPeerAddr: ptc.conn.RemoteAddr().String(),
+					ClientLocalAddr: ptc.conn.LocalAddr().String(),
+					ServerPeerAddr: ptc.pts_raddr,
+					ServerLocalAddr: ptc.pts_laddr,
+					CreatedMilli: ptc.Created.UnixMilli(),
+				})
+			}
+			cts.ptc_mtx.Unlock()
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(jsp); err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_client_routes) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var c *Client
+	var status_code int
+	var je *json.Encoder
+	var err error
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var js []json_out_client_route
+			var e *list.Element
+
+			js = make([]json_out_client_route, 0)
+			c.route_mtx.Lock()
+			for e = c.route_list.Front(); e != nil; e = e.Next() {
+				var r *ClientRoute
+				var lftsta time.Time
+				var lftdur time.Duration
+
+				r = e.Value.(*ClientRoute)
+
+				lftsta, lftdur = r.GetLifetimeInfo()
+				js = append(js, json_out_client_route{
+					CId: r.cts.Id,
+					RId: r.Id,
+					ClientPeerAddr: r.PeerAddr,
+					ClientPeerName: r.PeerName,
+					ServerPeerSvcAddr: r.ServerPeerSvcAddr,
+					ServerPeerSvcNet: r.ServerPeerSvcNet,
+					ServerPeerOption: r.ServerPeerOption.String(),
+					Lifetime: DurationToSecString(lftdur),
+					LifetimeStart: lftsta.Unix(),
+					CreatedMilli: r.Created.UnixMilli(),
+				})
+			}
+			c.route_mtx.Unlock()
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(js); err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+//done:
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_client_peers) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var c *Client
+	var status_code int
+	var je *json.Encoder
+	var err error
+
+	c = ctl.c
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var js []json_out_client_peer
+			var e *list.Element
+
+			js = make([]json_out_client_peer, 0)
+			c.ptc_mtx.Lock()
+			for e = c.ptc_list.Front(); e != nil; e = e.Next() {
+				var ptc *ClientPeerConn
+				ptc = e.Value.(*ClientPeerConn)
+				js = append(js, json_out_client_peer{
+					CId: ptc.route.cts.Id,
+					RId: ptc.route.Id,
+					PId: ptc.conn_id,
+					ClientPeerAddr: ptc.conn.RemoteAddr().String(),
+					ClientLocalAddr: ptc.conn.LocalAddr().String(),
+					ServerPeerAddr: ptc.pts_raddr,
+					ServerLocalAddr: ptc.pts_laddr,
+					CreatedMilli: ptc.Created.UnixMilli(),
+				})
+			}
+			c.ptc_mtx.Unlock()
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(js); err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
 	}
 
 //done:
@@ -954,4 +1140,99 @@ func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 
 oops:
 	return status_code, err
+}
+
+// ------------------------------------
+
+func (ctl *client_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
+	var c *Client
+	var wg sync.WaitGroup
+	var sbsc *ClientEventSubscription
+	var status_code int
+	var err error
+	var xerr error
+
+	c = ctl.c
+
+	// handle authentication using the first message.
+	// end this task if authentication fails.
+	if !ctl.noauth && c.ctl_auth != nil {
+		var req *http.Request
+
+		req = ws.Request()
+		if req.Header.Get("Authorization") == "" {
+			var token string
+			token = req.FormValue("token")
+			if token != "" {
+				// websocket doesn't actual have extra headers except a few fixed
+				// ones. add "Authorization" header from the query paramerer and
+				// compose a fake header to reuse the same Authentication() function
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+			}
+		}
+
+		status_code, _ = c.ctl_auth.Authenticate(req)
+		if status_code != http.StatusOK {
+			goto done
+		}
+	}
+
+	sbsc, err = c.bulletin.Subscribe("")
+	if err != nil { goto done }
+
+	wg.Add(1)
+	go func() {
+          var c chan *ClientEvent
+		var err error
+
+          defer wg.Done()
+          c = sbsc.C
+
+          for c != nil {
+			var e *ClientEvent
+			var ok bool
+			var msg[] byte
+
+			e, ok = <- c
+			if ok {
+				msg, err = json.Marshal(e)
+				if err != nil {
+					xerr = fmt.Errorf("failed to marshal event - %+v - %s", e, err.Error())
+					c = nil
+				} else {
+					err = websocket.Message.Send(ws, msg)
+					if err != nil {
+						xerr = fmt.Errorf("failed to send message - %s", err.Error())
+						c = nil
+					}
+				}
+			} else {
+				// most likely sbcs.C is closed. if not readable, break the loop
+				c = nil
+			}
+		}
+
+		ws.Close() // hack to break the recv loop. don't care about double closes
+     }()
+
+ws_recv_loop:
+	for {
+		var msg []byte
+		err = websocket.Message.Receive(ws, &msg)
+		if err != nil { break ws_recv_loop }
+
+		if len(msg) > 0 {
+			// do nothing. discard received messages
+		}
+	}
+
+	// Ubsubscribe() to break the internal event reception
+	// goroutine as well as for cleanup
+	c.bulletin.Unsubscribe(sbsc)
+
+done:
+	ws.Close()
+	wg.Wait()
+	if err == nil && xerr != nil { err = xerr }
+	return http.StatusOK, err
 }
