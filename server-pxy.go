@@ -661,7 +661,7 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var wg sync.WaitGroup
 	var conn_ready_chan chan bool
 	var connect_ssh_ctx context.Context
-	var connect_ssh_cancel context.CancelFunc
+	var connect_ssh_cancel Atom[context.CancelFunc]
 	var err error
 
 	s = pxy.s
@@ -739,10 +739,13 @@ ws_recv_loop:
 				switch ev.Type {
 					case "open":
 						if sess == nil && len(ev.Data) == 2 {
+							var cancel context.CancelFunc
+
 							username = string(ev.Data[0])
 							password = string(ev.Data[1])
 
-							connect_ssh_ctx, connect_ssh_cancel = context.WithTimeout(req.Context(), 10 * time.Second) // TODO: configurable timeout
+							connect_ssh_ctx, cancel = context.WithTimeout(req.Context(), 10 * time.Second) // TODO: configurable timeout
+							connect_ssh_cancel.Set(cancel)
 
 							wg.Add(1)
 							go func() {
@@ -763,14 +766,14 @@ ws_recv_loop:
 										conn_ready_chan <- true
 									}
 								}
-								connect_ssh_cancel()
-								connect_ssh_cancel = nil
+								(connect_ssh_cancel.Get())()
+								connect_ssh_cancel.Set(nil)
 							}()
 						}
 
 					case "close":
 						var cancel context.CancelFunc
-						cancel = connect_ssh_cancel // is it a good way to avoid mutex?
+						cancel = connect_ssh_cancel.Get() // is it a good way to avoid mutex?
 						if cancel != nil { cancel() }
 						break ws_recv_loop
 
