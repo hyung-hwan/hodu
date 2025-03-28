@@ -49,10 +49,6 @@ type json_in_client_route_update struct {
 	Lifetime string `json:"lifetime"`
 }
 
-type json_out_client_conn_id struct {
-	CId ConnId `json:"conn-id"`
-}
-
 type json_out_client_conn struct {
 	CId ConnId `json:"conn-id"`
 	ReqServerAddrs []string `json:"req-server-addrs"` // server addresses requested. may include a domain name
@@ -62,11 +58,6 @@ type json_out_client_conn struct {
 	ClientToken string `json:"client-token"`
 	CreatedMilli int64 `json:"created-milli"`
 	Routes []json_out_client_route `json:"routes,omitempty"`
-}
-
-type json_out_client_route_id struct {
-	CId  ConnId  `json:"conn-id"`
-	RId  RouteId `json:"route-id"`
 }
 
 type json_out_client_route struct {
@@ -96,6 +87,22 @@ type json_out_client_peer struct {
 	ServerLocalAddr string `json:"server-local-addr"`
 	CreatedMilli int64 `json:"created-milli"`
 }
+
+type json_out_client_conn_id struct {
+	CId ConnId `json:"conn-id"`
+}
+
+type json_out_client_route_id struct {
+	CId ConnId `json:"conn-id"`
+	RId RouteId `json:"route-id"`
+}
+
+type json_out_client_peer_id struct {
+	CId ConnId `json:"conn-id"`
+	RId RouteId `json:"route-id"`
+	PId PeerId `json:"peer-id"`
+}
+
 
 type json_out_client_stats struct {
 	json_out_go_stats
@@ -276,8 +283,8 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						RId: r.Id,
 						ClientPeerAddr: r.PeerAddr,
 						ClientPeerName: r.PeerName,
-						ServerPeerSvcAddr: r.ServerPeerSvcAddr,
-						ServerPeerSvcNet: r.ServerPeerSvcNet,
+						ServerPeerSvcAddr: r.ServerPeerSvcAddr.Get(),
+						ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 						ServerPeerOption: r.ServerPeerOption.String(),
 						Lifetime: DurationToSecString(lftdur),
 						LifetimeStart: lftsta.Unix(),
@@ -394,8 +401,8 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					RId: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
-					ServerPeerSvcAddr: r.ServerPeerSvcAddr,
-					ServerPeerSvcNet: r.ServerPeerSvcNet,
+					ServerPeerSvcAddr: r.ServerPeerSvcAddr.Get(),
+					ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
 					LifetimeStart: lftsta.Unix(),
@@ -475,8 +482,8 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					RId: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
-					ServerPeerSvcAddr: r.ServerPeerSvcAddr,
-					ServerPeerSvcNet: r.ServerPeerSvcNet,
+					ServerPeerSvcAddr: r.ServerPeerSvcAddr.Get(),
+					ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
 					LifetimeStart: lftsta.Unix(),
@@ -594,8 +601,8 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				RId: r.Id,
 				ClientPeerAddr: r.PeerAddr,
 				ClientPeerName: r.PeerName,
-				ServerPeerSvcAddr: r.ServerPeerSvcAddr,
-				ServerPeerSvcNet: r.ServerPeerSvcNet,
+				ServerPeerSvcAddr: r.ServerPeerSvcAddr.Get(),
+				ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 				ServerPeerOption: r.ServerPeerOption.String(),
 				Lifetime: DurationToSecString(lftdur),
 				LifetimeStart: lftsta.Unix(),
@@ -683,8 +690,8 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 				RId: r.Id,
 				ClientPeerAddr: r.PeerAddr,
 				ClientPeerName: r.PeerName,
-				ServerPeerSvcAddr: r.ServerPeerSvcAddr,
-				ServerPeerSvcNet: r.ServerPeerSvcNet,
+				ServerPeerSvcAddr: r.ServerPeerSvcAddr.Get(),
+				ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 				ServerPeerOption: r.ServerPeerOption.String(),
 				Lifetime: DurationToSecString(lftdur),
 				LifetimeStart: lftsta.Unix(),
@@ -946,8 +953,8 @@ func (ctl *client_ctl_client_routes) ServeHTTP(w http.ResponseWriter, req *http.
 					RId: r.Id,
 					ClientPeerAddr: r.PeerAddr,
 					ClientPeerName: r.PeerName,
-					ServerPeerSvcAddr: r.ServerPeerSvcAddr,
-					ServerPeerSvcNet: r.ServerPeerSvcNet,
+					ServerPeerSvcAddr: r.ServerPeerSvcAddr.Get(),
+					ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
 					LifetimeStart: lftsta.Unix(),

@@ -70,65 +70,20 @@ type ServerConfig struct {
 
 type ServerEventKind int
 const (
-	SERVER_EVENT_CONN_ADDED = iota
+	SERVER_EVENT_CONN_STARTED = iota
 	SERVER_EVENT_CONN_UPDATED
-	SERVER_EVENT_CONN_DELETED
-	SERVER_EVENT_ROUTE_ADDED
+	SERVER_EVENT_CONN_STOPPED
+	SERVER_EVENT_ROUTE_STARTED
 	SERVER_EVENT_ROUTE_UPDATED
-	SERVER_EVENT_ROUTE_DELETED
-	SERVER_EVENT_PEER_ADDED
+	SERVER_EVENT_ROUTE_STOPPED
+	SERVER_EVENT_PEER_STARTED
 	SERVER_EVENT_PEER_UPDATED
-	SERVER_EVENT_PEER_DELETED
+	SERVER_EVENT_PEER_STOPPED
 )
 
 type ServerEvent struct {
 	Kind ServerEventKind `json:"type"`
 	Data interface{} `json:"data"`
-}
-
-type ServerEventConnAdded struct {
-	Conn  ConnId `json:"conn-id"`
-	ServerAddr string `json:"server-addr"`
-	ClientAddr string `json:"client-addr"`
-	ClientToken string `json:"client-token"`
-	CreatedMilli int64 `json:"created-milli"`
-}
-
-type ServerEventConnDeleted struct {
-	Conn  ConnId `json:"conn-id"`
-}
-
-type ServerEventRouteAdded struct {
-	Conn  ConnId `json:"conn-id"`
-	Route RouteId `json:"route-id"`
-	ClientPeerAddr string `json:"client-peer-addr"`
-	ClientPeerName string `json:"client-peer-name"`
-	ServerPeerOption string `json:"server-peer-option"`
-	ServerPeerSvcAddr string `json:"server-peer-svc-addr"`
-	ServerPeerSvcNet string `json:"server-peer-svc-net"`
-	CreatedMilli int64 `json:"created-milli"`
-}
-
-type ServerEventRouteDeleted struct {
-	Conn  ConnId `json:"conn-id"`
-	Route RouteId `json:"route-id"`
-}
-
-type ServerEventPeerAdded struct {
-	Conn  ConnId `json:"conn-id"`
-	Route RouteId `json:"route-id"`
-	Peer  PeerId `json:"peer-id"`
-	ServerPeerAddr string `json:"server-peer-addr"`
-	ServerLocalAddr string `json:"server-local-addr"`
-	ClientPeerAddr string `json:"client-peer-addr"`
-	ClientLocalAddr string `json:"client-local-addr"`
-	CreatedMilli int64 `json:"created-milli"`
-}
-
-type ServerEventPeerDeleted struct {
-	Conn  ConnId `json:"conn-id"`
-	Route RouteId `json:"route-id"`
-	Peer  PeerId `json:"peer-id"`
 }
 
 type ServerEventBulletin = Bulletin[*ServerEvent]
@@ -365,21 +320,6 @@ func (r *ServerRoute) AddNewServerPeerConn(c *net.TCPConn) (*ServerPeerConn, err
 	pts.node_in_conn = r.Cts.pts_list.PushBack(pts)
 	r.Cts.pts_mtx.Unlock()
 
-	r.Cts.S.bulletin.Enqueue(
-		&ServerEvent{
-			Kind: SERVER_EVENT_PEER_ADDED,
-			Data: &ServerEventPeerAdded{
-				Conn: r.Cts.Id,
-				Route: r.Id,
-				Peer: pts.conn_id,
-				ServerPeerAddr: pts.conn.RemoteAddr().String(),
-				ServerLocalAddr: pts.conn.LocalAddr().String(),
-				ClientPeerAddr: pts.client_peer_raddr.Get(),
-				ClientLocalAddr: pts.client_peer_laddr.Get(),
-				CreatedMilli: pts.Created.UnixMilli(),
-			},
-		},
-	)
 	return pts, nil
 }
 
@@ -399,6 +339,7 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 	var iaddr netip.Addr
 
 	defer wg.Done()
+	r.Cts.S.FireRouteEvent(SERVER_EVENT_ROUTE_STARTED, r)
 
 	for {
 		conn, err = r.svc_l.AcceptTCP() // this call is blocking...
@@ -447,14 +388,7 @@ func (r *ServerRoute) RunTask(wg *sync.WaitGroup) {
 	r.node_in_server = nil
 	r.Cts.S.route_mtx.Unlock()
 
-	r.Cts.S.bulletin.Enqueue(
-		&ServerEvent{
-			Kind: SERVER_EVENT_ROUTE_DELETED,
-			Data: &ServerEventRouteDeleted {
-				Conn: r.Cts.Id, Route: r.Id,
-			},
-		},
-	)
+	r.Cts.S.FireRouteEvent(SERVER_EVENT_ROUTE_STOPPED, r)
 }
 
 func (r *ServerRoute) ReqStop() {
@@ -594,22 +528,6 @@ func (cts *ServerConn) AddNewServerRoute(route_id RouteId, proto RouteOption, pt
 	cts.S.route_mtx.Lock()
 	r.node_in_server = cts.S.route_list.PushBack(r)
 	cts.S.route_mtx.Unlock()
-
-	cts.S.bulletin.Enqueue(
-		&ServerEvent{
-			Kind: SERVER_EVENT_ROUTE_ADDED,
-			Data: &ServerEventRouteAdded{
-				Conn: cts.Id,
-				Route: r.Id,
-                    ClientPeerAddr: r.PtcAddr,
-                    ClientPeerName: r.PtcName,
-                    ServerPeerSvcAddr: r.SvcAddr.String(),
-                    ServerPeerSvcNet: r.SvcPermNet.String(),
-                    ServerPeerOption: r.SvcOption.String(),
-				CreatedMilli: r.Created.UnixMilli(),
-			},
-		},
-	)
 
 	// Don't detached the cts task as a go-routine as this function
 	cts.route_wg.Add(1)
@@ -919,18 +837,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 								cts.S.cts_mtx.Unlock()
 								cts.S.log.Write(cts.Sid, LOG_INFO, "client(%d) %s - token set to '%s'", cts.Id, cts.RemoteAddr, x.Conn.Token)
 
-								cts.S.bulletin.Enqueue(
-									&ServerEvent{
-										Kind: SERVER_EVENT_CONN_UPDATED,
-										Data: &ServerEventConnAdded{
-											Conn: cts.Id,
-											ServerAddr: cts.LocalAddr.String(),
-											ClientAddr: cts.RemoteAddr.String(),
-											ClientToken: cts.ClientToken.Get(),
-											CreatedMilli: cts.Created.UnixMilli(),
-										},
-									},
-								)
+								cts.S.FireConnEvent(SERVER_EVENT_CONN_UPDATED, cts)
 							}
 						}
 					}
@@ -965,6 +872,7 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 	var ctx context.Context
 
 	defer wg.Done()
+	cts.S.FireConnEvent(SERVER_EVENT_CONN_STARTED, cts)
 
 	strm = cts.pss
 	ctx = strm.Context()
@@ -1011,12 +919,8 @@ done:
 	cts.ReqStop() // just in case
 	cts.route_wg.Done()
 	cts.route_wg.Wait()
-	cts.S.bulletin.Enqueue(
-		&ServerEvent{
-			Kind: SERVER_EVENT_CONN_DELETED,
-			Data: &ServerEventConnDeleted{ Conn: cts.Id },
-		},
-	)
+	cts.S.FireConnEvent(SERVER_EVENT_CONN_STOPPED, cts)
+
 	// Don't detached the cts task as a go-routine as this function
 	cts.S.log.Write(cts.Sid, LOG_INFO, "End of connection task")
 }
@@ -1080,19 +984,6 @@ func (s *Server) PacketStream(strm Hodu_PacketStreamServer) error {
 	if err != nil {
 		return fmt.Errorf("unable to add client %s - %s", p.Addr.String(), err.Error())
 	}
-
-	s.bulletin.Enqueue(
-		&ServerEvent{
-			Kind: SERVER_EVENT_CONN_ADDED,
-			Data: &ServerEventConnAdded{
-				Conn: cts.Id,
-				ServerAddr: cts.LocalAddr.String(),
-				ClientAddr: cts.RemoteAddr.String(),
-				ClientToken: cts.ClientToken.Get(),
-				CreatedMilli: cts.Created.UnixMilli(),
-			 },
-		},
-	)
 
 	// Don't detach the cts task as a go-routine as this function
 	// is invoked as a go-routine by the grpc server.
@@ -2224,4 +2115,91 @@ func (s *Server) SendNotice(id_str string, text string) error {
 	}
 
 	return nil
+}
+
+func (s *Server) FireConnEvent(event_kind ServerEventKind, cts *ServerConn) {
+	if event_kind == SERVER_EVENT_CONN_STOPPED {
+		s.bulletin.Enqueue(
+			&ServerEvent{
+				Kind: event_kind,
+				Data: &json_out_server_conn_id{
+					CId: cts.Id,
+				},
+			},
+		)
+	} else {
+		s.bulletin.Enqueue(
+			&ServerEvent{
+				Kind: event_kind,
+				Data: &json_out_server_conn{
+					CId: cts.Id,
+					ServerAddr: cts.LocalAddr.String(),
+					ClientAddr: cts.RemoteAddr.String(),
+					ClientToken: cts.ClientToken.Get(),
+					CreatedMilli: cts.Created.UnixMilli(),
+				 },
+			},
+		)
+	}
+}
+
+func (s *Server) FireRouteEvent(event_kind ServerEventKind, r *ServerRoute) {
+	if event_kind == SERVER_EVENT_ROUTE_STOPPED {
+		s.bulletin.Enqueue(
+			&ServerEvent{
+				Kind: event_kind,
+				Data: &json_out_server_route_id {
+					CId: r.Cts.Id,
+					RId: r.Id,
+				},
+			},
+		)
+	} else {
+		s.bulletin.Enqueue(
+			&ServerEvent{
+				Kind: event_kind,
+				Data: &json_out_server_route{
+					CId: r.Cts.Id,
+					RId: r.Id,
+					ClientPeerAddr: r.PtcAddr,
+					ClientPeerName: r.PtcName,
+					ServerPeerSvcAddr: r.SvcAddr.String(),
+					ServerPeerSvcNet: r.SvcPermNet.String(),
+					ServerPeerOption: r.SvcOption.String(),
+					CreatedMilli: r.Created.UnixMilli(),
+				},
+			},
+		)
+	}
+}
+
+func (s *Server) FirePeerEvent(event_kind ServerEventKind, pts *ServerPeerConn) {
+	if event_kind == SERVER_EVENT_PEER_STOPPED {
+		pts.route.Cts.S.bulletin.Enqueue(
+			&ServerEvent{
+				Kind: event_kind,
+				Data: &json_out_server_peer_id {
+					CId: pts.route.Cts.Id,
+					RId: pts.route.Id,
+					PId: pts.conn_id,
+				},
+			},
+		)
+	} else {
+		s.bulletin.Enqueue(
+			&ServerEvent{
+				Kind: event_kind,
+				Data: &json_out_server_peer{
+					CId: pts.route.Cts.Id,
+					RId: pts.route.Id,
+					PId: pts.conn_id,
+					ServerPeerAddr: pts.conn.RemoteAddr().String(),
+					ServerLocalAddr: pts.conn.LocalAddr().String(),
+					ClientPeerAddr: pts.client_peer_raddr.Get(),
+					ClientLocalAddr: pts.client_peer_laddr.Get(),
+					CreatedMilli: pts.Created.UnixMilli(),
+				},
+			},
+		)
+	}
 }

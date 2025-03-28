@@ -53,6 +53,21 @@ type json_out_server_peer struct {
 	CreatedMilli int64 `json:"created-milli"`
 }
 
+type json_out_server_conn_id struct {
+	CId ConnId `json:"conn-id"`
+}
+
+type json_out_server_route_id struct {
+	CId ConnId `json:"conn-id"`
+	RId RouteId `json:"route-id"`
+}
+
+type json_out_server_peer_id struct {
+	CId ConnId `json:"conn-id"`
+	RId RouteId `json:"route-id"`
+	PId PeerId `json:"peer-id"`
+}
+
 type json_out_server_stats struct {
 	json_out_go_stats
 

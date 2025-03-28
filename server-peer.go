@@ -61,6 +61,8 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
+	spc.route.Cts.S.FirePeerEvent(SERVER_EVENT_PEER_STARTED, spc)
+
 	conn_raddr = spc.conn.RemoteAddr().String()
 	conn_laddr = spc.conn.LocalAddr().String()
 
@@ -160,14 +162,7 @@ done_without_stop:
 	spc.node_in_conn = nil
 	spc.route.Cts.pts_mtx.Unlock()
 
-	spc.route.Cts.S.bulletin.Enqueue(
-		&ServerEvent{
-			Kind: SERVER_EVENT_PEER_DELETED,
-			Data: &ServerEventPeerDeleted {
-				Conn: spc.route.Cts.Id, Route: spc.route.Id, Peer: spc.conn_id,
-			},
-		},
-	)
+	spc.route.Cts.S.FirePeerEvent(SERVER_EVENT_PEER_STOPPED, spc)
 }
 
 func (spc *ServerPeerConn) ReqStop() {
@@ -206,21 +201,7 @@ func (spc *ServerPeerConn) ReportPacket(packet_type PACKET_KIND, event_data inte
 				spc.client_peer_status_chan <- true
 			}
 
-			spc.route.Cts.S.bulletin.Enqueue(
-				&ServerEvent{
-					Kind: SERVER_EVENT_PEER_UPDATED,
-					Data: &ServerEventPeerAdded{
-						Conn: spc.route.Cts.Id,
-						Route: spc.route.Id,
-						Peer: spc.conn_id,
-						ServerPeerAddr: spc.conn.RemoteAddr().String(),
-						ServerLocalAddr: spc.conn.LocalAddr().String(),
-						ClientPeerAddr: spc.client_peer_raddr.Get(),
-						ClientLocalAddr: spc.client_peer_laddr.Get(),
-						CreatedMilli: spc.Created.UnixMilli(),
-					},
-				},
-			)
+			spc.route.Cts.S.FirePeerEvent(SERVER_EVENT_PEER_UPDATED, spc)
 
 		case PACKET_KIND_PEER_ABORTED:
 			spc.ReqStop()

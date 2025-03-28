@@ -26,6 +26,7 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 	var n int
 
 	defer wg.Done()
+	cpc.route.cts.C.FirePeerEvent(CLIENT_EVENT_PEER_STARTED, cpc)
 
 	for {
 		n, err = cpc.conn.Read(buf[:])
@@ -65,6 +66,7 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 	cpc.node_in_conn = nil
 	cpc.route.cts.ptc_mtx.Unlock()
 
+	cpc.route.cts.C.FirePeerEvent(CLIENT_EVENT_PEER_STOPPED, cpc)
 	return nil
 }
 
