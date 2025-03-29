@@ -180,7 +180,7 @@ type client_ctl_ws struct {
 
 // ------------------------------------
 
-func (ctl *client_ctl) Id() string {
+func (ctl *client_ctl) Identity() string {
 	return ctl.id
 }
 
@@ -532,9 +532,9 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 				Id: jcr.RId,
 				PeerAddr: jcr.ClientPeerAddr,
 				PeerName: jcr.ClientPeerName,
-				Option: server_peer_option,
 				ServiceAddr: jcr.ServerPeerSvcAddr,
 				ServiceNet: jcr.ServerPeerSvcNet,
+				ServiceOption: server_peer_option,
 				Lifetime: lifetime,
 				Static: false,
 			}

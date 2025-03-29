@@ -35,13 +35,13 @@ type ClientPeerCancelFuncMap map[PeerId]context.CancelFunc
 // --------------------------------------------------------------------
 type ClientRouteConfig struct {
 	Id          RouteId // requested id to be assigned. 0 for automatic assignment
-	PeerAddr    string
-	PeerName    string
-	Option      RouteOption
-	ServiceAddr string // server-peer-svc-addr
-	ServiceNet  string // server-peer-svc-net
-	Lifetime    time.Duration
-	Static      bool
+	PeerAddr      string
+	PeerName      string
+	ServiceAddr   string // server-peer-svc-addr
+	ServiceNet    string // server-peer-svc-net
+	ServiceOption RouteOption
+	Lifetime      time.Duration
+	Static        bool
 }
 
 type ClientConnConfig struct {
@@ -202,7 +202,7 @@ type ClientRoute struct {
 
 	PeerAddr string
 	PeerName string
-	PeerOption RouteOption
+	PeerOption RouteOption // internally used in connecting
 
 	ReqServerPeerSvcAddr string // requested server-side service address
 	ReqServerPeerSvcNet string // requested server-side service address
@@ -841,7 +841,7 @@ func (cts *ClientConn) AddNewClientRoute(rc *ClientRouteConfig) (*ClientRoute, e
 		assigned_id = rc.Id
 	}
 
-	r = NewClientRoute(cts, assigned_id, rc.Static, rc.PeerAddr, rc.PeerName, rc.ServiceAddr, rc.ServiceNet, rc.Option, rc.Lifetime)
+	r = NewClientRoute(cts, assigned_id, rc.Static, rc.PeerAddr, rc.PeerName, rc.ServiceAddr, rc.ServiceNet, rc.ServiceOption, rc.Lifetime)
 	cts.route_map[r.Id] = r
 	cts.C.stats.routes.Add(1)
 	if cts.C.route_persister != nil { cts.C.route_persister.Save(cts, r) }
@@ -1454,19 +1454,19 @@ func (hlw *client_ctl_log_writer) Write(p []byte) (n int, err error) {
 }
 
 type ClientHttpHandler interface {
-	Id() string
+	Identity() string
 	Cors(req *http.Request) bool
 	Authenticate(req *http.Request) (int, string)
 	ServeHTTP (w http.ResponseWriter, req *http.Request) (int, error)
 }
 
 type ClientWebsocketHandler interface {
-	Id() string
+	Identity() string
 	ServeWebsocket(ws *websocket.Conn) (int, error)
 }
 
 
-func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
+func (c *Client) WrapHttpHandler(handler ClientHttpHandler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var status_code int
 		var err error
@@ -1512,9 +1512,9 @@ func (c *Client) wrap_http_handler(handler ClientHttpHandler) http.Handler {
 
 		if status_code > 0 {
 			if err != nil {
-				c.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
 			} else {
-				c.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
+				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
 			}
 		}
 	})
@@ -1529,7 +1529,7 @@ func (s *Client) WrapWebsocketHandler(handler ClientWebsocketHandler) websocket.
 		var req *http.Request
 
 		req = ws.Request()
-		s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s [ws]", req.RemoteAddr, req.Method, req.URL.String())
+		s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws]", req.RemoteAddr, req.Method, req.URL.String())
 
 		start_time = time.Now()
 		status_code, err = handler.ServeWebsocket(ws)
@@ -1537,9 +1537,9 @@ func (s *Client) WrapWebsocketHandler(handler ClientWebsocketHandler) websocket.
 
 		if status_code > 0 {
 			if err != nil {
-				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s [ws] %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
 			} else {
-				s.log.Write(handler.Id(), LOG_INFO, "[%s] %s %s [ws] %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
+				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
 			}
 		}
 	})
@@ -1573,36 +1573,36 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.ctl_cors = cfg.CtlCors
 	c.ctl_mux = http.NewServeMux()
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns",
-		c.wrap_http_handler(&client_ctl_client_conns{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_conns{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}",
-		c.wrap_http_handler(&client_ctl_client_conns_id{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_conns_id{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_conns_id_routes{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_conns_id_routes_id{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes-spsp/{port_id}",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes_spsp{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_conns_id_routes_spsp{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_conns_id_routes_id_peers{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
-		c.wrap_http_handler(&client_ctl_client_conns_id_routes_id_peers_id{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_conns_id_routes_id_peers_id{client_ctl{c: &c, id: HS_ID_CTL}}))
 
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-conns/{conn_id}/peers",
-		c.wrap_http_handler(&client_ctl_client_conns_id_peers{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_conns_id_peers{client_ctl{c: &c, id: HS_ID_CTL}}))
 
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-routes",
-		c.wrap_http_handler(&client_ctl_client_routes{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_routes{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/client-peers",
-		c.wrap_http_handler(&client_ctl_client_peers{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_client_peers{client_ctl{c: &c, id: HS_ID_CTL}}))
 
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/notices",
-		c.wrap_http_handler(&client_ctl_notices{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_notices{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/notices/{conn_id}",
-		c.wrap_http_handler(&client_ctl_notices_id{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_notices_id{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/stats",
-		c.wrap_http_handler(&client_ctl_stats{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_stats{client_ctl{c: &c, id: HS_ID_CTL}}))
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/token",
-		c.wrap_http_handler(&client_ctl_token{client_ctl{c: &c, id: HS_ID_CTL}}))
+		c.WrapHttpHandler(&client_ctl_token{client_ctl{c: &c, id: HS_ID_CTL}}))
 
 // TODO: make this optional. add this endpoint only if it's enabled...
 	c.promreg = prometheus.NewRegistry()
@@ -2066,6 +2066,16 @@ func (c *Client) SetConnNoticeHandlers(handlers []ClientConnNoticeHandler) {
 
 func (c *Client) SetRoutePersister(persister ClientRoutePersister) {
 	c.route_persister = persister
+}
+
+func (c *Client) AddCtlHandler(path string, handler ClientHttpHandler) {
+	// parked under /_ctl
+	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl" + path, c.WrapHttpHandler(handler))
+}
+
+func (c *Client) AddCtlRootHandler(path string, handler ClientHttpHandler) {
+	// parked at the root level. must avoid conflicting path
+	c.ctl_mux.Handle(c.ctl_prefix + path, c.WrapHttpHandler(handler))
 }
 
 func (c *Client) AddCtlMetricsCollector(col prometheus.Collector) error {

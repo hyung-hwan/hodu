@@ -240,7 +240,7 @@ func parse_client_route_config(v string) (*hodu.ClientRouteConfig, error) {
 		ptc_name = strings.TrimSpace(va[3])
 	}
 
-	return &hodu.ClientRouteConfig{PeerAddr: va[0], PeerName: ptc_name, Option: option, ServiceAddr: svc_addr}, nil // TODO: other fields
+	return &hodu.ClientRouteConfig{PeerAddr: va[0], PeerName: ptc_name, ServiceOption: option, ServiceAddr: svc_addr}, nil // TODO: other fields
 }
 
 func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string, logfile string, cfg *ClientConfig) error {

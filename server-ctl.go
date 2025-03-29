@@ -86,81 +86,81 @@ type json_in_server_notice struct {
 
 // ------------------------------------
 
-type server_ctl struct {
-	s *Server
-	id string
-	noauth bool // override the auth configuration if true
+type ServerCtl struct {
+	S *Server
+	Id string
+	NoAuth bool // override the auth configuration if true
 }
 
 type server_ctl_token struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_conns struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_conns_id struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_conns_id_routes struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_conns_id_routes_id struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_conns_id_routes_id_peers struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_conns_id_routes_id_peers_id struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_conns_id_peers struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_routes struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_server_peers struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_notices struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_notices_id struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_stats struct {
-	server_ctl
+	ServerCtl
 }
 
 type server_ctl_ws struct {
-	server_ctl
+	ServerCtl
 }
 
 // ------------------------------------
 
-func (ctl *server_ctl) Id() string {
-	return ctl.id
+func (ctl *ServerCtl) Identity() string {
+	return ctl.Id
 }
 
-func (ctl *server_ctl) Cors(req *http.Request) bool {
-	return ctl.s.Cfg.CtlCors
+func (ctl *ServerCtl) Cors(req *http.Request) bool {
+	return ctl.S.Cfg.CtlCors
 }
 
-func (ctl *server_ctl) Authenticate(req *http.Request) (int, string) {
-	if ctl.noauth || ctl.s.Cfg.CtlAuth == nil { return http.StatusOK, "" }
-	return ctl.s.Cfg.CtlAuth.Authenticate(req)
+func (ctl *ServerCtl) Authenticate(req *http.Request) (int, string) {
+	if ctl.NoAuth || ctl.S.Cfg.CtlAuth == nil { return http.StatusOK, "" }
+	return ctl.S.Cfg.CtlAuth.Authenticate(req)
 }
 
 // ------------------------------------
@@ -171,7 +171,7 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	var je *json.Encoder
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	switch req.Method {
@@ -224,7 +224,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 	var routes bool
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	q = req.URL.Query()
@@ -305,7 +305,7 @@ func (ctl *server_ctl_server_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 	var routes bool
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	q = req.URL.Query()
@@ -385,7 +385,7 @@ func (ctl *server_ctl_server_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 	var je *json.Encoder
 	var cts *ServerConn
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
@@ -452,10 +452,10 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	var r *ServerRoute
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
-	if ctl.id == HS_ID_WPX && req.Method != http.MethodGet {
+	if ctl.Id == HS_ID_WPX && req.Method != http.MethodGet {
 		// support the get method only, if invoked via the wpx endpoint
 		status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
 		goto done
@@ -466,23 +466,23 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
 	if err != nil {
 		/*
-		if route_id == PORT_ID_MARKER && ctl.s.wpx_foreign_port_proxy_marker != nil {
+		if route_id == PORT_ID_MARKER && ctl.S.wpx_foreign_port_proxy_marker != nil {
 			// don't care if the ctl call is from wpx or not. if the request
 			// is by the port number(noted by route being PORT_ID_MARKER),
 			// check if it's a foreign port
 			var pi *ServerRouteProxyInfo
 			// currenly, this is invoked via wpx only for ssh from xterm.html
 			// ugly, but hard-code the type to "ssh" here for now...
-			pi, err = ctl.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+			pi, err = ctl.S.wpx_foreign_port_proxy_maker("ssh", conn_id)
 			if err == nil { r = proxy_info_to_server_route(pi) } // fake route
 		}
 		*/
 
-		if ctl.id == HS_ID_WPX && route_id == PORT_ID_MARKER && ctl.s.wpx_foreign_port_proxy_maker != nil {
+		if ctl.Id == HS_ID_WPX && route_id == PORT_ID_MARKER && ctl.S.wpx_foreign_port_proxy_maker != nil {
 			var pi *ServerRouteProxyInfo
 			// currenly, this is invoked via wpx only for ssh from xterm.html
 			// ugly, but hard-code the type to "ssh" here for now...
-			pi, err = ctl.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+			pi, err = ctl.S.wpx_foreign_port_proxy_maker("ssh", conn_id)
 			if err == nil { r = proxy_info_to_server_route(pi) } // fake route
 		}
 	}
@@ -511,7 +511,7 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		case http.MethodDelete:
 			/*if r is foreign {
 				// foreign route
-				ctl.s.wpx_foreign_port_proxy_stopper(conn_id)
+				ctl.S.wpx_foreign_port_proxy_stopper(conn_id)
 			} else {*/
 				// native route
 				r.ReqStop()
@@ -540,7 +540,7 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers) ServeHTTP(w http.Response
 	var r *ServerRoute
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
@@ -605,7 +605,7 @@ func (ctl *server_ctl_server_conns_id_routes_id_peers_id) ServeHTTP(w http.Respo
 	var p *ServerPeerConn
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
@@ -660,7 +660,7 @@ func (ctl *server_ctl_server_conns_id_peers) ServeHTTP(w http.ResponseWriter, re
 	var je *json.Encoder
 	var cts *ServerConn
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id")
@@ -716,7 +716,7 @@ func (ctl *server_ctl_server_routes) ServeHTTP(w http.ResponseWriter, req *http.
 	var je *json.Encoder
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	switch req.Method {
@@ -763,7 +763,7 @@ func (ctl *server_ctl_server_peers) ServeHTTP(w http.ResponseWriter, req *http.R
 	var je *json.Encoder
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	switch req.Method {
@@ -811,7 +811,7 @@ func (ctl *server_ctl_notices) ServeHTTP(w http.ResponseWriter, req *http.Reques
 	var je *json.Encoder
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	switch req.Method {
@@ -853,7 +853,7 @@ func (ctl *server_ctl_notices_id) ServeHTTP(w http.ResponseWriter, req *http.Req
 	var je *json.Encoder
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	conn_id = req.PathValue("conn_id") // server connection
@@ -896,7 +896,7 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	var je *json.Encoder
 	var err error
 
-	s = ctl.s
+	s = ctl.S
 	je = json.NewEncoder(w)
 
 	switch req.Method {
@@ -931,11 +931,11 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var err error
 	var xerr error
 
-	s = ctl.s
+	s = ctl.S
 
 	// handle authentication using the first message.
 	// end this task if authentication fails.
-	if !ctl.noauth && s.Cfg.CtlAuth != nil {
+	if !ctl.NoAuth && s.Cfg.CtlAuth != nil {
 		var req *http.Request
 
 		req = ws.Request()

@@ -31,8 +31,8 @@ var xterm_css []byte
 var xterm_html string
 
 type server_pxy struct {
-	s *Server
-	id string
+	S *Server
+	Id string
 }
 
 type server_pxy_http_main struct {
@@ -186,8 +186,8 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 
 // ------------------------------------
 
-func (pxy *server_pxy) Id() string {
-	return pxy.id
+func (pxy *server_pxy) Identity() string {
+	return pxy.Id
 }
 
 func (pxy *server_pxy) Cors(req *http.Request) bool {
@@ -205,12 +205,15 @@ func prevent_follow_redirect (req *http.Request, via []*http.Request) error {
 }
 
 func (pxy *server_pxy_http_main) get_route_proxy_info(req *http.Request, in_wpx_mode bool) (*ServerRouteProxyInfo, error) {
+	var s *Server
 	var conn_id string
 	var route_id string
 	var r *ServerRoute
 	var pi *ServerRouteProxyInfo
 	var path_prefix string
 	var err error
+
+	s = pxy.S
 
 	if in_wpx_mode { // for wpx
 		conn_id = req.PathValue("port_id")
@@ -225,12 +228,12 @@ func (pxy *server_pxy_http_main) get_route_proxy_info(req *http.Request, in_wpx_
 		path_prefix = fmt.Sprintf("%s/%s/%s", pxy.prefix, conn_id, route_id)
 	}
 
-	r, err = pxy.s.FindServerRouteByIdStr(conn_id, route_id)
+	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
 	if err != nil {
-		if !in_wpx_mode || pxy.s.wpx_foreign_port_proxy_maker == nil { return nil, err }
+		if !in_wpx_mode || s.wpx_foreign_port_proxy_maker == nil { return nil, err }
 
 		// call this callback only in the wpx mode
-		pi, err = pxy.s.wpx_foreign_port_proxy_maker("http", conn_id)
+		pi, err = s.wpx_foreign_port_proxy_maker("http", conn_id)
 		if err != nil { return nil, err }
 		pi.IsForeign = true // just to ensure this
 	} else {
@@ -304,7 +307,7 @@ func (pxy *server_pxy_http_main) addr_to_transport (ctx context.Context, addr *n
 
 	// establish the connection.
 	dialer = &net.Dialer{}
-	waitctx, cancel_wait = context.WithTimeout(ctx, 3 * time.Second) // TODO: make timeout configurable
+	waitctx, cancel_wait = context.WithTimeout(ctx, 5 * time.Second) // TODO: make timeout configurable
 	conn, err = dialer.DialContext(waitctx, TcpAddrClass(addr), addr.String())
 	cancel_wait()
 	if err != nil { return nil, err }
@@ -357,7 +360,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 	var upgrade_required bool
 	var err error
 
-	s = pxy.s
+	s = pxy.S
 	in_wpx_mode = (pxy.prefix == PORT_ID_MARKER)
 
 	pi, err = pxy.get_route_proxy_info(req, in_wpx_mode)
@@ -381,7 +384,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 	}
 	proxy_url = pxy.req_to_proxy_url(req, pi)
 
-	s.log.Write(pxy.id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
+	s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
 
 	proxy_req, err = http.NewRequestWithContext(s.Ctx, req.Method, proxy_url.String(), req.Body)
 	if err != nil {
@@ -407,7 +410,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 	} else {
 		status_code = resp.StatusCode
 		if upgrade_required && resp.StatusCode == http.StatusSwitchingProtocols {
-			s.log.Write(pxy.id, LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
+			s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
 			err = pxy.serve_upgraded(w, req, resp)
 			if err != nil { goto oops }
 			return 0, nil// print the log mesage before calling serve_upgraded() and exit here
@@ -432,7 +435,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 
 			_, err = io.Copy(w, resp_body)
 			if err != nil {
-				s.log.Write(pxy.id, LOG_WARN, "[%s] %s %s %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+				s.log.Write(pxy.Id, LOG_WARN, "[%s] %s %s %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
 			}
 
 			// TODO: handle trailers
@@ -474,7 +477,7 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 	var status_code int
 	var err error
 
-	s = pxy.s
+	s = pxy.S
 
 	switch pxy.file {
 		case "xterm.js":
@@ -493,12 +496,12 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 
 			// this endpoint is registered for /_ssh/{conn_id}/{route_id}/ under pxy.
 			// and for /_ssh/{port_id} under wpx.
-			if pxy.id == HS_ID_WPX {
+			if pxy.Id == HS_ID_WPX {
 				conn_id = req.PathValue("port_id")
 				route_id = PORT_ID_MARKER
 				_, err = s.FindServerRouteByIdStr(conn_id, route_id)
-				if err != nil && pxy.s.wpx_foreign_port_proxy_maker != nil {
-                         _, err = pxy.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+				if err != nil && s.wpx_foreign_port_proxy_maker != nil {
+                         _, err = s.wpx_foreign_port_proxy_maker("ssh", conn_id)
                     }
 			} else  {
 				conn_id = req.PathValue("conn_id")
@@ -555,9 +558,9 @@ oops:
 
 // ------------------------------------
 type server_pxy_ssh_ws struct {
-	s *Server
+	S *Server
 	ws *websocket.Conn
-	id string
+	Id string
 }
 
 type json_ssh_ws_event struct {
@@ -565,8 +568,8 @@ type json_ssh_ws_event struct {
 	Data []string `json:"data"`
 }
 
-func (pxy *server_pxy_ssh_ws) Id() string {
-	return pxy.id
+func (pxy *server_pxy_ssh_ws) Identity() string {
+	return pxy.Id
 }
 
 // TODO: put this task to sync group.
@@ -664,16 +667,16 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var connect_ssh_cancel Atom[context.CancelFunc]
 	var err error
 
-	s = pxy.s
+	s = pxy.S
 	req = ws.Request()
 	conn_ready_chan = make(chan bool, 3)
 
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
-	if err != nil && route_id == PORT_ID_MARKER && pxy.s.wpx_foreign_port_proxy_maker != nil {
+	if err != nil && route_id == PORT_ID_MARKER && s.wpx_foreign_port_proxy_maker != nil {
 		var pi *ServerRouteProxyInfo
-		pi, err = pxy.s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+		pi, err = s.wpx_foreign_port_proxy_maker("ssh", conn_id)
 		if err != nil {
 			pxy.send_ws_data(ws, "error", err.Error())
 			goto done
@@ -710,14 +713,14 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 				n, err = out.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						s.log.Write(pxy.id, LOG_ERROR, "Read from SSH stdout error - %s", err.Error())
+						s.log.Write(pxy.Id, LOG_ERROR, "Read from SSH stdout error - %s", err.Error())
 					}
 					break
 				}
 				if n > 0 {
 					err = pxy.send_ws_data(ws, "iov", string(buf[:n]))
 					if err != nil {
-						s.log.Write(pxy.id, LOG_ERROR, "Failed to send to websocket - %s", err.Error())
+						s.log.Write(pxy.Id, LOG_ERROR, "Failed to send to websocket - %s", err.Error())
 						break
 					}
 				}
@@ -754,13 +757,13 @@ ws_recv_loop:
 								defer wg.Done()
 								c, sess, in, out, err = pxy.connect_ssh(connect_ssh_ctx, username, password, r)
 								if err != nil {
-									s.log.Write(pxy.id, LOG_ERROR, "failed to connect ssh - %s", err.Error())
+									s.log.Write(pxy.Id, LOG_ERROR, "failed to connect ssh - %s", err.Error())
 									pxy.send_ws_data(ws, "error", err.Error())
 									ws.Close() // dirty way to flag out the error
 								} else {
 									err = pxy.send_ws_data(ws, "status", "opened")
 									if err != nil {
-										s.log.Write(pxy.id, LOG_ERROR, "Failed to write opened event to websocket - %s", err.Error())
+										s.log.Write(pxy.Id, LOG_ERROR, "Failed to write opened event to websocket - %s", err.Error())
 										ws.Close() // dirty way to flag out the error
 									} else {
 										conn_ready_chan <- true
@@ -792,7 +795,7 @@ ws_recv_loop:
 							rows, _ = strconv.Atoi(ev.Data[0])
 							cols, _ = strconv.Atoi(ev.Data[1])
 							sess.WindowChange(rows, cols)
-							s.log.Write(pxy.id, LOG_DEBUG, "Resized terminal to %d,%d", rows, cols)
+							s.log.Write(pxy.Id, LOG_DEBUG, "Resized terminal to %d,%d", rows, cols)
 							// ignore error
 						}
 				}
