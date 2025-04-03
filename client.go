@@ -364,10 +364,10 @@ func (r *ClientRoute) FindClientPeerConnById(peer_id PeerId) *ClientPeerConn {
 
 func (r *ClientRoute) ExtendLifetime(lifetime time.Duration) error {
 	r.lifetime_mtx.Lock()
-	defer r.lifetime_mtx.Unlock()
 	if r.lifetime_timer == nil {
 		// let's not support timer extend if route was not
 		// first started with lifetime enabled
+		r.lifetime_mtx.Unlock()
 		return fmt.Errorf("prohibited operation")
 	} else {
 		var expiry time.Time
@@ -376,16 +376,19 @@ func (r *ClientRoute) ExtendLifetime(lifetime time.Duration) error {
 		expiry = r.LifetimeStart.Add(r.Lifetime)
 		r.lifetime_timer.Reset(expiry.Sub(time.Now()))
 		if r.cts.C.route_persister != nil { r.cts.C.route_persister.Save(r.cts, r) }
+		r.lifetime_mtx.Unlock()
+
+		r.cts.C.FireRouteEvent(CLIENT_EVENT_ROUTE_UPDATED, r)
 		return nil
 	}
 }
 
 func (r *ClientRoute) ResetLifetime(lifetime time.Duration) error {
 	r.lifetime_mtx.Lock()
-	defer r.lifetime_mtx.Unlock()
 	if r.lifetime_timer == nil {
 		// let's not support timer reset if route was not
 		// first started with lifetime enabled
+		r.lifetime_mtx.Unlock()
 		return fmt.Errorf("prohibited operation")
 	} else {
 		r.lifetime_timer.Stop()
@@ -393,6 +396,9 @@ func (r *ClientRoute) ResetLifetime(lifetime time.Duration) error {
 		r.LifetimeStart = time.Now()
 		r.lifetime_timer.Reset(lifetime)
 		if r.cts.C.route_persister != nil { r.cts.C.route_persister.Save(r.cts, r) }
+		r.lifetime_mtx.Unlock()
+
+		r.cts.C.FireRouteEvent(CLIENT_EVENT_ROUTE_UPDATED, r)
 		return nil
 	}
 }
@@ -2139,7 +2145,7 @@ func (c *Client) FireRouteEvent(event_kind ClientEventKind, r *ClientRoute) {
 					ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
-					LifetimeStart: lftsta.Unix(),
+					LifetimeStartMilli: lftsta.UnixMilli(),
 					CreatedMilli: r.Created.UnixMilli(),
 				},
 			},

@@ -38,7 +38,7 @@ type json_in_client_route struct {
 	ServerPeerOption string `json:"server-peer-option"`
 
 	// the following two fields in the input structure is the requested values.
-	// the actual values are returned in json_out_clinet_route and may be different from the requested ones
+	// the actual values are returned in json_out_client_route and may be different from the requested ones
 	ServerPeerSvcAddr string `json:"server-peer-svc-addr"` // requested listening address on the server side - not actual
 	ServerPeerSvcNet string `json:"server-peer-svc-net"` // requested permitted network in prefix notation - not actual
 
@@ -73,7 +73,7 @@ type json_out_client_route struct {
 	ServerPeerSvcNet string `json:"server-peer-svc-net"`
 
 	Lifetime string `json:"lifetime"`
-	LifetimeStart int64 `json:"lifetime-start"`
+	LifetimeStartMilli int64 `json:"lifetime-start-milli"`
 	CreatedMilli int64 `json:"created-milli"`
 }
 
@@ -287,7 +287,7 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 						ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 						ServerPeerOption: r.ServerPeerOption.String(),
 						Lifetime: DurationToSecString(lftdur),
-						LifetimeStart: lftsta.Unix(),
+						LifetimeStartMilli : lftsta.UnixMilli(),
 						CreatedMilli: r.Created.UnixMilli(),
 					})
 				}
@@ -405,7 +405,7 @@ func (ctl *client_ctl_client_conns_id) ServeHTTP(w http.ResponseWriter, req *htt
 					ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
-					LifetimeStart: lftsta.Unix(),
+					LifetimeStartMilli : lftsta.UnixMilli(),
 					CreatedMilli: r.Created.UnixMilli(),
 				})
 			}
@@ -486,7 +486,7 @@ func (ctl *client_ctl_client_conns_id_routes) ServeHTTP(w http.ResponseWriter, r
 					ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
-					LifetimeStart: lftsta.Unix(),
+					LifetimeStartMilli : lftsta.UnixMilli(),
 					CreatedMilli: r.Created.UnixMilli(),
 				})
 			}
@@ -605,7 +605,7 @@ func (ctl *client_ctl_client_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 				ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 				ServerPeerOption: r.ServerPeerOption.String(),
 				Lifetime: DurationToSecString(lftdur),
-				LifetimeStart: lftsta.Unix(),
+				LifetimeStartMilli : lftsta.UnixMilli(),
 				CreatedMilli: r.Created.UnixMilli(),
 			})
 			if err != nil { goto oops }
@@ -694,7 +694,8 @@ func (ctl *client_ctl_client_conns_id_routes_spsp) ServeHTTP(w http.ResponseWrit
 				ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 				ServerPeerOption: r.ServerPeerOption.String(),
 				Lifetime: DurationToSecString(lftdur),
-				LifetimeStart: lftsta.Unix(),
+				LifetimeStartMilli : lftsta.UnixMilli(),
+				CreatedMilli: r.Created.UnixMilli(),
 			})
 			if err != nil { goto oops }
 
@@ -957,7 +958,7 @@ func (ctl *client_ctl_client_routes) ServeHTTP(w http.ResponseWriter, req *http.
 					ServerPeerSvcNet: r.ServerPeerSvcNet.Get(),
 					ServerPeerOption: r.ServerPeerOption.String(),
 					Lifetime: DurationToSecString(lftdur),
-					LifetimeStart: lftsta.Unix(),
+					LifetimeStartMilli : lftsta.UnixMilli(),
 					CreatedMilli: r.Created.UnixMilli(),
 				})
 			}
