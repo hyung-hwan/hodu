@@ -1182,7 +1182,6 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 		var err error
 		var start_time time.Time
 		var time_taken time.Duration
-		var realm string
 
 		// this deferred function is to overcome the recovering implemenation
 		// from panic done in go's http server. in that implemenation, panic
@@ -1204,6 +1203,8 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 		if req.Method == http.MethodOptions {
 			status_code = WriteEmptyRespHeader(w, http.StatusOK)
 		} else {
+			var realm string
+
 			status_code, realm = handler.Authenticate(req)
 			if status_code == http.StatusUnauthorized {
 				if realm != "" {
