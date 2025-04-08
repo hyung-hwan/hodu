@@ -364,7 +364,7 @@ func main() {
 		flgs.SetOutput(io.Discard) // prevent usage output
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
-			fmt.Printf ("ERROR: %s\n", err.Error())
+			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
 			goto wrong_usage
 		}
 
@@ -373,7 +373,7 @@ func main() {
 		if cfgfile != "" {
 			cfg, err = load_server_config(cfgfile)
 			if err != nil {
-				fmt.Printf ("ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
+				fmt.Fprintf(os.Stderr, "ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
 				goto oops
 			}
 		}
@@ -414,14 +414,14 @@ func main() {
 		flgs.SetOutput(io.Discard)
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
-			fmt.Printf ("ERROR: %s\n", err.Error())
+			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
 			goto wrong_usage
 		}
 
 		if cfgfile != "" {
 			cfg, err = load_client_config(cfgfile)
 			if err != nil {
-				fmt.Printf ("ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
+				fmt.Fprintf(os.Stderr, "ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
 				goto oops
 			}
 		}
