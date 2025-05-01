@@ -1588,7 +1588,7 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 		go func(i int, cs *http.Server) {
 			var l net.Listener
 
-			s.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, s.Cfg.CtlAddrs[i])
+			s.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, cs.Addr)
 
 			if s.stop_req.Load() == false {
 				// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
