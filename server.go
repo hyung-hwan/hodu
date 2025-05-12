@@ -907,29 +907,33 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 	// Increment the wait count here before the loop begins
 	cts.route_wg.Add(1)
 
-	for {
-		// exit if context is done
-		// or continue
-		select {
-			case <-ctx.Done(): // the stream context is done
-				cts.S.log.Write(cts.Sid, LOG_INFO, "RPC stream done - %s", ctx.Err().Error())
-				goto done
+	// start the loop inside a goroutine so that route_wg counter
+	// is likely to be greater than 1  what Wait() is called.
+	go func() {
+	waiting_loop:
+		for {
+			// exit if context is done or continue
+			select {
+				case <-ctx.Done(): // the stream context is done
+					cts.S.log.Write(cts.Sid, LOG_INFO, "RPC stream done - %s", ctx.Err().Error())
+					break waiting_loop
 
-			case <- cts.stop_chan:
-				// get out of the loop to eventually to exit from
-				// this handler to let the main grpc server to
-				// close this specific client connection.
-				goto done
+				case <- cts.stop_chan:
+					// get out of the loop to eventually to exit from
+					// this handler to let the main grpc server to
+					// close this specific client connection.
+					break waiting_loop
 
-			//default:
-				// no other case is ready.
-				// without the default case, the select construct would block
+				//default:
+					// no other case is ready.
+					// without the default case, the select construct would block
+			}
 		}
-	}
 
-done:
-	cts.ReqStop() // just in case
-	cts.route_wg.Done()
+		cts.ReqStop() // just in case
+		cts.route_wg.Done()
+	}()
+
 	cts.route_wg.Wait()
 	cts.S.FireConnEvent(SERVER_EVENT_CONN_STOPPED, cts)
 

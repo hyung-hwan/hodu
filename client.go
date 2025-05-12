@@ -431,42 +431,48 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 			r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.cts.remote_addr_p)
 	}
 
-	r.lifetime_mtx.Lock()
-	if r.Lifetime > 0 {
-		r.LifetimeStart = time.Now()
-		r.lifetime_timer = time.NewTimer(r.Lifetime)
-	}
-	r.lifetime_mtx.Unlock()
+	r.ptc_wg.Add(1) // increment counter here
 
-main_loop:
-	for {
-		if r.lifetime_timer != nil {
-			select {
-				case <-r.stop_chan:
-					break main_loop
+	go func() { // and run the waiting loop in a goroutine to give a positive counter to r.ptc_wg.Wait()
+		r.lifetime_mtx.Lock()
+		if r.Lifetime > 0 {
+			r.LifetimeStart = time.Now()
+			r.lifetime_timer = time.NewTimer(r.Lifetime)
+		}
+		r.lifetime_mtx.Unlock()
 
-				case <-r.lifetime_timer.C:
-					r.cts.C.log.Write(r.cts.Sid, LOG_INFO, "route(%d,%s) reached end of lifetime(%v)",
-						r.Id, r.PeerAddr, r.Lifetime)
-					break main_loop
-			}
-		} else {
-			select {
-				case <-r.stop_chan:
-					break main_loop
+	waiting_loop:
+		for {
+			if r.lifetime_timer != nil {
+				select {
+					case <-r.stop_chan:
+						break waiting_loop
+
+					case <-r.lifetime_timer.C:
+						r.cts.C.log.Write(r.cts.Sid, LOG_INFO, "route(%d,%s) reached end of lifetime(%v)",
+							r.Id, r.PeerAddr, r.Lifetime)
+						break waiting_loop
+				}
+			} else {
+				select {
+					case <-r.stop_chan:
+						break waiting_loop
+				}
 			}
 		}
-	}
 
-	r.lifetime_mtx.Lock()
-	if r.lifetime_timer != nil {
-		r.lifetime_timer.Stop()
-		r.lifetime_timer = nil
-	}
-	r.lifetime_mtx.Unlock()
+		r.lifetime_mtx.Lock()
+		if r.lifetime_timer != nil {
+			r.lifetime_timer.Stop()
+			r.lifetime_timer = nil
+		}
+		r.lifetime_mtx.Unlock()
+
+		r.ReqStop() // just in case
+		r.ptc_wg.Done()
+	}()
 
 done:
-	r.ReqStop()
 	r.ptc_wg.Wait() // wait for all peer tasks are finished
 
 	err = r.cts.psc.Send(MakeRouteStopPacket(r.Id, r.ServerPeerOption, r.PeerAddr, r.PeerName, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet))
