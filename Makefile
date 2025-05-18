@@ -58,7 +58,7 @@ clean:
 	go clean -x -i
 	rm -f $(NAME) $(NAME).debug
 
-test:
+check:
 	go test -x
 
 hodu.pb.go: hodu.proto
