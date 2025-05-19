@@ -9,7 +9,6 @@ import "errors"
 import "fmt"
 import "hodu"
 import "io"
-import "io/ioutil"
 import "net/netip"
 import "os"
 import "strings"
@@ -271,7 +270,7 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 			}
 		} else if cfg.ClientCACertFile != "" {
 			var text []byte
-			text, err = ioutil.ReadFile(cfg.ClientCACertFile)
+			text, err = os.ReadFile(cfg.ClientCACertFile)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load ca certficate file %s - %s", cfg.ClientCACertFile, err.Error())
 			}
@@ -329,7 +328,7 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 			}
 		} else if cfg.ServerCACertFile != "" {
 			var text []byte
-			text, err = ioutil.ReadFile(cfg.ServerCACertFile)
+			text, err = os.ReadFile(cfg.ServerCACertFile)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load ca certficate file %s - %s", cfg.ServerCACertFile, err.Error())
 			}
