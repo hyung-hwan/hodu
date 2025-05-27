@@ -14,7 +14,9 @@ import "os"
 import "strings"
 import "time"
 
-import "gopkg.in/yaml.v3"
+//import "gopkg.in/yaml.v3"
+import yaml "github.com/goccy/go-yaml"
+
 
 type ServerTLSConfig struct {
 	Enabled                  bool               `yaml:"enabled"`
@@ -155,7 +157,7 @@ func load_server_config(cfgfile string) (*ServerConfig, error) {
 		return nil, err
 	}
 
-	yd = yaml.NewDecoder(f)
+	yd = yaml.NewDecoder(f, yaml.AllowDuplicateMapKey(), yaml.DisallowUnknownField())
 	err = yd.Decode(&cfg)
 	f.Close()
 	if err != nil {
