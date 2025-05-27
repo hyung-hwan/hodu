@@ -7,7 +7,6 @@ import "net"
 import "net/http"
 import "net/netip"
 import "os"
-import "path/filepath"
 import "runtime"
 import "strings"
 import "sync"
@@ -355,7 +354,9 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 
 	for _, rule = range auth.AccessRules {
 		// i don't take into account X-Forwarded-For and similar headers
-		if req.URL.Path == rule.Prefix || strings.HasPrefix(req.URL.Path, filepath.Clean(rule.Prefix + "/")) {
+		var pfxd string = rule.Prefix
+		if pfxd[len(pfxd) -1] != '/' { pfxd = pfxd + "/" }
+		if req.URL.Path == rule.Prefix || strings.HasPrefix(req.URL.Path, pfxd) {
 			var org_net_ok bool
 
 			if len(rule.OrgNets) > 0 && raddr.IsValid() {
