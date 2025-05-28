@@ -9,6 +9,7 @@ import "io"
 import "net"
 import "os"
 import "os/signal"
+import "path/filepath"
 import "strings"
 import "sync"
 import "syscall"
@@ -327,8 +328,9 @@ func main() {
 		var pxy_addrs []string
 		var wpx_addrs []string
 		var cfgfile string
+		var cfgpat string
 		var logfile string
-		var cfg *ServerConfig
+		var cfg ServerConfig
 
 		ctl_addrs = make([]string, 0)
 		rpc_addrs = make([]string, 0)
@@ -356,11 +358,14 @@ func main() {
 			logfile = v
 			return nil
 		})
-		flgs.Func("config-file", "specify a configuration file path", func(v string) error {
+		flgs.Func("config-file", "specify a primary configuration file path", func(v string) error {
 			cfgfile = v
 			return nil
 		})
-		// TODO: add a command line option to specify log file and mask.
+		flgs.Func("config-file-pattern", "specify a file pattern for additional configuration files", func(v string) error {
+			cfgpat = v
+			return nil
+		})
 		flgs.SetOutput(io.Discard) // prevent usage output
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
@@ -371,14 +376,32 @@ func main() {
 		if flgs.NArg() > 0 { goto wrong_usage }
 
 		if cfgfile != "" {
-			cfg, err = load_server_config(cfgfile)
+			err = load_server_config_to(cfgfile, &cfg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
 				goto oops
 			}
 		}
+		if cfgpat != "" {
+			var file string
+			var matches []string
 
-		err = server_main(ctl_addrs, rpc_addrs, pxy_addrs, wpx_addrs, logfile, cfg)
+			matches, err = filepath.Glob(cfgpat)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: failed to match the pattern %s - %s\n", cfgpat, err.Error())
+				goto oops
+			}
+
+			for _, file = range matches {
+				err = load_server_config_to(file, &cfg)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "ERROR: failed to load configuration file %s - %s\n", file, err.Error())
+					goto oops
+				}
+			}
+		}
+
+		err = server_main(ctl_addrs, rpc_addrs, pxy_addrs, wpx_addrs, logfile, &cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops
@@ -387,8 +410,9 @@ func main() {
 		var rpc_addrs []string
 		var ctl_addrs []string
 		var cfgfile string
+		var cfgpat string
 		var logfile string
-		var cfg *ClientConfig
+		var cfg ClientConfig
 
 		ctl_addrs = make([]string, 0)
 		rpc_addrs = make([]string, 0)
@@ -410,7 +434,10 @@ func main() {
 			cfgfile = v
 			return nil
 		})
-		// TODO: add a command line option to specify log file and mask.
+		flgs.Func("config-file-pattern", "specify a file pattern for additional configuration files", func(v string) error {
+			cfgpat = v
+			return nil
+		})
 		flgs.SetOutput(io.Discard)
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
@@ -419,14 +446,32 @@ func main() {
 		}
 
 		if cfgfile != "" {
-			cfg, err = load_client_config(cfgfile)
+			err = load_client_config_to(cfgfile, &cfg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: failed to load configuration file %s - %s\n", cfgfile, err.Error())
 				goto oops
 			}
 		}
+		if cfgpat != "" {
+			var file string
+			var matches []string
 
-		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), logfile, cfg)
+			matches, err = filepath.Glob(cfgpat)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: failed to match the pattern %s - %s\n", cfgpat, err.Error())
+				goto oops
+			}
+
+			for _, file = range matches {
+				err = load_client_config_to(file, &cfg)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "ERROR: failed to load configuration file %s - %s\n", file, err.Error())
+					goto oops
+				}
+			}
+		}
+
+		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), logfile, &cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: client error - %s\n", err.Error())
 			goto oops
@@ -441,8 +486,8 @@ func main() {
 	os.Exit(0)
 
 wrong_usage:
-	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [peer-addr:peer-port ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [peer-addr:peer-port ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
 

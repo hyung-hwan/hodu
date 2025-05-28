@@ -5,10 +5,8 @@ import "crypto/tls"
 import "crypto/x509"
 import "encoding/base64"
 import "encoding/pem"
-import "errors"
 import "fmt"
 import "hodu"
-import "io"
 import "net/netip"
 import "os"
 import "strings"
@@ -146,46 +144,32 @@ type ClientConfig struct {
 	} `yaml:"rpc"`
 }
 
-func load_server_config(cfgfile string) (*ServerConfig, error) {
-	var cfg ServerConfig
+func load_server_config_to(cfgfile string, cfg *ServerConfig) error {
 	var f *os.File
 	var yd *yaml.Decoder
 	var err error
 
 	f, err = os.Open(cfgfile)
-	if err != nil && errors.Is(err, io.EOF) {
-		return nil, err
-	}
+	if err != nil { return err }
 
 	yd = yaml.NewDecoder(f, yaml.AllowDuplicateMapKey(), yaml.DisallowUnknownField())
-	err = yd.Decode(&cfg)
+	err = yd.Decode(cfg)
 	f.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
+	return err
 }
 
-func load_client_config(cfgfile string) (*ClientConfig, error) {
-	var cfg ClientConfig
+func load_client_config_to(cfgfile string, cfg *ClientConfig) error {
 	var f *os.File
 	var yd *yaml.Decoder
 	var err error
 
 	f, err = os.Open(cfgfile)
-	if err != nil && errors.Is(err, io.EOF) {
-		return nil, err
-	}
+	if err != nil { return err }
 
 	yd = yaml.NewDecoder(f)
-	err = yd.Decode(&cfg)
+	err = yd.Decode(cfg)
 	f.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
+	return err
 }
 
 
