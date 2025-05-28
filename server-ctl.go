@@ -495,9 +495,13 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 
 	switch req.Method {
 		case http.MethodGet:
+			var cts_id ConnId
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			// proxy_info_to_server_route() created the fake route but the function
+			// doesn't fake the Cts field and leaves it to nil.
+			if r.Cts == nil { cts_id = 0 } else { cts_id = r.Cts.Id }
 			err = je.Encode(json_out_server_route{
-				CId: r.Cts.Id,
+				CId: cts_id,
 				RId: r.Id,
 				ClientPeerAddr: r.PtcAddr,
 				ClientPeerName: r.PtcName,
