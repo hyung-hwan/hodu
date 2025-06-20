@@ -3,8 +3,8 @@ package hodu
 import "bufio"
 import "context"
 import "crypto/tls"
-import _ "embed"
 import "encoding/json"
+import "errors"
 import "fmt"
 import "io"
 import "net"
@@ -20,15 +20,6 @@ import "time"
 import "golang.org/x/crypto/ssh"
 import "golang.org/x/net/http/httpguts"
 import "golang.org/x/net/websocket"
-
-//go:embed xterm.js
-var xterm_js []byte
-//go:embed xterm-addon-fit.js
-var xterm_addon_fit_js []byte
-//go:embed xterm.css
-var xterm_css []byte
-//go:embed xterm.html
-var xterm_html string
 
 type server_pxy struct {
 	S *Server
@@ -584,7 +575,7 @@ func (pxy *server_pxy_ssh_ws) send_ws_data(ws *websocket.Conn, type_val string, 
 	return err
 }
 
-func (pxy *server_pxy_ssh_ws) connect_ssh (ctx context.Context, username string, password string, r *ServerRoute) ( *ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
+func (pxy *server_pxy_ssh_ws) connect_ssh (ctx context.Context, username string, password string, r *ServerRoute) (*ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
 	var cc *ssh.ClientConfig
 	var addr *net.TCPAddr
 	var dialer *net.Dialer
@@ -712,15 +703,15 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 			for {
 				n, err = out.Read(buf)
 				if err != nil {
-					if err != io.EOF {
-						s.log.Write(pxy.Id, LOG_ERROR, "Read from SSH stdout error - %s", err.Error())
+					if !errors.Is(err, io.EOF) {
+						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to read from  SSH stdout - %s", req.RemoteAddr, err.Error())
 					}
 					break
 				}
 				if n > 0 {
 					err = pxy.send_ws_data(ws, "iov", string(buf[:n]))
 					if err != nil {
-						s.log.Write(pxy.Id, LOG_ERROR, "Failed to send to websocket - %s", err.Error())
+						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
 						break
 					}
 				}
@@ -757,26 +748,27 @@ ws_recv_loop:
 								defer wg.Done()
 								c, sess, in, out, err = pxy.connect_ssh(connect_ssh_ctx, username, password, r)
 								if err != nil {
-									s.log.Write(pxy.Id, LOG_ERROR, "failed to connect ssh - %s", err.Error())
+									s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to connect ssh - %s", req.RemoteAddr, err.Error())
 									pxy.send_ws_data(ws, "error", err.Error())
 									ws.Close() // dirty way to flag out the error
 								} else {
 									err = pxy.send_ws_data(ws, "status", "opened")
 									if err != nil {
-										s.log.Write(pxy.Id, LOG_ERROR, "Failed to write opened event to websocket - %s", err.Error())
+										s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
 										ws.Close() // dirty way to flag out the error
 									} else {
+										s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Opened SSH session - %s", req.RemoteAddr, err.Error())
 										conn_ready_chan <- true
 									}
 								}
 								(connect_ssh_cancel.Get())()
-								connect_ssh_cancel.Set(nil)
+								connect_ssh_cancel.Set(nil) // @@@ use atomic
 							}()
 						}
 
 					case "close":
 						var cancel context.CancelFunc
-						cancel = connect_ssh_cancel.Get() // is it a good way to avoid mutex?
+						cancel = connect_ssh_cancel.Get() // is it a good way to avoid mutex against Set() marked with @@@ above?
 						if cancel != nil { cancel() }
 						break ws_recv_loop
 
@@ -795,7 +787,7 @@ ws_recv_loop:
 							rows, _ = strconv.Atoi(ev.Data[0])
 							cols, _ = strconv.Atoi(ev.Data[1])
 							sess.WindowChange(rows, cols)
-							s.log.Write(pxy.Id, LOG_DEBUG, "Resized terminal to %d,%d", rows, cols)
+							s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Resized terminal to %d,%d", req.RemoteAddr, rows, cols)
 							// ignore error
 						}
 				}
@@ -814,6 +806,7 @@ done:
 	if sess != nil { sess.Close() }
 	if c != nil { c.Close() }
 	wg.Wait()
+	s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Ended SSH Session", req.RemoteAddr)
 
 	return http.StatusOK, err
 }

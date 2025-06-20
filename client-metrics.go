@@ -10,6 +10,7 @@ type ClientCollector struct {
 	ClientConns      *prometheus.Desc
 	ClientRoutes     *prometheus.Desc
 	ClientPeers      *prometheus.Desc
+	PtsSessions      *prometheus.Desc
 }
 
 // NewClientCollector returns a new ClientCollector with all prometheus.Desc initialized
@@ -44,6 +45,11 @@ func NewClientCollector(client *Client) ClientCollector {
 		ClientPeers: prometheus.NewDesc(
 			prefix + "client_peers",
 			"Number of client-side peers",
+			nil, nil,
+		),
+		PtsSessions: prometheus.NewDesc(
+			prefix + "pts_sessions",
+			"Number of pts sessions",
 			nil, nil,
 		),
 	}
@@ -83,5 +89,11 @@ func (c ClientCollector) Collect(ch chan<- prometheus.Metric) {
 		c.ClientPeers,
 		prometheus.GaugeValue,
 		float64(c.client.stats.peers.Load()),
+	)
+
+	ch <- prometheus.MustNewConstMetric(
+		c.PtsSessions,
+		prometheus.GaugeValue,
+		float64(c.client.stats.pts_sessions.Load()),
 	)
 }

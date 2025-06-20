@@ -145,7 +145,12 @@ type Client struct {
 		conns atomic.Int64
 		routes atomic.Int64
 		peers atomic.Int64
+		pts_sessions atomic.Int64
 	}
+
+	pts_user string
+	pts_shell string
+	xterm_pts_html string
 }
 
 type ClientConnState = int32
@@ -1624,8 +1629,30 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.ctl_mux.Handle(c.ctl_prefix + "/_ctl/metrics",
 		promhttp.HandlerFor(c.promreg, promhttp.HandlerOpts{ EnableOpenMetrics: true }))
 
-	 c.ctl_mux.Handle("/_ctl/events",
+	c.ctl_mux.Handle("/_ctl/events",
 		c.WrapWebsocketHandler(&client_ctl_ws{client_ctl{c: &c, id: HS_ID_CTL}}))
+
+
+	c.ctl_mux.Handle("/_pts/ws", c.WrapWebsocketHandler(&client_pts_ws{C: &c, Id: HS_ID_CTL}))
+
+	c.ctl_mux.Handle("/_pts/xterm.js",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.js"}))
+	c.ctl_mux.Handle("/_pts/xterm.js.map",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_notfound"}))
+	c.ctl_mux.Handle("/_pts/xterm-addon-fit.js",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
+	c.ctl_mux.Handle("/_pts/xterm-addon-fit.js.map",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_notfound"}))
+	c.ctl_mux.Handle("/_pts/xterm.css",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.css"}))
+	c.ctl_mux.Handle("/_pts/xterm-pts.html",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm-pts.html"}))
+	c.ctl_mux.Handle("/_pts/",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
+	c.ctl_mux.Handle("/_pts/favicon.ico",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
+	c.ctl_mux.Handle("/_pts/favicon.ico/",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
 
 	c.ctl_addr = make([]string, len(cfg.CtlAddrs))
 	c.ctl = make([]*http.Server, len(cfg.CtlAddrs))
@@ -1646,6 +1673,7 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.stats.conns.Store(0)
 	c.stats.routes.Store(0)
 	c.stats.peers.Store(0)
+	c.stats.pts_sessions.Store(0)
 
 	return &c
 }
@@ -1932,6 +1960,30 @@ func (c *Client) ReqStop() {
 
 		c.stop_chan <- true
 	}
+}
+
+func (c *Client) SetXtermPtsHtml(html string) {
+	c.xterm_pts_html = html
+}
+
+func (c *Client) GetXtermPtsHtml() string {
+	return c.xterm_pts_html
+}
+
+func (c *Client) SetPtsUser(user string) {
+	c.pts_user = user
+}
+
+func (c *Client) GetPtsUser() string {
+	return c.pts_user
+}
+
+func (c *Client) SetPtsShell(user string) {
+	c.pts_shell = user
+}
+
+func (c *Client) GetPtsShell() string {
+	return c.pts_shell
 }
 
 func (c *Client) RunCtlTask(wg *sync.WaitGroup) {

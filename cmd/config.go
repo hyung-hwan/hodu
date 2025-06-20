@@ -105,6 +105,9 @@ type ClientAppConfig  struct {
 	MaxPeers      int           `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns   int           `yaml:"max-rpc-conns"` // maximum number of rpc connections
 	PeerConnTmout time.Duration `yaml:"peer-conn-timeout"`
+	PtsUser       string        `yaml:"pts-user"`
+	PtsShell      string        `yaml:"pts-shell"`
+	XtermPtsHtmlFile string     `yaml:"xterm-pts-html-file"`
 }
 
 type ServerConfig struct {

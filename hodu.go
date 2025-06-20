@@ -1,6 +1,7 @@
 package hodu
 
 import "crypto/rsa"
+import _ "embed"
 import "encoding/base64"
 import "fmt"
 import "net"
@@ -115,6 +116,22 @@ type json_out_go_stats struct {
 	GCSysBytes uint64 `json:"memory-gc-sys-bytes"`
 	OtherSysBytes uint64 `json:"memory-other-sys-bytes"`
 }
+
+
+// ---------------------------------------------------------
+
+//go:embed xterm.js
+var xterm_js []byte
+//go:embed xterm-addon-fit.js
+var xterm_addon_fit_js []byte
+//go:embed xterm.css
+var xterm_css []byte
+//go:embed xterm.html
+var xterm_html string
+//go:embed xterm-pts.html
+var xterm_pts_html []byte
+
+// ---------------------------------------------------------
 
 func (n *Named) SetName(name string) {
 	n.name = name

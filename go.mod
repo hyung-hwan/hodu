@@ -3,6 +3,7 @@ module hodu
 go 1.22.0
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/goccy/go-yaml v1.17.1
 	github.com/prometheus/client_golang v1.20.5
 	golang.org/x/crypto v0.26.0

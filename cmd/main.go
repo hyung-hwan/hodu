@@ -252,6 +252,10 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var logmask hodu.LogMask
 	var logfile_maxsize int64
 	var logfile_rotate int
+	var pts_user string
+	var pts_shell string
+	var xterm_pts_html_file string
+	var xterm_pts_html string
 	var i int
 	var err error
 
@@ -281,6 +285,9 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 		if logfile == "" { logfile = cfg.APP.LogFile }
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
+		pts_user = cfg.APP.PtsUser
+		pts_shell = cfg.APP.PtsShell
+		xterm_pts_html_file = cfg.APP.XtermPtsHtmlFile
 		config.RpcConnMax = cfg.APP.MaxRpcConns
 		config.PeerConnMax = cfg.APP.MaxPeers
 		config.PeerConnTmout = cfg.APP.PeerConnTmout
@@ -305,7 +312,21 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
 	}
+
+	if xterm_pts_html_file != "" {
+		var tmp []byte
+		tmp, err = os.ReadFile(xterm_pts_html_file)
+		if err != nil {
+			return fmt.Errorf("failed to read %s - %s", xterm_pts_html_file, err.Error())
+		}
+		xterm_pts_html = string(tmp)
+	}
+
 	c = hodu.NewClient(context.Background(), HODU_NAME, logger, config)
+
+	if pts_user != "" { c.SetPtsUser(pts_user) }
+	if pts_shell != "" { c.SetPtsShell(pts_shell) }
+	if xterm_pts_html != "" { c.SetXtermPtsHtml(xterm_pts_html) }
 
 	c.StartService(&cc)
 	c.StartCtlService() // control channel

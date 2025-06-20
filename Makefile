@@ -15,6 +15,7 @@ SRCS=\
 	client-ctl.go \
 	client-metrics.go \
 	client-peer.go \
+	client-pts.go \
 	hodu.go \
 	hodu.pb.go \
 	hodu_grpc.pb.go \
@@ -32,7 +33,8 @@ DATA = \
 	xterm.css \
 	xterm.js \
 	xterm-addon-fit.js \
-	xterm.html
+	xterm.html \
+	xterm-pts.html
 
 CMD_DATA=\
 	cmd/rsa.key \

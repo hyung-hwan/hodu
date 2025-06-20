@@ -1,7 +1,7 @@
 
 ## normal operation
 - ./hodu server --rpc-on=0.0.0.0:9999 --ctl-on=0.0.0.0:8888 --pxy-on=0.0.0.0:9998 --wpx-on=0.0.0.0:9997
-- ./hodu client --rpc-to=127.0.0.1:9999 --ctl-on=127.0.0.1:7777 "127.0.0.2:22,0.0.0.0:12345,ssh,Access SSH Server"
+- ./hodu client --rpc-to=127.0.0.1:9999 --ctl-on=127.0.0.1:1107 "127.0.0.2:22,0.0.0.0:12345,ssh,Access SSH Server"
 
 ## server.json
 ```
@@ -37,5 +37,5 @@
 
 Run this command:
 ```
-curl -X POST --data-binary @client-route.json http://127.0.0.1:7777/_ctl/client-conns/1/routes
+curl -X POST --data-binary @client-route.json http://127.0.0.1:1107/_ctl/client-conns/1/routes
 ```

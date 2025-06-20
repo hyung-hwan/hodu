@@ -1364,7 +1364,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	/*
 	// this part is duplcate of pxy_mux.
-	s.ctl_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
+	s.ctl_mux.Handle("/_ssh/ws/{conn_id}/{route_id}",
 		s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY_WS}))
 	s.ctl_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl{S: &s, Id: HS_ID_CTL, NoAuth: true}}))
@@ -1406,8 +1406,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	// ---------------------------------------------------------
 
-	s.pxy_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh_ws,_http configurable...
-	s.pxy_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
+	s.pxy_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh/ws,_http configurable...
+	s.pxy_mux.Handle("/_ssh/ws/{conn_id}/{route_id}",
 		s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY_WS}))
 	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl{S: &s, Id: HS_ID_PXY, NoAuth: true}}))
@@ -1451,8 +1451,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	s.wpx_mux = http.NewServeMux()
 
-	s.wpx_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh_ws,_http configurable...
-	s.wpx_mux.Handle("/_ssh-ws/{conn_id}/{route_id}",
+	s.wpx_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh/ws,_http configurable...
+	s.wpx_mux.Handle("/_ssh/ws/{conn_id}/{route_id}",
 		s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: "wpx-ssh"}))
 
 	s.wpx_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
