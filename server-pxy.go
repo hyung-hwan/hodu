@@ -757,7 +757,7 @@ ws_recv_loop:
 										s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
 										ws.Close() // dirty way to flag out the error
 									} else {
-										s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Opened SSH session - %s", req.RemoteAddr, err.Error())
+										s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Opened SSH session", req.RemoteAddr)
 										conn_ready_chan <- true
 									}
 								}
