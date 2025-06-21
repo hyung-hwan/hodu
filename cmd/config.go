@@ -169,7 +169,7 @@ func load_client_config_to(cfgfile string, cfg *ClientConfig) error {
 	f, err = os.Open(cfgfile)
 	if err != nil { return err }
 
-	yd = yaml.NewDecoder(f)
+	yd = yaml.NewDecoder(f, yaml.AllowDuplicateMapKey(), yaml.DisallowUnknownField())
 	err = yd.Decode(cfg)
 	f.Close()
 	return err
