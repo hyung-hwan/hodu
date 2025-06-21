@@ -12,6 +12,7 @@ import "net/http"
 import "net/netip"
 import "slices"
 import "strconv"
+import "strings"
 import "sync"
 import "sync/atomic"
 import "time"
@@ -1233,6 +1234,19 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 	})
 }
 
+func (s *Server) SafeWrapWebsocketHandler(handler websocket.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if !strings.EqualFold(req.Header.Get("Upgrade"), "websocket") ||
+		   !strings.Contains(strings.ToLower(req.Header.Get("Connection")), "upgrade") {
+			var status_code int
+			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+			s.log.Write("", LOG_INFO, "[%s] %s %s %d[non-websocket]", req.RemoteAddr, req.Method, req.URL.String(), status_code)
+			return
+		}
+		handler.ServeHTTP(w, req)
+	})
+}
+
 func (s *Server) WrapWebsocketHandler(handler ServerWebsocketHandler) websocket.Handler {
 	return websocket.Handler(func(ws *websocket.Conn) {
 		var status_code int
@@ -1360,12 +1374,12 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		promhttp.HandlerFor(s.promreg, promhttp.HandlerOpts{ EnableOpenMetrics: true }))
 
 	s.ctl_mux.Handle("/_ctl/events",
-		s.WrapWebsocketHandler(&server_ctl_ws{ServerCtl{S: &s, Id: HS_ID_CTL}}))
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_ctl_ws{ServerCtl{S: &s, Id: HS_ID_CTL}})))
 
 	/*
 	// this part is duplcate of pxy_mux.
 	s.ctl_mux.Handle("/_ssh/ws/{conn_id}/{route_id}",
-		s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY_WS}))
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY_WS})))
 	s.ctl_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl{S: &s, Id: HS_ID_CTL, NoAuth: true}}))
 	s.ctl_mux.Handle("/_ssh/xterm.js",
@@ -1408,7 +1422,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	s.pxy_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh/ws,_http configurable...
 	s.pxy_mux.Handle("/_ssh/ws/{conn_id}/{route_id}",
-		s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY_WS}))
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY_WS})))
 	s.pxy_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl{S: &s, Id: HS_ID_PXY, NoAuth: true}}))
 	s.pxy_mux.Handle("/_ssh/xterm.js",
@@ -1453,7 +1467,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	s.wpx_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh/ws,_http configurable...
 	s.wpx_mux.Handle("/_ssh/ws/{conn_id}/{route_id}",
-		s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: "wpx-ssh"}))
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: "wpx-ssh"})))
 
 	s.wpx_mux.Handle("/_ssh/server-conns/{conn_id}/routes/{route_id}",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl{S: &s, Id: HS_ID_WPX, NoAuth: true}}))
