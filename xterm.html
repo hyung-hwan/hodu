@@ -224,7 +224,8 @@ window.onload = function(event) {
 		};
 
 		socket.onerror = function(event) {
-			set_terminal_status('Disconnected', event);
+			//set_terminal_status('Disconnected', event);
+			set_terminal_status('Disconnected', '');
 			toggle_login_form(true)
 			window.onresize = adjust_terminal_size_unconnected;
 		};
