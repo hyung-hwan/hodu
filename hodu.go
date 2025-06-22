@@ -128,8 +128,12 @@ var xterm_addon_fit_js []byte
 var xterm_css []byte
 //go:embed xterm.html
 var xterm_html string
-//go:embed xterm-pts.html
-var xterm_pts_html []byte
+
+type xterm_session_info struct {
+	Mode string
+	ConnId string
+	RouteId string
+}
 
 // ---------------------------------------------------------
 

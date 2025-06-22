@@ -90,6 +90,7 @@
 <script src="xterm-addon-fit.js"></script>
 
 <script>
+const xt_mode = '{{ .Mode }}';
 const conn_id = '{{ .ConnId }}';
 const route_id = '{{ .RouteId }}';
 
@@ -99,12 +100,27 @@ window.onload = function(event) {
 	const terminal_status = document.getElementById('terminal-status');
 	const terminal_errmsg = document.getElementById('terminal-errmsg');
 	const terminal_view_container = document.getElementById('terminal-view-container');
+	const terminal_connect = document.getElementById('terminal-connect');
 	const terminal_disconnect = document.getElementById('terminal-disconnect');
 	const login_container = document.getElementById('login-container');
 	const login_form_title = document.getElementById('login-form-title');
 	const login_form = document.getElementById('login-form');
+	const login_ssh_part = document.getElementById('login-ssh-part');
+	const login_pts_part = document.getElementById('login-pts-part');
 	const username_field = document.getElementById('username');
 	const password_field= document.getElementById('password');
+
+	if (xt_mode == 'ssh') {
+		login_ssh_part.style.display = 'block';
+		username_field.disabled = false;
+		password_field.disabled = false;
+		login_pts_part.style.display = 'none';
+	} else {
+		login_ssh_part.style.display = 'none';
+		username_field.disabled = true;
+		password_field.disabled = true;
+		login_pts_part.style.display = 'block';
+	}
 
 	const term = new window.Terminal({
 		lineHeight: 1.2,
@@ -136,11 +152,19 @@ window.onload = function(event) {
 		let pathname = window.location.pathname;
 		pathname = pathname.replace(/\/$/, '');
 		pathname = pathname.substring(0, pathname.lastIndexOf('/'));
-		url += pathname + `/server-conns/${conn_id}/routes/${route_id}`;
+		if (xt_mode == 'ssh')
+			url += pathname + `/server-conns/${conn_id}/routes/${route_id}`;
+		else
+			url += pathname + `/session-info`;
 
 		try {
 			const resp = await fetch(url);
-			if (!resp.ok) throw new Error(`HTTP error in getting route(${conn_id},${route_id}) info - status ${resp.status}`);
+			if (!resp.ok) {
+				if (xt_mode == 'ssh')
+					throw new Error(`HTTP error in getting route(${conn_id},${route_id}) information - status ${resp.status}`);
+				else
+					throw new Error(`HTTP error in getting session information - status ${resp.status}`);
+			}
 			const route = await resp.json()
 			if ('client-peer-name' in route) {
 				set_terminal_target(route['client-peer-name']) // change to the name
@@ -154,11 +178,15 @@ window.onload = function(event) {
 	}
 
 	let toggle_login_form = function(visible) {
-		if (visible) fetch_session_info();
+		if (visible && xt_mode == 'ssh') fetch_session_info();
 		login_container.style.visibility = (visible? 'visible': 'hidden');
 		terminal_disconnect.style.visibility = (visible? 'hidden': 'visible');
-		if (visible) username_field.focus();
-		else term.focus();
+		if (visible) {
+			if (xt_mode == 'ssh') username_field.focus();
+			else terminal_connect.focus();
+		} else {
+			term.focus();
+		}
 	}
 
 	toggle_login_form(true);
@@ -169,14 +197,20 @@ window.onload = function(event) {
 		event.preventDefault();
 		toggle_login_form(false)
 
-		const username = username_field.value.trim();
-		const password = password_field.value.trim();
+		let username = '';
+		let password = '';
+
+		if (xt_mode == 'ssh') {
+			username = username_field.value.trim();
+			password = password_field.value.trim();
+		}
 
 		const prefix = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 		let pathname = window.location.pathname;
 		pathname = pathname.replace(/\/$/, '');
 		pathname = pathname.substring(0, pathname.lastIndexOf('/'));
-		let url = prefix + window.location.host + pathname + `/ws/${conn_id}/${route_id}`;
+		let url = prefix + window.location.host + pathname;
+		url += (xt_mode == 'ssh'? `/ws/${conn_id}/${route_id}`: `/ws`);
 
 		const socket = new WebSocket(url);
 		socket.binaryType = 'arraybuffer';
@@ -257,15 +291,21 @@ window.onload = function(event) {
 	<div id="login-form-container">
 		<div id="login-form-title"></div>
 		<form id="login-form">
-			<label>
-				Username: <input type="text" id="username" required />
-			</label>
-			<br /><br />
-			<label>
-				Password: <input type="password" id="password" required />
-			</label>
-			<br /><br />
-			<button type="submit">Connect</button>
+			<div id="login-ssh-part" style="display: none;">
+				<label>
+					Username: <input type="text" id="username" disabled required />
+				</label>
+				<br /><br />
+				<label>
+					Password: <input type="password" id="password" disabled required />
+				</label>
+			</div>
+			<div id="login-pts-part" style="display: none;">
+				Click Connect below to start a new terminal session
+			</div>
+			<div id="login-submit-part" style="padding-top: 1em;">
+				<button type="submit" id="terminal-connect">Connect</button>
+			</div>
 		</form>
 	</div>
 </div>

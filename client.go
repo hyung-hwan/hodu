@@ -151,7 +151,7 @@ type Client struct {
 
 	pts_user string
 	pts_shell string
-	xterm_pts_html string
+	xterm_html string
 }
 
 type ClientConnState = int32
@@ -1660,8 +1660,8 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_notfound"}))
 	c.ctl_mux.Handle("/_pts/xterm.css",
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.css"}))
-	c.ctl_mux.Handle("/_pts/xterm-pts.html",
-		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm-pts.html"}))
+	c.ctl_mux.Handle("/_pts/xterm.html",
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.html"}))
 	c.ctl_mux.Handle("/_pts/",
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
 	c.ctl_mux.Handle("/_pts/favicon.ico",
@@ -1977,12 +1977,12 @@ func (c *Client) ReqStop() {
 	}
 }
 
-func (c *Client) SetXtermPtsHtml(html string) {
-	c.xterm_pts_html = html
+func (c *Client) SetXtermHtml(html string) {
+	c.xterm_html = html
 }
 
-func (c *Client) GetXtermPtsHtml() string {
-	return c.xterm_pts_html
+func (c *Client) GetXtermHtml() string {
+	return c.xterm_html
 }
 
 func (c *Client) SetPtsUser(user string) {

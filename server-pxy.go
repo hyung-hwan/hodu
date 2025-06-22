@@ -458,11 +458,6 @@ func (pxy *server_pxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Reque
 }
 // ------------------------------------
 
-type server_pxy_xterm_session_info struct {
-	ConnId string
-	RouteId string
-}
-
 func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
@@ -516,7 +511,8 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 			} else {
 				status_code = WriteHtmlRespHeader(w, http.StatusOK)
 				tmpl.Execute(w,
-					&server_pxy_xterm_session_info{
+					&xterm_session_info{
+						Mode: "ssh",
 						ConnId: conn_id,
 						RouteId: route_id,
 					})

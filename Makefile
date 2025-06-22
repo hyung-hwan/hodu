@@ -33,8 +33,7 @@ DATA = \
 	xterm.css \
 	xterm.js \
 	xterm-addon-fit.js \
-	xterm.html \
-	xterm-pts.html
+	xterm.html
 
 CMD_DATA=\
 	cmd/rsa.key \

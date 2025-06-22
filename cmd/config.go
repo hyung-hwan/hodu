@@ -107,7 +107,7 @@ type ClientAppConfig  struct {
 	PeerConnTmout time.Duration `yaml:"peer-conn-timeout"`
 	PtsUser       string        `yaml:"pts-user"`
 	PtsShell      string        `yaml:"pts-shell"`
-	XtermPtsHtmlFile string     `yaml:"xterm-pts-html-file"`
+	XtermHtmlFile string        `yaml:"xterm-html-file"`
 }
 
 type ServerConfig struct {

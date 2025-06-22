@@ -11,6 +11,7 @@ import "os/user"
 import "strconv"
 import "sync"
 import "syscall"
+import "text/template"
 
 import "github.com/creack/pty"
 import "golang.org/x/net/websocket"
@@ -276,7 +277,7 @@ done:
 func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
-//	var err error
+	var err error
 
 	c = pts.c
 
@@ -290,13 +291,27 @@ func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 		case "xterm.css":
 			status_code = WriteCssRespHeader(w, http.StatusOK)
 			w.Write(xterm_css)
-		case "xterm-pts.html":
-			status_code = WriteHtmlRespHeader(w, http.StatusOK)
-			if c.xterm_pts_html !=  "" {
-				w.Write([]byte(c.xterm_pts_html))
-               } else {
-				w.Write(xterm_pts_html)
-               }
+		case "xterm.html":
+			var tmpl *template.Template
+
+			tmpl = template.New("")
+			if c.xterm_html !=  "" {
+				_, err = tmpl.Parse(c.xterm_html)
+			} else {
+				_, err = tmpl.Parse(xterm_html)
+			}
+			if err != nil {
+				status_code = WriteEmptyRespHeader(w, http.StatusInternalServerError)
+				goto oops
+			} else {
+				status_code = WriteHtmlRespHeader(w, http.StatusOK)
+				tmpl.Execute(w,
+					&xterm_session_info{
+						Mode: "pts",
+						ConnId: "-1",
+						RouteId: "-1",
+					})
+			}
 
 		case "_forbidden":
 			status_code = WriteEmptyRespHeader(w, http.StatusForbidden)
@@ -311,6 +326,6 @@ func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 //done:
 	return status_code, nil
 
-//oops:
-//	return status_code, err
+oops:
+	return status_code, err
 }
