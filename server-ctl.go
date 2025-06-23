@@ -447,6 +447,7 @@ oops:
 func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
 	var status_code int
+	var port_id string
 	var conn_id string
 	var route_id string
 	var je *json.Encoder
@@ -462,8 +463,15 @@ func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter
 		goto done
 	}
 
+	port_id = req.PathValue("port_id")
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
+	if port_id != "" && conn_id == "" && route_id == "" {
+		// called from wpx. ctl.Id must be HS_ID_WPX
+		conn_id = port_id
+		route_id = PORT_ID_MARKER
+	}
+
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
 	if err != nil {
 		/*

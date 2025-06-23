@@ -1652,18 +1652,14 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 
 	c.ctl_mux.Handle("/_pts/xterm.js",
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.js"}))
-	c.ctl_mux.Handle("/_pts/xterm.js.map",
-		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_notfound"}))
 	c.ctl_mux.Handle("/_pts/xterm-addon-fit.js",
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
-	c.ctl_mux.Handle("/_pts/xterm-addon-fit.js.map",
-		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_notfound"}))
 	c.ctl_mux.Handle("/_pts/xterm.css",
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.css"}))
 	c.ctl_mux.Handle("/_pts/xterm.html",
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.html"}))
 	c.ctl_mux.Handle("/_pts/",
-		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
+		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.html"}))
 	c.ctl_mux.Handle("/_pts/favicon.ico",
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
 	c.ctl_mux.Handle("/_pts/favicon.ico/",

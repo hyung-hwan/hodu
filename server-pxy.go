@@ -634,6 +634,7 @@ oops:
 func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var s *Server
 	var req *http.Request
+	var port_id string
 	var conn_id string
 	var route_id string
 	var r *ServerRoute
@@ -653,8 +654,15 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	req = ws.Request()
 	conn_ready_chan = make(chan bool, 3)
 
+	port_id = req.PathValue("port_id")
 	conn_id = req.PathValue("conn_id")
 	route_id = req.PathValue("route_id")
+	if port_id != "" && conn_id == "" && route_id == "" {
+		// called using the wpx endpoint. pxy.Id must be HS_ID_WPX
+		conn_id = port_id
+		route_id = PORT_ID_MARKER
+	}
+
 	r, err = s.FindServerRouteByIdStr(conn_id, route_id)
 	if err != nil && route_id == PORT_ID_MARKER && s.wpx_foreign_port_proxy_maker != nil {
 		var pi *ServerRouteProxyInfo
@@ -695,7 +703,7 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 				n, err = out.Read(buf)
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
-						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to read from  SSH stdout - %s", req.RemoteAddr, err.Error())
+						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to read from SSH stdout - %s", req.RemoteAddr, err.Error())
 					}
 					break
 				}

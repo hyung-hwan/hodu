@@ -150,12 +150,9 @@ window.onload = function(event) {
 	let fetch_session_info = async function() {
 		let url = window.location.protocol + '//' + window.location.host;
 		let pathname = window.location.pathname;
-		pathname = pathname.replace(/\/$/, '');
+		//pathname = pathname.replace(/\/$/, '');
 		pathname = pathname.substring(0, pathname.lastIndexOf('/'));
-		if (xt_mode == 'ssh')
-			url += pathname + `/server-conns/${conn_id}/routes/${route_id}`;
-		else
-			url += pathname + `/session-info`;
+		url += pathname + `/session-info`;
 
 		try {
 			const resp = await fetch(url);
@@ -207,10 +204,9 @@ window.onload = function(event) {
 
 		const prefix = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 		let pathname = window.location.pathname;
-		pathname = pathname.replace(/\/$/, '');
+		//pathname = pathname.replace(/\/$/, '');
 		pathname = pathname.substring(0, pathname.lastIndexOf('/'));
-		let url = prefix + window.location.host + pathname;
-		url += (xt_mode == 'ssh'? `/ws/${conn_id}/${route_id}`: `/ws`);
+		let url = prefix + window.location.host + pathname + '/ws';
 
 		const socket = new WebSocket(url);
 		socket.binaryType = 'arraybuffer';
