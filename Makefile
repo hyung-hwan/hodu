@@ -25,6 +25,7 @@ SRCS=\
 	server-ctl.go \
 	server-metrics.go \
 	server-peer.go \
+	server-pts.go \
 	server-pxy.go \
 	system.go \
 	transform.go \

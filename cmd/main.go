@@ -97,6 +97,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 	var logmask hodu.LogMask
 	var logfile_maxsize int64
 	var logfile_rotate int
+	var pts_user string
+	var pts_shell string
 	var xterm_html_file string
 	var xterm_html string
 	var err error
@@ -132,6 +134,9 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		config.CtlPrefix = cfg.CTL.Service.Prefix
 		config.RpcMaxConns = cfg.APP.MaxRpcConns
 		config.MaxPeers = cfg.APP.MaxPeers
+
+		pts_user = cfg.APP.PtsUser
+		pts_shell = cfg.APP.PtsShell
 		xterm_html_file = cfg.APP.XtermHtmlFile
 
 		logmask = log_strings_to_mask(cfg.APP.LogMask)
@@ -167,6 +172,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		return fmt.Errorf("failed to create server - %s", err.Error())
 	}
 
+	if pts_user != "" { s.SetPtsUser(pts_user) }
+	if pts_shell != "" { s.SetPtsShell(pts_shell) }
 	if xterm_html != "" { s.SetXtermHtml(xterm_html) }
 
 	s.StartService(nil)

@@ -11,6 +11,7 @@ type ServerCollector struct {
 	ServerRoutes     *prometheus.Desc
 	ServerPeers      *prometheus.Desc
 	SshProxySessions *prometheus.Desc
+	PtsSessions      *prometheus.Desc
 }
 
 // NewServerCollector returns a new ServerCollector with all prometheus.Desc initialized
@@ -52,6 +53,11 @@ func NewServerCollector(server *Server) ServerCollector {
 			"Number of SSH proxy sessions",
 			nil, nil,
 		),
+		PtsSessions: prometheus.NewDesc(
+			prefix + "pts_sessions",
+			"Number of pts session",
+			nil, nil,
+		),
 	}
 }
 
@@ -61,6 +67,7 @@ func (c ServerCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.ServerRoutes
 	ch <- c.ServerPeers
 	ch <- c.SshProxySessions
+	ch <- c.PtsSessions
 }
 
 func (c ServerCollector) Collect(ch chan<- prometheus.Metric) {
@@ -96,5 +103,11 @@ func (c ServerCollector) Collect(ch chan<- prometheus.Metric) {
 		c.SshProxySessions,
 		prometheus.GaugeValue,
 		float64(c.server.stats.ssh_proxy_sessions.Load()),
+	)
+
+	ch <- prometheus.MustNewConstMetric(
+		c.PtsSessions,
+		prometheus.GaugeValue,
+		float64(c.server.stats.pts_sessions.Load()),
 	)
 }

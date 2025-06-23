@@ -550,11 +550,6 @@ type server_pxy_ssh_ws struct {
 	Id string
 }
 
-type json_ssh_ws_event struct {
-	Type string `json:"type"`
-	Data []string `json:"data"`
-}
-
 func (pxy *server_pxy_ssh_ws) Identity() string {
 	return pxy.Id
 }
@@ -566,7 +561,7 @@ func (pxy *server_pxy_ssh_ws) send_ws_data(ws *websocket.Conn, type_val string, 
 	var msg []byte
 	var err error
 
-	msg, err = json.Marshal(json_ssh_ws_event{Type: type_val, Data: []string{ data } })
+	msg, err = json.Marshal(json_xterm_ws_event{Type: type_val, Data: []string{ data } })
 	if err == nil { err = websocket.Message.Send(ws, msg) }
 	return err
 }
@@ -723,7 +718,7 @@ ws_recv_loop:
 		if err != nil { goto done }
 
 		if len(msg) > 0 {
-			var ev json_ssh_ws_event
+			var ev json_xterm_ws_event
 			err = json.Unmarshal(msg, &ev)
 			if err == nil {
 				switch ev.Type {

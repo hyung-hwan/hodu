@@ -17,24 +17,24 @@ import "github.com/creack/pty"
 import "golang.org/x/net/websocket"
 import "golang.org/x/sys/unix"
 
-type client_pts_ws struct {
-	C *Client
+type server_pts_ws struct {
+	S *Server
 	Id string
 	ws *websocket.Conn
 }
 
-type client_pts_xterm_file struct {
-	client_ctl
+type server_pts_xterm_file struct {
+	ServerCtl
 	file string
 }
 
 // ------------------------------------------------------
 
-func (pts *client_pts_ws) Identity() string {
+func (pts *server_pts_ws) Identity() string {
 	return pts.Id
 }
 
-func (pts *client_pts_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
+func (pts *server_pts_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
 	var msg []byte
 	var err error
 
@@ -44,26 +44,26 @@ func (pts *client_pts_ws) send_ws_data(ws *websocket.Conn, type_val string, data
 }
 
 
-func (pts *client_pts_ws) connect_pts(username string, password string) (*exec.Cmd, *os.File, error) {
-	var c *Client
+func (pts *server_pts_ws) connect_pts(username string, password string) (*exec.Cmd, *os.File, error) {
+	var s *Server
 	var cmd *exec.Cmd
 	var tty *os.File
 	var err error
 
 	// username and password are not used yet.
-	c = pts.C
+	s = pts.S
 
-	if c.pts_shell == "" {
+	if s.pts_shell == "" {
 		return nil, nil, fmt.Errorf("blank pts shell")
 	}
 
-	cmd = exec.Command(c.pts_shell);
-	if c.pts_user != "" {
+	cmd = exec.Command(s.pts_shell);
+	if s.pts_user != "" {
 		var uid int
 		var gid int
 		var u *user.User
 
-		u, err = user.Lookup(c.pts_user)
+		u, err = user.Lookup(s.pts_user)
 		if err != nil { return nil, nil, err }
 
 		uid, _ = strconv.Atoi(u.Uid)
@@ -80,7 +80,7 @@ func (pts *client_pts_ws) connect_pts(username string, password string) (*exec.C
 			"HOME=" + u.HomeDir,
 			"LOGNAME=" + u.Username,
 			"PATH=" + os.Getenv("PATH"),
-			"SHELL=" + c.pts_shell,
+			"SHELL=" + s.pts_shell,
 			"TERM=xterm",
 			"USER=" + u.Username,
 		)
@@ -97,8 +97,8 @@ func (pts *client_pts_ws) connect_pts(username string, password string) (*exec.C
 	return cmd, tty, nil
 }
 
-func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
-	var c *Client
+func (pts *server_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
+	var s *Server
 	var req *http.Request
 	var username string
 	var password string
@@ -110,7 +110,7 @@ func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var conn_ready_chan chan bool
 	var err error
 
-	c = pts.C
+	s = pts.S
 	req = ws.Request()
 	conn_ready_chan = make(chan bool, 3)
 
@@ -133,13 +133,13 @@ func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 				unix.PollFd{Fd: int32(out.Fd()), Events: unix.POLLIN},
 			}
 
-			c.stats.pts_sessions.Add(1)
+			s.stats.pts_sessions.Add(1)
 			buf = make([]byte, 2048)
 			for {
 				n, err = unix.Poll(poll_fds, -1) // -1 means wait indefinitely
 				if err != nil {
 					if errors.Is(err, unix.EINTR) { continue }
-					c.log.Write("", LOG_ERROR, "[%s] Failed to poll pts stdout - %s", req.RemoteAddr, err.Error())
+					s.log.Write("", LOG_ERROR, "[%s] Failed to poll pts stdout - %s", req.RemoteAddr, err.Error())
 					break
 				}
 				if n == 0 { // timed out
@@ -147,7 +147,7 @@ func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 				}
 
 				if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-					c.log.Write(pts.Id, LOG_DEBUG, "[%s] EOF detected on pts stdout", req.RemoteAddr)
+					s.log.Write(pts.Id, LOG_DEBUG, "[%s] EOF detected on pts stdout", req.RemoteAddr)
 					break;
 				}
 
@@ -155,20 +155,20 @@ func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					n, err = out.Read(buf)
 					if err != nil {
 						if !errors.Is(err, io.EOF) {
-							c.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to read pts stdout - %s", req.RemoteAddr, err.Error())
+							s.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to read pts stdout - %s", req.RemoteAddr, err.Error())
 						}
 						break
 					}
 					if n > 0 {
 						err = pts.send_ws_data(ws, "iov", string(buf[:n]))
 						if err != nil {
-							c.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
+							s.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
 							break
 						}
 					}
 				}
 			}
-			c.stats.pts_sessions.Add(-1)
+			s.stats.pts_sessions.Add(-1)
 		}
 	}()
 
@@ -195,16 +195,16 @@ ws_recv_loop:
 								defer wg.Done()
 								cmd, tty, err = pts.connect_pts(username, password)
 								if err != nil {
-									c.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to connect pts - %s", req.RemoteAddr, err.Error())
+									s.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to connect pts - %s", req.RemoteAddr, err.Error())
 									pts.send_ws_data(ws, "error", err.Error())
 									ws.Close() // dirty way to flag out the error
 								} else {
 									err = pts.send_ws_data(ws, "status", "opened")
 									if err != nil {
-										c.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
+										s.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
 										ws.Close() // dirty way to flag out the error
 									} else {
-										c.log.Write(pts.Id, LOG_DEBUG, "[%s] Opened pts session", req.RemoteAddr)
+										s.log.Write(pts.Id, LOG_DEBUG, "[%s] Opened pts session", req.RemoteAddr)
 										out = tty
 										in = tty
 										conn_ready_chan <- true
@@ -235,7 +235,7 @@ ws_recv_loop:
 							rows, _ = strconv.Atoi(ev.Data[0])
 							cols, _ = strconv.Atoi(ev.Data[1])
 							pty.Setsize(tty, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
-							c.log.Write(pts.Id, LOG_DEBUG, "[%s] Resized terminal to %d,%d", req.RemoteAddr, rows, cols)
+							s.log.Write(pts.Id, LOG_DEBUG, "[%s] Resized terminal to %d,%d", req.RemoteAddr, rows, cols)
 							// ignore error
 						}
 				}
@@ -259,7 +259,7 @@ done:
 	if tty != nil { tty.Close() }
 	if cmd != nil { cmd.Wait() }
 	wg.Wait()
-	c.log.Write(pts.Id, LOG_DEBUG, "[%s] Ended pts session", req.RemoteAddr)
+	s.log.Write(pts.Id, LOG_DEBUG, "[%s] Ended pts session", req.RemoteAddr)
 
 	return http.StatusOK, err
 }
@@ -267,12 +267,12 @@ done:
 
 // ------------------------------------------------------
 
-func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
-	var c *Client
+func (pts *server_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
 	var status_code int
 	var err error
 
-	c = pts.c
+	s = pts.S
 
 	switch pts.file {
 		case "xterm.js":
@@ -288,8 +288,8 @@ func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 			var tmpl *template.Template
 
 			tmpl = template.New("")
-			if c.xterm_html !=  "" {
-				_, err = tmpl.Parse(c.xterm_html)
+			if s.xterm_html !=  "" {
+				_, err = tmpl.Parse(s.xterm_html)
 			} else {
 				_, err = tmpl.Parse(xterm_html)
 			}

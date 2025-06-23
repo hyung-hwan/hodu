@@ -154,11 +154,16 @@ type Server struct {
 		routes atomic.Int64
 		peers atomic.Int64
 		ssh_proxy_sessions atomic.Int64
+		pts_sessions atomic.Int64
 	}
 
 	wpx_resp_tf     ServerWpxResponseTransformer
 	wpx_foreign_port_proxy_maker ServerWpxForeignPortProxyMaker
-	xterm_html      string
+
+
+	pts_user   string
+	pts_shell  string
+	xterm_html string
 }
 
 // connection from client.
@@ -1376,6 +1381,27 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.ctl_mux.Handle("/_ctl/events",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_ctl_ws{ServerCtl{S: &s, Id: HS_ID_CTL}})))
 
+	s.ctl_mux.Handle("/_pts/ws",
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pts_ws{S: &s, Id: HS_ID_CTL})))
+
+	s.ctl_mux.Handle("/_pts/xterm.js",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.js"}))
+	s.ctl_mux.Handle("/_pts/xterm.js.map",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_notfound"}))
+	s.ctl_mux.Handle("/_pts/xterm-addon-fit.js",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
+	s.ctl_mux.Handle("/_pts/xterm-addon-fit.js.map",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_notfound"}))
+	s.ctl_mux.Handle("/_pts/xterm.css",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
+	s.ctl_mux.Handle("/_pts/xterm.html",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html"}))
+	s.ctl_mux.Handle("/_pts/",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+	s.ctl_mux.Handle("/_pts/favicon.ico",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+	s.ctl_mux.Handle("/_pts/favicon.ico/",
+		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
 	/*
 	// this part is duplcate of pxy_mux.
 	s.ctl_mux.Handle("/_ssh/ws/{conn_id}/{route_id}",
@@ -1503,6 +1529,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.stats.routes.Store(0)
 	s.stats.peers.Store(0)
 	s.stats.ssh_proxy_sessions.Store(0)
+	s.stats.pts_sessions.Store(0)
 
 	return &s, nil
 
@@ -1536,6 +1563,22 @@ func (s *Server) SetXtermHtml(html string) {
 
 func (s *Server) GetXtermHtml() string {
 	return s.xterm_html
+}
+
+func (s *Server) SetPtsUser(user string) {
+	s.pts_user = user
+}
+
+func (s *Server) GetPtsUser() string {
+	return s.pts_user
+}
+
+func (s *Server) SetPtsShell(user string) {
+	s.pts_shell = user
+}
+
+func (s *Server) GetPtsShell() string {
+	return s.pts_shell
 }
 
 func (s *Server) run_grpc_server(idx int, wg *sync.WaitGroup) error {

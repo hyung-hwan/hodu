@@ -60,6 +60,7 @@ func (c ClientCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.ClientConns
 	ch <- c.ClientRoutes
 	ch <- c.ClientPeers
+	ch <- c.PtsSessions
 }
 
 func (c ClientCollector) Collect(ch chan<- prometheus.Metric) {

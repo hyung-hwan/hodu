@@ -118,6 +118,11 @@ type json_out_go_stats struct {
 }
 
 
+type json_xterm_ws_event struct {
+	Type string `json:"type"`
+	Data []string `json:"data"`
+}
+
 // ---------------------------------------------------------
 
 //go:embed xterm.js

@@ -94,6 +94,8 @@ type ServerAppConfig  struct {
 	LogRotate     int       `yaml:"log-rotate"`
 	MaxPeers      int       `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns   int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
+	PtsUser       string    `yaml:"pts-user"`
+	PtsShell      string    `yaml:"pts-shell"`
 	XtermHtmlFile string    `yaml:"xterm-html-file"`
 }
 
