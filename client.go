@@ -1660,10 +1660,6 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.html"}))
 	c.ctl_mux.Handle("/_pts/",
 		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.html"}))
-	c.ctl_mux.Handle("/_pts/favicon.ico",
-		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
-	c.ctl_mux.Handle("/_pts/favicon.ico/",
-		c.WrapHttpHandler(&client_pts_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
 
 	c.ctl_addr = make([]string, len(cfg.CtlAddrs))
 	c.ctl = make([]*http.Server, len(cfg.CtlAddrs))

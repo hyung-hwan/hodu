@@ -1393,10 +1393,6 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html"}))
 	s.ctl_mux.Handle("/_pts/",
 		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html"}))
-	s.ctl_mux.Handle("/_pts/favicon.ico",
-		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-	s.ctl_mux.Handle("/_pts/favicon.ico/",
-		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
 
 	s.ctl = make([]*http.Server, len(cfg.CtlAddrs))
 	for i = 0; i < len(cfg.CtlAddrs); i++ {
