@@ -525,7 +525,6 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 			w.Header().Set("Location", req.URL.Path + "_/")
 			w.WriteHeader(status_code)
 
-
 		case "_forbidden":
 			status_code = WriteEmptyRespHeader(w, http.StatusForbidden)
 
@@ -533,7 +532,13 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 			status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
 
 		default:
-			status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
+			if strings.HasPrefix(pxy.file, "_redir:") {
+				status_code = http.StatusMovedPermanently
+				w.Header().Set("Location", pxy.file[7:])
+				w.WriteHeader(status_code)
+			} else {
+				status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
+			}
 	}
 
 //done:

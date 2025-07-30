@@ -9,6 +9,7 @@ import "os"
 import "os/exec"
 import "os/user"
 import "strconv"
+import "strings"
 import "sync"
 import "syscall"
 import "text/template"
@@ -306,6 +307,7 @@ func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 					})
 			}
 
+
 		case "_forbidden":
 			status_code = WriteEmptyRespHeader(w, http.StatusForbidden)
 
@@ -313,7 +315,13 @@ func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 			status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
 
 		default:
-			status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
+			if strings.HasPrefix(pts.file, "_redir:") {
+				status_code = http.StatusMovedPermanently
+				w.Header().Set("Location", pts.file[7:])
+				w.WriteHeader(status_code)
+			} else {
+				status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
+			}
 	}
 
 //done:
