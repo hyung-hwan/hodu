@@ -81,6 +81,11 @@ message ConnNotice {
 	string Text = 1;
 };
 
+message RptyEvent {
+	string Token = 1;
+	bytes Data = 2;
+};
+
 enum PACKET_KIND {
 	RESERVED      = 0; // not used
 	ROUTE_START   = 1;
@@ -95,6 +100,14 @@ enum PACKET_KIND {
 	CONN_DESC     = 11;
 	CONN_ERROR    = 12;
 	CONN_NOTICE   = 13;
+
+	RPTY_START    = 14;
+	RPTY_STOP     = 15;
+	RPTY_STARTED  = 16;
+	RPTY_STOPPED  = 17;
+	RPTY_ABORTED  = 18;
+	RPTY_EOF      = 19;
+	RPTY_DATA     = 20;
 };
 
 message Packet {
@@ -107,5 +120,6 @@ message Packet {
 		ConnDesc   Conn     = 5;
 		ConnError  ConnErr  = 6;
 		ConnNotice ConnNoti = 7;
+		RptyEvent  Rpty     = 8;
 	};
 }

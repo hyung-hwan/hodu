@@ -106,7 +106,7 @@ window.onload = function(event) {
 	const login_form_title = document.getElementById('login-form-title');
 	const login_form = document.getElementById('login-form');
 	const login_ssh_part = document.getElementById('login-ssh-part');
-	const login_pts_part = document.getElementById('login-pts-part');
+	const login_pty_part = document.getElementById('login-pty-part');
 	const username_field = document.getElementById('username');
 	const password_field= document.getElementById('password');
 
@@ -114,12 +114,12 @@ window.onload = function(event) {
 		login_ssh_part.style.display = 'block';
 		username_field.disabled = false;
 		password_field.disabled = false;
-		login_pts_part.style.display = 'none';
+		login_pty_part.style.display = 'none';
 	} else {
 		login_ssh_part.style.display = 'none';
 		username_field.disabled = true;
 		password_field.disabled = true;
-		login_pts_part.style.display = 'block';
+		login_pty_part.style.display = 'block';
 	}
 
 	const term = new window.Terminal({
@@ -296,7 +296,7 @@ window.onload = function(event) {
 					Password: <input type="password" id="password" disabled required />
 				</label>
 			</div>
-			<div id="login-pts-part" style="display: none;">
+			<div id="login-pty-part" style="display: none;">
 				Click Connect below to start a new terminal session
 			</div>
 			<div id="login-submit-part" style="padding-top: 1em;">

@@ -15,7 +15,7 @@ SRCS=\
 	client-ctl.go \
 	client-metrics.go \
 	client-peer.go \
-	client-pts.go \
+	client-pty.go \
 	hodu.go \
 	hodu.pb.go \
 	hodu_grpc.pb.go \
@@ -25,7 +25,7 @@ SRCS=\
 	server-ctl.go \
 	server-metrics.go \
 	server-peer.go \
-	server-pts.go \
+	server-pty.go \
 	server-pxy.go \
 	system.go \
 	transform.go \

@@ -153,15 +153,15 @@ type Server struct {
 		routes atomic.Int64
 		peers atomic.Int64
 		ssh_proxy_sessions atomic.Int64
-		pts_sessions atomic.Int64
+		pty_sessions atomic.Int64
 	}
 
 	wpx_resp_tf     ServerWpxResponseTransformer
 	wpx_foreign_port_proxy_maker ServerWpxForeignPortProxyMaker
 
 
-	pts_user   string
-	pts_shell  string
+	pty_user   string
+	pty_shell  string
 	xterm_html string
 }
 
@@ -635,6 +635,10 @@ func (cts *ServerConn) ReqStopAllServerRoutes() {
 	cts.route_mtx.Unlock()
 }
 
+
+func (cts *ServerConn) StartRpts() {
+}
+
 func (cts *ServerConn) ReportPacket(route_id RouteId, pts_id PeerId, packet_type PACKET_KIND, event_data interface{}) error {
 	var r *ServerRoute
 	var ok bool
@@ -877,6 +881,17 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 				} else {
 					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid conn_notice packet from %s", cts.RemoteAddr)
 				}
+
+			/*case PACKET_KIND_RPTY_START:
+			case PACKET_KIND_RPTY_STOP:*/
+			case PACKET_KIND_RPTY_STARTED:
+			case PACKET_KIND_RPTY_STOPPED:
+			case PACKET_KIND_RPTY_ABORTED:
+			case PACKET_KIND_RPTY_EOF:
+			case PACKET_KIND_RPTY_DATA:
+				// inspect the token
+				// find the right websocket handler...
+				// report it to the right websocket handler
 		}
 	}
 
@@ -1380,18 +1395,31 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.ctl_mux.Handle("/_ctl/events",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_ctl_ws{ServerCtl{S: &s, Id: HS_ID_CTL}})))
 
-	s.ctl_mux.Handle("/_pts/ws",
-		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pts_ws{S: &s, Id: HS_ID_CTL})))
-	s.ctl_mux.Handle("/_pts/xterm.js",
-		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.js"}))
-	s.ctl_mux.Handle("/_pts/xterm-addon-fit.js",
-		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
-	s.ctl_mux.Handle("/_pts/xterm.css",
-		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
-	s.ctl_mux.Handle("/_pts/xterm.html",
-		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html"}))
-	s.ctl_mux.Handle("/_pts/",
-		s.WrapHttpHandler(&server_pts_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_redir:xterm.html"}))
+	s.ctl_mux.Handle("/_pty/ws",
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pty_ws{S: &s, Id: HS_ID_CTL})))
+	s.ctl_mux.Handle("/_pty/xterm.js",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.js"}))
+	s.ctl_mux.Handle("/_pty/xterm.js/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+	s.ctl_mux.Handle("/_pty/xterm-addon-fit.js",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
+	s.ctl_mux.Handle("/_pty/xterm-addon-fit.js/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+	s.ctl_mux.Handle("/_pty/xterm.css",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
+	s.ctl_mux.Handle("/_pty/xterm.css/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+	s.ctl_mux.Handle("/_pty/xterm.html",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html"}))
+	s.ctl_mux.Handle("/_pty/xterm.html/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+	s.ctl_mux.Handle("/_pty/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_redir:xterm.html"}))
+
+/*
+	s.ctl_mux.Handle("/_rpts/ws",
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_rpts_ws{S: &s, Id: HS_ID_CTL})))
+*/
 
 	s.ctl = make([]*http.Server, len(cfg.CtlAddrs))
 	for i = 0; i < len(cfg.CtlAddrs); i++ {
@@ -1511,7 +1539,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.stats.routes.Store(0)
 	s.stats.peers.Store(0)
 	s.stats.ssh_proxy_sessions.Store(0)
-	s.stats.pts_sessions.Store(0)
+	s.stats.pty_sessions.Store(0)
 
 	return &s, nil
 
@@ -1547,20 +1575,20 @@ func (s *Server) GetXtermHtml() string {
 	return s.xterm_html
 }
 
-func (s *Server) SetPtsUser(user string) {
-	s.pts_user = user
+func (s *Server) SetPtyUser(user string) {
+	s.pty_user = user
 }
 
-func (s *Server) GetPtsUser() string {
-	return s.pts_user
+func (s *Server) GetPtyUser() string {
+	return s.pty_user
 }
 
-func (s *Server) SetPtsShell(user string) {
-	s.pts_shell = user
+func (s *Server) SetPtyShell(user string) {
+	s.pty_shell = user
 }
 
-func (s *Server) GetPtsShell() string {
-	return s.pts_shell
+func (s *Server) GetPtyShell() string {
+	return s.pty_shell
 }
 
 func (s *Server) run_grpc_server(idx int, wg *sync.WaitGroup) error {

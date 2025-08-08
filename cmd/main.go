@@ -97,8 +97,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 	var logmask hodu.LogMask
 	var logfile_maxsize int64
 	var logfile_rotate int
-	var pts_user string
-	var pts_shell string
+	var pty_user string
+	var pty_shell string
 	var xterm_html_file string
 	var xterm_html string
 	var err error
@@ -135,8 +135,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		config.RpcMaxConns = cfg.APP.MaxRpcConns
 		config.MaxPeers = cfg.APP.MaxPeers
 
-		pts_user = cfg.APP.PtsUser
-		pts_shell = cfg.APP.PtsShell
+		pty_user = cfg.APP.PtyUser
+		pty_shell = cfg.APP.PtyShell
 		xterm_html_file = cfg.APP.XtermHtmlFile
 
 		logmask = log_strings_to_mask(cfg.APP.LogMask)
@@ -172,8 +172,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, pxy_addrs []string, wpx
 		return fmt.Errorf("failed to create server - %s", err.Error())
 	}
 
-	if pts_user != "" { s.SetPtsUser(pts_user) }
-	if pts_shell != "" { s.SetPtsShell(pts_shell) }
+	if pty_user != "" { s.SetPtyUser(pty_user) }
+	if pty_shell != "" { s.SetPtyShell(pty_shell) }
 	if xterm_html != "" { s.SetXtermHtml(xterm_html) }
 
 	s.StartService(nil)
@@ -259,8 +259,8 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var logmask hodu.LogMask
 	var logfile_maxsize int64
 	var logfile_rotate int
-	var pts_user string
-	var pts_shell string
+	var pty_user string
+	var pty_shell string
 	var xterm_html_file string
 	var xterm_html string
 	var i int
@@ -292,12 +292,23 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 		if logfile == "" { logfile = cfg.APP.LogFile }
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
-		pts_user = cfg.APP.PtsUser
-		pts_shell = cfg.APP.PtsShell
+		pty_user = cfg.APP.PtyUser
+		pty_shell = cfg.APP.PtyShell
 		xterm_html_file = cfg.APP.XtermHtmlFile
 		config.RpcConnMax = cfg.APP.MaxRpcConns
 		config.PeerConnMax = cfg.APP.MaxPeers
 		config.PeerConnTmout = cfg.APP.PeerConnTmout
+
+		if cfg.APP.TokenText != "" {
+			config.Token = cfg.APP.TokenText
+		} else if cfg.APP.TokenFile != "" {
+			var bytes []byte
+			bytes, err = os.ReadFile(cfg.APP.TokenFile)
+			if err != nil {
+				return fmt.Errorf("unable to read token file - %s", err.Error())
+			}
+			config.Token = string(bytes)
+		}
 	}
 
 	// unlke the server, we allow the client to start with no rpc address.
@@ -331,8 +342,8 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 
 	c = hodu.NewClient(context.Background(), HODU_NAME, logger, config)
 
-	if pts_user != "" { c.SetPtsUser(pts_user) }
-	if pts_shell != "" { c.SetPtsShell(pts_shell) }
+	if pty_user != "" { c.SetPtyUser(pty_user) }
+	if pty_shell != "" { c.SetPtyShell(pty_shell) }
 	if xterm_html != "" { c.SetXtermHtml(xterm_html) }
 
 	c.StartService(&cc)

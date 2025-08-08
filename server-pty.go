@@ -14,28 +14,34 @@ import "sync"
 import "syscall"
 import "text/template"
 
-import "github.com/creack/pty"
+import pts "github.com/creack/pty"
 import "golang.org/x/net/websocket"
 import "golang.org/x/sys/unix"
 
-type client_pts_ws struct {
-	C *Client
+type server_pty_ws struct {
+	S *Server
 	Id string
 	ws *websocket.Conn
 }
 
-type client_pts_xterm_file struct {
-	client_ctl
+type server_rpty_ws struct {
+	S *Server
+	Id string
+	ws *websocket.Conn
+}
+
+type server_pty_xterm_file struct {
+	ServerCtl
 	file string
 }
 
 // ------------------------------------------------------
 
-func (pts *client_pts_ws) Identity() string {
-	return pts.Id
+func (pty *server_pty_ws) Identity() string {
+	return pty.Id
 }
 
-func (pts *client_pts_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
+func (pty *server_pty_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
 	var msg []byte
 	var err error
 
@@ -45,26 +51,26 @@ func (pts *client_pts_ws) send_ws_data(ws *websocket.Conn, type_val string, data
 }
 
 
-func (pts *client_pts_ws) connect_pts(username string, password string) (*exec.Cmd, *os.File, error) {
-	var c *Client
+func (pty *server_pty_ws) connect_pty(username string, password string) (*exec.Cmd, *os.File, error) {
+	var s *Server
 	var cmd *exec.Cmd
 	var tty *os.File
 	var err error
 
 	// username and password are not used yet.
-	c = pts.C
+	s = pty.S
 
-	if c.pts_shell == "" {
-		return nil, nil, fmt.Errorf("blank pts shell")
+	if s.pty_shell == "" {
+		return nil, nil, fmt.Errorf("blank pty shell")
 	}
 
-	cmd = exec.Command(c.pts_shell);
-	if c.pts_user != "" {
+	cmd = exec.Command(s.pty_shell);
+	if s.pty_user != "" {
 		var uid int
 		var gid int
 		var u *user.User
 
-		u, err = user.Lookup(c.pts_user)
+		u, err = user.Lookup(s.pty_user)
 		if err != nil { return nil, nil, err }
 
 		uid, _ = strconv.Atoi(u.Uid)
@@ -81,13 +87,13 @@ func (pts *client_pts_ws) connect_pts(username string, password string) (*exec.C
 			"HOME=" + u.HomeDir,
 			"LOGNAME=" + u.Username,
 			"PATH=" + os.Getenv("PATH"),
-			"SHELL=" + c.pts_shell,
+			"SHELL=" + s.pty_shell,
 			"TERM=xterm",
 			"USER=" + u.Username,
 		)
 	}
 
-	tty, err = pty.Start(cmd)
+	tty, err = pts.Start(cmd)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -98,8 +104,8 @@ func (pts *client_pts_ws) connect_pts(username string, password string) (*exec.C
 	return cmd, tty, nil
 }
 
-func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
-	var c *Client
+func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
+	var s *Server
 	var req *http.Request
 	var username string
 	var password string
@@ -111,7 +117,7 @@ func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var conn_ready_chan chan bool
 	var err error
 
-	c = pts.C
+	s = pty.S
 	req = ws.Request()
 	conn_ready_chan = make(chan bool, 3)
 
@@ -129,18 +135,17 @@ func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 			var n int
 			var err error
 
-
 			poll_fds = []unix.PollFd{
 				unix.PollFd{Fd: int32(out.Fd()), Events: unix.POLLIN},
 			}
 
-			c.stats.pts_sessions.Add(1)
+			s.stats.pty_sessions.Add(1)
 			buf = make([]byte, 2048)
 			for {
 				n, err = unix.Poll(poll_fds, -1) // -1 means wait indefinitely
 				if err != nil {
 					if errors.Is(err, unix.EINTR) { continue }
-					c.log.Write("", LOG_ERROR, "[%s] Failed to poll pts stdout - %s", req.RemoteAddr, err.Error())
+					s.log.Write("", LOG_ERROR, "[%s] Failed to poll pty stdout - %s", req.RemoteAddr, err.Error())
 					break
 				}
 				if n == 0 { // timed out
@@ -148,7 +153,7 @@ func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 				}
 
 				if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-					c.log.Write(pts.Id, LOG_DEBUG, "[%s] EOF detected on pts stdout", req.RemoteAddr)
+					s.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty stdout", req.RemoteAddr)
 					break;
 				}
 
@@ -156,20 +161,20 @@ func (pts *client_pts_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					n, err = out.Read(buf)
 					if err != nil {
 						if !errors.Is(err, io.EOF) {
-							c.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to read pts stdout - %s", req.RemoteAddr, err.Error())
+							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to read pty stdout - %s", req.RemoteAddr, err.Error())
 						}
 						break
 					}
 					if n > 0 {
-						err = pts.send_ws_data(ws, "iov", string(buf[:n]))
+						err = pty.send_ws_data(ws, "iov", string(buf[:n]))
 						if err != nil {
-							c.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
+							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
 							break
 						}
 					}
 				}
 			}
-			c.stats.pts_sessions.Add(-1)
+			s.stats.pty_sessions.Add(-1)
 		}
 	}()
 
@@ -194,18 +199,18 @@ ws_recv_loop:
 								var err error
 
 								defer wg.Done()
-								cmd, tty, err = pts.connect_pts(username, password)
+								cmd, tty, err = pty.connect_pty(username, password)
 								if err != nil {
-									c.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to connect pts - %s", req.RemoteAddr, err.Error())
-									pts.send_ws_data(ws, "error", err.Error())
-									ws.Close() // dirty way to flag out the error
+									s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to connect pty - %s", req.RemoteAddr, err.Error())
+									pty.send_ws_data(ws, "error", err.Error())
+									ws.Close() // dirty way to flag out the error - this will make websocket.MessageReceive to fail
 								} else {
-									err = pts.send_ws_data(ws, "status", "opened")
+									err = pty.send_ws_data(ws, "status", "opened")
 									if err != nil {
-										c.log.Write(pts.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
+										s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
 										ws.Close() // dirty way to flag out the error
 									} else {
-										c.log.Write(pts.Id, LOG_DEBUG, "[%s] Opened pts session", req.RemoteAddr)
+										s.log.Write(pty.Id, LOG_DEBUG, "[%s] Opened pty session", req.RemoteAddr)
 										out = tty
 										in = tty
 										conn_ready_chan <- true
@@ -235,8 +240,8 @@ ws_recv_loop:
 							var cols int
 							rows, _ = strconv.Atoi(ev.Data[0])
 							cols, _ = strconv.Atoi(ev.Data[1])
-							pty.Setsize(tty, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
-							c.log.Write(pts.Id, LOG_DEBUG, "[%s] Resized terminal to %d,%d", req.RemoteAddr, rows, cols)
+							pts.Setsize(tty, &pts.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
+							s.log.Write(pty.Id, LOG_DEBUG, "[%s] Resized terminal to %d,%d", req.RemoteAddr, rows, cols)
 							// ignore error
 						}
 				}
@@ -245,7 +250,7 @@ ws_recv_loop:
 	}
 
 	if tty != nil {
-		err = pts.send_ws_data(ws, "status", "closed")
+		err = pty.send_ws_data(ws, "status", "closed")
 		if err != nil { goto done }
 	}
 
@@ -260,22 +265,21 @@ done:
 	if tty != nil { tty.Close() }
 	if cmd != nil { cmd.Wait() }
 	wg.Wait()
-	c.log.Write(pts.Id, LOG_DEBUG, "[%s] Ended pts session", req.RemoteAddr)
+	s.log.Write(pty.Id, LOG_DEBUG, "[%s] Ended pty session", req.RemoteAddr)
 
 	return http.StatusOK, err
 }
 
-
 // ------------------------------------------------------
 
-func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
-	var c *Client
+func (pty *server_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
 	var status_code int
 	var err error
 
-	c = pts.c
+	s = pty.S
 
-	switch pts.file {
+	switch pty.file {
 		case "xterm.js":
 			status_code = WriteJsRespHeader(w, http.StatusOK)
 			w.Write(xterm_js)
@@ -289,8 +293,8 @@ func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 			var tmpl *template.Template
 
 			tmpl = template.New("")
-			if c.xterm_html !=  "" {
-				_, err = tmpl.Parse(c.xterm_html)
+			if s.xterm_html !=  "" {
+				_, err = tmpl.Parse(s.xterm_html)
 			} else {
 				_, err = tmpl.Parse(xterm_html)
 			}
@@ -301,12 +305,11 @@ func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 				status_code = WriteHtmlRespHeader(w, http.StatusOK)
 				tmpl.Execute(w,
 					&xterm_session_info{
-						Mode: "pts",
+						Mode: "pty",
 						ConnId: "-1",
 						RouteId: "-1",
 					})
 			}
-
 
 		case "_forbidden":
 			status_code = WriteEmptyRespHeader(w, http.StatusForbidden)
@@ -315,9 +318,9 @@ func (pts *client_pts_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 			status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
 
 		default:
-			if strings.HasPrefix(pts.file, "_redir:") {
+			if strings.HasPrefix(pty.file, "_redir:") {
 				status_code = http.StatusMovedPermanently
-				w.Header().Set("Location", pts.file[7:])
+				w.Header().Set("Location", pty.file[7:])
 				w.WriteHeader(status_code)
 			} else {
 				status_code = WriteEmptyRespHeader(w, http.StatusNotFound)

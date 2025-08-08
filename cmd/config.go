@@ -94,8 +94,8 @@ type ServerAppConfig  struct {
 	LogRotate     int       `yaml:"log-rotate"`
 	MaxPeers      int       `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns   int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
-	PtsUser       string    `yaml:"pts-user"`
-	PtsShell      string    `yaml:"pts-shell"`
+	PtyUser       string    `yaml:"pty-user"`
+	PtyShell      string    `yaml:"pty-shell"`
 	XtermHtmlFile string    `yaml:"xterm-html-file"`
 }
 
@@ -107,8 +107,10 @@ type ClientAppConfig  struct {
 	MaxPeers      int           `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns   int           `yaml:"max-rpc-conns"` // maximum number of rpc connections
 	PeerConnTmout time.Duration `yaml:"peer-conn-timeout"`
-	PtsUser       string        `yaml:"pts-user"`
-	PtsShell      string        `yaml:"pts-shell"`
+	TokenText     string        `yaml:"token-text"`
+	TokenFile     string        `yaml:"token-file"`
+	PtyUser       string        `yaml:"pty-user"`
+	PtyShell      string        `yaml:"pty-shell"`
 	XtermHtmlFile string        `yaml:"xterm-html-file"`
 }
 

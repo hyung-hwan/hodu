@@ -109,7 +109,7 @@ type json_out_client_stats struct {
 	ClientConns int64 `json:"client-conns"`
 	ClientRoutes int64 `json:"client-routes"`
 	ClientPeers int64 `json:"client-peers"`
-	ClientPtsSessions int64 `json:"client-pts-sessions"`
+	ClientPtySessions int64 `json:"client-pty-sessions"`
 }
 // ------------------------------------
 
@@ -1137,7 +1137,7 @@ func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.ClientConns = c.stats.conns.Load()
 			stats.ClientRoutes = c.stats.routes.Load()
 			stats.ClientPeers = c.stats.peers.Load()
-			stats.ClientPtsSessions = c.stats.pts_sessions.Load()
+			stats.ClientPtySessions = c.stats.pty_sessions.Load()
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(stats); err != nil { goto oops }
 
