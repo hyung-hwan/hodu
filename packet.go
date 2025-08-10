@@ -75,14 +75,14 @@ func MakeConnNoticePacket(msg string) *Packet {
 	return &Packet{Kind: PACKET_KIND_CONN_NOTICE, U: &Packet_ConnNoti{ConnNoti: &ConnNotice{Text: msg}}}
 }
 
-func MakeRptyStartPacket(token string) *Packet {
-	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_Rpty{Rpty: &RptyEvent{Token: token}}}
+func MakeRptyStartPacket(id uint64) *Packet {
+	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id}}}
 }
 
-func MakeRptyStopPacket(token string) *Packet {
-	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_Rpty{Rpty: &RptyEvent{Token: token}}}
+func MakeRptyStopPacket(id uint64) *Packet {
+	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id}}}
 }
 
-func MakeRptyDataPacket(token string, data []byte) *Packet {
-	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_Rpty{Rpty: &RptyEvent{Token: token, Data: data}}}
+func MakeRptyDataPacket(id uint64, data []byte) *Packet {
+	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id, Data: data}}}
 }

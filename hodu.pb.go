@@ -605,7 +605,7 @@ func (x *ConnNotice) GetText() string {
 
 type RptyEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Token         string                 `protobuf:"bytes,1,opt,name=Token,proto3" json:"Token,omitempty"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=Id,proto3" json:"Id,omitempty"`
 	Data          []byte                 `protobuf:"bytes,2,opt,name=Data,proto3" json:"Data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -641,11 +641,11 @@ func (*RptyEvent) Descriptor() ([]byte, []int) {
 	return file_hodu_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *RptyEvent) GetToken() string {
+func (x *RptyEvent) GetId() uint64 {
 	if x != nil {
-		return x.Token
+		return x.Id
 	}
-	return ""
+	return 0
 }
 
 func (x *RptyEvent) GetData() []byte {
@@ -666,7 +666,7 @@ type Packet struct {
 	//	*Packet_Conn
 	//	*Packet_ConnErr
 	//	*Packet_ConnNoti
-	//	*Packet_Rpty
+	//	*Packet_RptyEvt
 	U             isPacket_U `protobuf_oneof:"U"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -770,10 +770,10 @@ func (x *Packet) GetConnNoti() *ConnNotice {
 	return nil
 }
 
-func (x *Packet) GetRpty() *RptyEvent {
+func (x *Packet) GetRptyEvt() *RptyEvent {
 	if x != nil {
-		if x, ok := x.U.(*Packet_Rpty); ok {
-			return x.Rpty
+		if x, ok := x.U.(*Packet_RptyEvt); ok {
+			return x.RptyEvt
 		}
 	}
 	return nil
@@ -807,8 +807,8 @@ type Packet_ConnNoti struct {
 	ConnNoti *ConnNotice `protobuf:"bytes,7,opt,name=ConnNoti,proto3,oneof"`
 }
 
-type Packet_Rpty struct {
-	Rpty *RptyEvent `protobuf:"bytes,8,opt,name=Rpty,proto3,oneof"`
+type Packet_RptyEvt struct {
+	RptyEvt *RptyEvent `protobuf:"bytes,8,opt,name=RptyEvt,proto3,oneof"`
 }
 
 func (*Packet_Route) isPacket_U() {}
@@ -823,7 +823,7 @@ func (*Packet_ConnErr) isPacket_U() {}
 
 func (*Packet_ConnNoti) isPacket_U() {}
 
-func (*Packet_Rpty) isPacket_U() {}
+func (*Packet_RptyEvt) isPacket_U() {}
 
 var File_hodu_proto protoreflect.FileDescriptor
 
@@ -859,10 +859,10 @@ const file_hodu_proto_rawDesc = "" +
 	"\x04Text\x18\x02 \x01(\tR\x04Text\" \n" +
 	"\n" +
 	"ConnNotice\x12\x12\n" +
-	"\x04Text\x18\x01 \x01(\tR\x04Text\"5\n" +
-	"\tRptyEvent\x12\x14\n" +
-	"\x05Token\x18\x01 \x01(\tR\x05Token\x12\x12\n" +
-	"\x04Data\x18\x02 \x01(\fR\x04Data\"\xab\x02\n" +
+	"\x04Text\x18\x01 \x01(\tR\x04Text\"/\n" +
+	"\tRptyEvent\x12\x0e\n" +
+	"\x02Id\x18\x01 \x01(\x04R\x02Id\x12\x12\n" +
+	"\x04Data\x18\x02 \x01(\fR\x04Data\"\xb1\x02\n" +
 	"\x06Packet\x12 \n" +
 	"\x04Kind\x18\x01 \x01(\x0e2\f.PACKET_KINDR\x04Kind\x12\"\n" +
 	"\x05Route\x18\x02 \x01(\v2\n" +
@@ -872,9 +872,9 @@ const file_hodu_proto_rawDesc = "" +
 	"\x04Conn\x18\x05 \x01(\v2\t.ConnDescH\x00R\x04Conn\x12&\n" +
 	"\aConnErr\x18\x06 \x01(\v2\n" +
 	".ConnErrorH\x00R\aConnErr\x12)\n" +
-	"\bConnNoti\x18\a \x01(\v2\v.ConnNoticeH\x00R\bConnNoti\x12 \n" +
-	"\x04Rpty\x18\b \x01(\v2\n" +
-	".RptyEventH\x00R\x04RptyB\x03\n" +
+	"\bConnNoti\x18\a \x01(\v2\v.ConnNoticeH\x00R\bConnNoti\x12&\n" +
+	"\aRptyEvt\x18\b \x01(\v2\n" +
+	".RptyEventH\x00R\aRptyEvtB\x03\n" +
 	"\x01U*^\n" +
 	"\fROUTE_OPTION\x12\n" +
 	"\n" +
@@ -949,7 +949,7 @@ var file_hodu_proto_depIdxs = []int32{
 	6,  // 4: Packet.Conn:type_name -> ConnDesc
 	7,  // 5: Packet.ConnErr:type_name -> ConnError
 	8,  // 6: Packet.ConnNoti:type_name -> ConnNotice
-	9,  // 7: Packet.Rpty:type_name -> RptyEvent
+	9,  // 7: Packet.RptyEvt:type_name -> RptyEvent
 	2,  // 8: Hodu.GetSeed:input_type -> Seed
 	10, // 9: Hodu.PacketStream:input_type -> Packet
 	2,  // 10: Hodu.GetSeed:output_type -> Seed
@@ -973,7 +973,7 @@ func file_hodu_proto_init() {
 		(*Packet_Conn)(nil),
 		(*Packet_ConnErr)(nil),
 		(*Packet_ConnNoti)(nil),
-		(*Packet_Rpty)(nil),
+		(*Packet_RptyEvt)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

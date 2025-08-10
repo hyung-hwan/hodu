@@ -82,7 +82,7 @@ message ConnNotice {
 };
 
 message RptyEvent {
-	string Token = 1;
+	uint64 Id = 1;
 	bytes Data = 2;
 };
 
@@ -120,6 +120,6 @@ message Packet {
 		ConnDesc   Conn     = 5;
 		ConnError  ConnErr  = 6;
 		ConnNotice ConnNoti = 7;
-		RptyEvent  Rpty     = 8;
+		RptyEvent  RptyEvt  = 8;
 	};
 }
