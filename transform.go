@@ -68,7 +68,7 @@ func (t *Transformer) Transform(dst []byte, src []byte, at_eof bool) (int, int, 
 	err = transform.ErrShortSrc
 
 done:
-	return ndst, nsrc, err 
+	return ndst, nsrc, err
 }
 
 func (t *Transformer) copy_all(dst []byte, src []byte) (int, error) {

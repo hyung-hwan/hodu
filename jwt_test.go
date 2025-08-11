@@ -8,16 +8,16 @@ import "testing"
 func TestJwt(t *testing.T) {
 	var tok string
 	var err error
-	          
+
 	type JWTClaim struct {
 	     Abc string `json:"abc"`
 	     Donkey string `json:"donkey"`
 	     IssuedAt int `json:"iat"`
-	}         
-	          
+	}
+
 	var jc JWTClaim
 	jc.Abc = "def"
-	jc.Donkey = "kong" 
+	jc.Donkey = "kong"
 	jc.IssuedAt = 111
 
 	var key *rsa.PrivateKey

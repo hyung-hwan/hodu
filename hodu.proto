@@ -23,7 +23,7 @@ enum ROUTE_OPTION {
 	TCP    = 1;
 	TCP4   = 2;
 	TCP6   = 4;
-	TTY    = 8;
+	UNUSED = 8;
 	HTTP   = 16;
 	HTTPS  = 32;
 	SSH    = 64;
@@ -103,11 +103,8 @@ enum PACKET_KIND {
 
 	RPTY_START    = 14;
 	RPTY_STOP     = 15;
-	RPTY_STARTED  = 16;
-	RPTY_STOPPED  = 17;
-	RPTY_ABORTED  = 18;
-	RPTY_EOF      = 19;
-	RPTY_DATA     = 20;
+	RPTY_DATA     = 16;
+	RPTY_SIZE     = 17;
 };
 
 message Packet {

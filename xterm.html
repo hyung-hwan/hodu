@@ -109,6 +109,7 @@ window.onload = function(event) {
 	const login_pty_part = document.getElementById('login-pty-part');
 	const username_field = document.getElementById('username');
 	const password_field= document.getElementById('password');
+	const qparams = new URLSearchParams(window.location.search);
 
 	if (xt_mode == 'ssh') {
 		login_ssh_part.style.display = 'block';
@@ -207,6 +208,12 @@ window.onload = function(event) {
 		//pathname = pathname.replace(/\/$/, '');
 		pathname = pathname.substring(0, pathname.lastIndexOf('/'));
 		let url = prefix + window.location.host + pathname + '/ws';
+
+		if (xt_mode == 'rpty') {
+			// when accessing rpty, the server requires a client token
+			let client_token = qparams.get('client-token');
+			if (client_token != null && client_token != '') url += '?client-token=' + client_token;
+		}
 
 		const socket = new WebSocket(url);
 		socket.binaryType = 'arraybuffer';

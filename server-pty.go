@@ -7,11 +7,9 @@ import "io"
 import "net/http"
 import "os"
 import "os/exec"
-import "os/user"
 import "strconv"
 import "strings"
 import "sync"
-import "syscall"
 import "text/template"
 
 import pts "github.com/creack/pty"
@@ -33,6 +31,7 @@ type server_rpty_ws struct {
 type server_pty_xterm_file struct {
 	ServerCtl
 	file string
+	mode string
 }
 
 // ------------------------------------------------------
@@ -41,74 +40,11 @@ func (pty *server_pty_ws) Identity() string {
 	return pty.Id
 }
 
-func (pty *server_pty_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
-	var msg []byte
-	var err error
-
-	msg, err = json.Marshal(json_xterm_ws_event{Type: type_val, Data: []string{ data } })
-	if err == nil { err = websocket.Message.Send(ws, msg) }
-	return err
-}
-
-
-func (pty *server_pty_ws) connect_pty(username string, password string) (*exec.Cmd, *os.File, error) {
-	var s *Server
-	var cmd *exec.Cmd
-	var tty *os.File
-	var err error
-
-	// username and password are not used yet.
-	s = pty.S
-
-	if s.pty_shell == "" {
-		return nil, nil, fmt.Errorf("blank pty shell")
-	}
-
-	cmd = exec.Command(s.pty_shell);
-	if s.pty_user != "" {
-		var uid int
-		var gid int
-		var u *user.User
-
-		u, err = user.Lookup(s.pty_user)
-		if err != nil { return nil, nil, err }
-
-		uid, _ = strconv.Atoi(u.Uid)
-		gid, _ = strconv.Atoi(u.Gid)
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Credential: &syscall.Credential{
-				Uid: uint32(uid),
-				Gid: uint32(gid),
-			},
-			Setsid:  true,
-		}
-		cmd.Dir = u.HomeDir
-		cmd.Env = append(cmd.Env,
-			"HOME=" + u.HomeDir,
-			"LOGNAME=" + u.Username,
-			"PATH=" + os.Getenv("PATH"),
-			"SHELL=" + s.pty_shell,
-			"TERM=xterm",
-			"USER=" + u.Username,
-		)
-	}
-
-	tty, err = pts.Start(cmd)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	//syscall.SetNonblock(int(tty.Fd()), true);
-	unix.SetNonblock(int(tty.Fd()), true);
-
-	return cmd, tty, nil
-}
-
 func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var s *Server
 	var req *http.Request
-	var username string
-	var password string
+	//var username string
+	//var password string
 	var in *os.File
 	var out *os.File
 	var tty *os.File
@@ -154,7 +90,7 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 				if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
 					s.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty stdout", req.RemoteAddr)
-					break;
+					break
 				}
 
 				if (poll_fds[0].Revents & unix.POLLIN) != 0 {
@@ -166,7 +102,7 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 						break
 					}
 					if n > 0 {
-						err = pty.send_ws_data(ws, "iov", string(buf[:n]))
+						err = send_ws_data_for_xterm(ws, "iov", string(buf[:n]))
 						if err != nil {
 							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
 							break
@@ -191,21 +127,22 @@ ws_recv_loop:
 				switch ev.Type {
 					case "open":
 						if tty == nil && len(ev.Data) == 2 {
-							username = string(ev.Data[0])
-							password = string(ev.Data[1])
+							// not using username and password for now...
+							//username = string(ev.Data[0])
+							//password = string(ev.Data[1])
 
 							wg.Add(1)
 							go func() {
 								var err error
 
 								defer wg.Done()
-								cmd, tty, err = pty.connect_pty(username, password)
+								cmd, tty, err = connect_pty(s.pty_shell, s.pty_user)
 								if err != nil {
 									s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to connect pty - %s", req.RemoteAddr, err.Error())
-									pty.send_ws_data(ws, "error", err.Error())
+									send_ws_data_for_xterm(ws, "error", err.Error())
 									ws.Close() // dirty way to flag out the error - this will make websocket.MessageReceive to fail
 								} else {
-									err = pty.send_ws_data(ws, "status", "opened")
+									err = send_ws_data_for_xterm(ws, "status", "opened")
 									if err != nil {
 										s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to write 'opened' event to websocket - %s", req.RemoteAddr, err.Error())
 										ws.Close() // dirty way to flag out the error
@@ -250,7 +187,7 @@ ws_recv_loop:
 	}
 
 	if tty != nil {
-		err = pty.send_ws_data(ws, "status", "closed")
+		err = send_ws_data_for_xterm(ws, "status", "closed")
 		if err != nil { goto done }
 	}
 
@@ -276,15 +213,6 @@ func (rpty *server_rpty_ws) Identity() string {
 	return rpty.Id
 }
 
-func (rpty *server_rpty_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
-	var msg []byte
-	var err error
-
-	msg, err = json.Marshal(json_xterm_ws_event{Type: type_val, Data: []string{ data } })
-	if err == nil { err = websocket.Message.Send(ws, msg) }
-	return err
-}
-
 func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var s *Server
 	var req *http.Request
@@ -292,20 +220,14 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var cts *ServerConn
 	//var username string
 	//var password string
-	var in *os.File
-	//var out *os.File
-	var tty *os.File
 	var rp *ServerRpty
-	var cmd *exec.Cmd
 	var wg sync.WaitGroup
-	var conn_ready_chan chan bool
 	var err error
 
 	s = rpty.S
 	req = ws.Request()
-	conn_ready_chan = make(chan bool, 3)
-	token = req.FormValue("token")
-	if token != "" {
+	token = req.FormValue("client-token")
+	if token == "" {
 		ws.Close()
 		return http.StatusBadRequest, fmt.Errorf("no client token specified")
 	}
@@ -315,68 +237,6 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		ws.Close()
 		return http.StatusBadRequest, fmt.Errorf("invalid client token - %s", token)
 	}
-
-// TODO: how to get notified of broken connection....
-
-
-	wg.Add(1)
-	go func() {
-		var conn_ready bool
-
-		defer wg.Done()
-		defer ws.Close() // dirty way to break the main loop
-
-		conn_ready = <-conn_ready_chan
-		if conn_ready { // connected
-/*
-			var poll_fds []unix.PollFd;
-			var buf []byte
-			var n int
-			var err error
-
-			poll_fds = []unix.PollFd{
-				unix.PollFd{Fd: int32(out.Fd()), Events: unix.POLLIN},
-			}
-
-			s.stats.pty_sessions.Add(1)
-			buf = make([]byte, 2048)
-			for {
-				n, err = unix.Poll(poll_fds, -1) // -1 means wait indefinitely
-				if err != nil {
-					if errors.Is(err, unix.EINTR) { continue }
-					s.log.Write("", LOG_ERROR, "[%s] Failed to poll pty stdout - %s", req.RemoteAddr, err.Error())
-					break
-				}
-				if n == 0 { // timed out
-					continue
-				}
-
-				if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-					s.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty stdout", req.RemoteAddr)
-					break;
-				}
-
-				if (poll_fds[0].Revents & unix.POLLIN) != 0 {
-					n, err = out.Read(buf)
-					if err != nil {
-						if !errors.Is(err, io.EOF) {
-							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to read pty stdout - %s", req.RemoteAddr, err.Error())
-						}
-						break
-					}
-					if n > 0 {
-						err = pty.send_ws_data(ws, "iov", string(buf[:n]))
-						if err != nil {
-							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
-							break
-						}
-					}
-				}
-			}
-			s.stats.pty_sessions.Add(-1)
-*/
-		}
-	}()
 
 ws_recv_loop:
 	for {
@@ -394,57 +254,37 @@ ws_recv_loop:
 							//username = string(ev.Data[0])
 							//password = string(ev.Data[1])
 
-							wg.Add(1)
-							go func() {
-								var err error
-
-								defer wg.Done()
-
-								rp, err = cts.StartRpty(ws)
-							// cmd, tty, err = pty.connect_pty(username, password)
+							rp, err = cts.StartRpty(ws)
+							if err != nil {
+								s.log.Write(rpty.Id, LOG_ERROR, "[%s] Failed to connect pty - %s", req.RemoteAddr, err.Error())
+								send_ws_data_for_xterm(ws, "error", err.Error())
+								ws.Close() // dirty way to flag out the error by making websocket.Message.Receive() fail
+							} else {
+								err = send_ws_data_for_xterm(ws, "status", "opened")
 								if err != nil {
-									s.log.Write(rpty.Id, LOG_ERROR, "[%s] Failed to connect pty - %s", req.RemoteAddr, err.Error())
-									rpty.send_ws_data(ws, "error", err.Error())
+									s.log.Write(rpty.Id, LOG_ERROR, "[%s] Failed to write 'opened' event to websocket - %s", req.RemoteAddr, err.Error())
 									ws.Close() // dirty way to flag out the error
 								} else {
-									err = rpty.send_ws_data(ws, "status", "opened")
-									if err != nil {
-										s.log.Write(rpty.Id, LOG_ERROR, "[%s] Failed to write 'opened' event to websocket - %s", req.RemoteAddr, err.Error())
-										ws.Close() // dirty way to flag out the error
-									} else {
-										s.log.Write(rpty.Id, LOG_DEBUG, "[%s] Opened pty session", req.RemoteAddr)
-								//		out = tty
-								//		in = tty
-										conn_ready_chan <- true
-									}
+									s.log.Write(rpty.Id, LOG_DEBUG, "[%s] Opened pty session", req.RemoteAddr)
 								}
-							}()
-						}
-
-					case "close":
-						if tty != nil {
-							// cts.StopRpty()
-							tty.Close()
-							tty = nil
-						}
-						break ws_recv_loop
-
-					case "iov":
-						if tty != nil {
-							var i int
-							for i, _ = range ev.Data {
-								in.Write([]byte(ev.Data[i]))
 							}
 						}
 
+					case "close":
+						// just break out of the loop and let the remainder to close resources
+						break ws_recv_loop
+
+					case "iov":
+						var i int
+						for i, _ = range ev.Data {
+							cts.WriteRpty(ws, []byte(ev.Data[i]))
+							// ignore error for now
+						}
+
 					case "size":
-						if tty != nil && len(ev.Data) == 2 {
-							var rows int
-							var cols int
-							rows, _ = strconv.Atoi(ev.Data[0])
-							cols, _ = strconv.Atoi(ev.Data[1])
-							pts.Setsize(tty, &pts.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
-							s.log.Write(rpty.Id, LOG_DEBUG, "[%s] Resized terminal to %d,%d", req.RemoteAddr, rows, cols)
+						if len(ev.Data) == 2 {
+							cts.WriteRptySize(ws, []byte(fmt.Sprintf("%s %s", ev.Data[0], ev.Data[1])))
+							s.log.Write(rpty.Id, LOG_DEBUG, "[%s] Requested to resize rpty terminal to %s,%s", req.RemoteAddr, ev.Data[0], ev.Data[1])
 							// ignore error
 						}
 				}
@@ -452,24 +292,10 @@ ws_recv_loop:
 		}
 	}
 
-	if tty != nil {
-		//err = pty.send_ws_data(ws, "status", "closed")
-		/*
-		err = s.SendRpty()
-		if err != nil { goto done }
-		*/
-	}
-
 done:
-	conn_ready_chan <- false
-	ws.Close()
-	if cmd != nil {
-		// kill the child process underneath to close ptym(the master pty).
-		//cmd.Process.Signal(syscall.SIGTERM)
-		cmd.Process.Kill()
-	}
-	if tty != nil { tty.Close() }
-	if cmd != nil { cmd.Wait() }
+	cts.StopRpty(ws)
+	ws.Close() // don't care about multiple closes
+
 	wg.Wait()
 	s.log.Write(rpty.Id, LOG_DEBUG, "[%s] Ended rpty session for %s", req.RemoteAddr, token)
 
@@ -511,7 +337,7 @@ func (pty *server_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 				status_code = WriteHtmlRespHeader(w, http.StatusOK)
 				tmpl.Execute(w,
 					&xterm_session_info{
-						Mode: "pty",
+						Mode: pty.mode,
 						ConnId: "-1",
 						RouteId: "-1",
 					})

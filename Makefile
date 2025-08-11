@@ -21,6 +21,7 @@ SRCS=\
 	hodu_grpc.pb.go \
 	jwt.go \
 	packet.go \
+	pty.go \
 	server.go \
 	server-ctl.go \
 	server-metrics.go \

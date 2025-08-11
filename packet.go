@@ -79,10 +79,14 @@ func MakeRptyStartPacket(id uint64) *Packet {
 	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id}}}
 }
 
-func MakeRptyStopPacket(id uint64) *Packet {
-	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id}}}
+func MakeRptyStopPacket(id uint64, msg string) *Packet {
+	return &Packet{Kind: PACKET_KIND_RPTY_STOP, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id, Data: []byte(msg)}}}
 }
 
 func MakeRptyDataPacket(id uint64, data []byte) *Packet {
-	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id, Data: data}}}
+	return &Packet{Kind: PACKET_KIND_RPTY_DATA, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id, Data: data}}}
+}
+
+func MakeRptySizePacket(id uint64, data []byte) *Packet {
+	return &Packet{Kind: PACKET_KIND_RPTY_SIZE, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id, Data: data}}}
 }

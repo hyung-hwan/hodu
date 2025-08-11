@@ -562,15 +562,6 @@ func (pxy *server_pxy_ssh_ws) Identity() string {
 // TODO: put this task to sync group.
 // TODO: put the above proxy task to sync group too.
 
-func (pxy *server_pxy_ssh_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
-	var msg []byte
-	var err error
-
-	msg, err = json.Marshal(json_xterm_ws_event{Type: type_val, Data: []string{ data } })
-	if err == nil { err = websocket.Message.Send(ws, msg) }
-	return err
-}
-
 func (pxy *server_pxy_ssh_ws) connect_ssh (ctx context.Context, username string, password string, r *ServerRoute) (*ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
 	var cc *ssh.ClientConfig
 	var addr *net.TCPAddr
@@ -673,7 +664,7 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		var pi *ServerRouteProxyInfo
 		pi, err = s.wpx_foreign_port_proxy_maker("ssh", conn_id)
 		if err != nil {
-			pxy.send_ws_data(ws, "error", err.Error())
+			send_ws_data_for_xterm(ws, "error", err.Error())
 			goto done
 		}
 
@@ -685,7 +676,7 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		r = proxy_info_to_server_route(pi)
 	}
 	if err != nil {
-		pxy.send_ws_data(ws, "error", err.Error())
+		send_ws_data_for_xterm(ws, "error", err.Error())
 		goto done
 	}
 
@@ -713,7 +704,7 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					break
 				}
 				if n > 0 {
-					err = pxy.send_ws_data(ws, "iov", string(buf[:n]))
+					err = send_ws_data_for_xterm(ws, "iov", string(buf[:n]))
 					if err != nil {
 						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
 						break
@@ -753,10 +744,10 @@ ws_recv_loop:
 								c, sess, in, out, err = pxy.connect_ssh(connect_ssh_ctx, username, password, r)
 								if err != nil {
 									s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to connect ssh - %s", req.RemoteAddr, err.Error())
-									pxy.send_ws_data(ws, "error", err.Error())
+									send_ws_data_for_xterm(ws, "error", err.Error())
 									ws.Close() // dirty way to flag out the error
 								} else {
-									err = pxy.send_ws_data(ws, "status", "opened")
+									err = send_ws_data_for_xterm(ws, "status", "opened")
 									if err != nil {
 										s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
 										ws.Close() // dirty way to flag out the error
@@ -800,7 +791,7 @@ ws_recv_loop:
 	}
 
 	if sess != nil {
-		err = pxy.send_ws_data(ws, "status", "closed")
+		err = send_ws_data_for_xterm(ws, "status", "closed")
 		if err != nil { goto done }
 	}
 

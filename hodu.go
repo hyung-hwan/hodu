@@ -184,8 +184,6 @@ func word_to_route_option(word string) RouteOption {
 			return RouteOption(ROUTE_OPTION_TCP6)
 		case "tcp":
 			return RouteOption(ROUTE_OPTION_TCP)
-		case "tty":
-			return RouteOption(ROUTE_OPTION_TTY)
 		case "http":
 			return RouteOption(ROUTE_OPTION_HTTP)
 		case "https":
@@ -217,7 +215,6 @@ func (option RouteOption) String() string {
 	if option & RouteOption(ROUTE_OPTION_TCP6)  != 0 { str += " tcp6" }
 	if option & RouteOption(ROUTE_OPTION_TCP4)  != 0 { str += " tcp4" }
 	if option & RouteOption(ROUTE_OPTION_TCP)   != 0 { str += " tcp" }
-	if option & RouteOption(ROUTE_OPTION_TTY)   != 0 { str += " tty" }
 	if option & RouteOption(ROUTE_OPTION_HTTP)  != 0 { str += " http" }
 	if option & RouteOption(ROUTE_OPTION_HTTPS) != 0 { str += " https" }
 	if option & RouteOption(ROUTE_OPTION_SSH)   != 0 { str += " ssh" }

@@ -13,7 +13,7 @@ func (av* Atom[T]) Set(v T) {
 func (av* Atom[T]) Get() T {
 	var v interface{}
 	v = av.val.Load()
-	if v == nil { 
+	if v == nil {
 		var t T
 		return t // return the zero-value
 	}

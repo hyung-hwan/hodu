@@ -28,7 +28,7 @@ const (
 	ROUTE_OPTION_TCP    ROUTE_OPTION = 1
 	ROUTE_OPTION_TCP4   ROUTE_OPTION = 2
 	ROUTE_OPTION_TCP6   ROUTE_OPTION = 4
-	ROUTE_OPTION_TTY    ROUTE_OPTION = 8
+	ROUTE_OPTION_UNUSED ROUTE_OPTION = 8
 	ROUTE_OPTION_HTTP   ROUTE_OPTION = 16
 	ROUTE_OPTION_HTTPS  ROUTE_OPTION = 32
 	ROUTE_OPTION_SSH    ROUTE_OPTION = 64
@@ -41,7 +41,7 @@ var (
 		1:  "TCP",
 		2:  "TCP4",
 		4:  "TCP6",
-		8:  "TTY",
+		8:  "UNUSED",
 		16: "HTTP",
 		32: "HTTPS",
 		64: "SSH",
@@ -51,7 +51,7 @@ var (
 		"TCP":    1,
 		"TCP4":   2,
 		"TCP6":   4,
-		"TTY":    8,
+		"UNUSED": 8,
 		"HTTP":   16,
 		"HTTPS":  32,
 		"SSH":    64,
@@ -103,11 +103,8 @@ const (
 	PACKET_KIND_CONN_NOTICE   PACKET_KIND = 13
 	PACKET_KIND_RPTY_START    PACKET_KIND = 14
 	PACKET_KIND_RPTY_STOP     PACKET_KIND = 15
-	PACKET_KIND_RPTY_STARTED  PACKET_KIND = 16
-	PACKET_KIND_RPTY_STOPPED  PACKET_KIND = 17
-	PACKET_KIND_RPTY_ABORTED  PACKET_KIND = 18
-	PACKET_KIND_RPTY_EOF      PACKET_KIND = 19
-	PACKET_KIND_RPTY_DATA     PACKET_KIND = 20
+	PACKET_KIND_RPTY_DATA     PACKET_KIND = 16
+	PACKET_KIND_RPTY_SIZE     PACKET_KIND = 17
 )
 
 // Enum value maps for PACKET_KIND.
@@ -128,11 +125,8 @@ var (
 		13: "CONN_NOTICE",
 		14: "RPTY_START",
 		15: "RPTY_STOP",
-		16: "RPTY_STARTED",
-		17: "RPTY_STOPPED",
-		18: "RPTY_ABORTED",
-		19: "RPTY_EOF",
-		20: "RPTY_DATA",
+		16: "RPTY_DATA",
+		17: "RPTY_SIZE",
 	}
 	PACKET_KIND_value = map[string]int32{
 		"RESERVED":      0,
@@ -150,11 +144,8 @@ var (
 		"CONN_NOTICE":   13,
 		"RPTY_START":    14,
 		"RPTY_STOP":     15,
-		"RPTY_STARTED":  16,
-		"RPTY_STOPPED":  17,
-		"RPTY_ABORTED":  18,
-		"RPTY_EOF":      19,
-		"RPTY_DATA":     20,
+		"RPTY_DATA":     16,
+		"RPTY_SIZE":     17,
 	}
 )
 
@@ -875,17 +866,18 @@ const file_hodu_proto_rawDesc = "" +
 	"\bConnNoti\x18\a \x01(\v2\v.ConnNoticeH\x00R\bConnNoti\x12&\n" +
 	"\aRptyEvt\x18\b \x01(\v2\n" +
 	".RptyEventH\x00R\aRptyEvtB\x03\n" +
-	"\x01U*^\n" +
+	"\x01U*a\n" +
 	"\fROUTE_OPTION\x12\n" +
 	"\n" +
 	"\x06UNSPEC\x10\x00\x12\a\n" +
 	"\x03TCP\x10\x01\x12\b\n" +
 	"\x04TCP4\x10\x02\x12\b\n" +
-	"\x04TCP6\x10\x04\x12\a\n" +
-	"\x03TTY\x10\b\x12\b\n" +
+	"\x04TCP6\x10\x04\x12\n" +
+	"\n" +
+	"\x06UNUSED\x10\b\x12\b\n" +
 	"\x04HTTP\x10\x10\x12\t\n" +
 	"\x05HTTPS\x10 \x12\a\n" +
-	"\x03SSH\x10@*\xd7\x02\n" +
+	"\x03SSH\x10@*\xa2\x02\n" +
 	"\vPACKET_KIND\x12\f\n" +
 	"\bRESERVED\x10\x00\x12\x0f\n" +
 	"\vROUTE_START\x10\x01\x12\x0e\n" +
@@ -904,12 +896,9 @@ const file_hodu_proto_rawDesc = "" +
 	"\vCONN_NOTICE\x10\r\x12\x0e\n" +
 	"\n" +
 	"RPTY_START\x10\x0e\x12\r\n" +
-	"\tRPTY_STOP\x10\x0f\x12\x10\n" +
-	"\fRPTY_STARTED\x10\x10\x12\x10\n" +
-	"\fRPTY_STOPPED\x10\x11\x12\x10\n" +
-	"\fRPTY_ABORTED\x10\x12\x12\f\n" +
-	"\bRPTY_EOF\x10\x13\x12\r\n" +
-	"\tRPTY_DATA\x10\x142I\n" +
+	"\tRPTY_STOP\x10\x0f\x12\r\n" +
+	"\tRPTY_DATA\x10\x10\x12\r\n" +
+	"\tRPTY_SIZE\x10\x112I\n" +
 	"\x04Hodu\x12\x19\n" +
 	"\aGetSeed\x12\x05.Seed\x1a\x05.Seed\"\x00\x12&\n" +
 	"\fPacketStream\x12\a.Packet\x1a\a.Packet\"\x00(\x010\x01B\bZ\x06./hodub\x06proto3"

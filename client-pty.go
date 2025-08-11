@@ -2,16 +2,13 @@ package hodu
 
 import "encoding/json"
 import "errors"
-import "fmt"
 import "io"
 import "net/http"
 import "os"
 import "os/exec"
-import "os/user"
 import "strconv"
 import "strings"
 import "sync"
-import "syscall"
 import "text/template"
 
 import pts "github.com/creack/pty"
@@ -35,74 +32,11 @@ func (pty *client_pty_ws) Identity() string {
 	return pty.Id
 }
 
-func (pty *client_pty_ws) send_ws_data(ws *websocket.Conn, type_val string, data string) error {
-	var msg []byte
-	var err error
-
-	msg, err = json.Marshal(json_xterm_ws_event{Type: type_val, Data: []string{ data } })
-	if err == nil { err = websocket.Message.Send(ws, msg) }
-	return err
-}
-
-
-func (pty *client_pty_ws) connect_pty(username string, password string) (*exec.Cmd, *os.File, error) {
-	var c *Client
-	var cmd *exec.Cmd
-	var tty *os.File
-	var err error
-
-	// username and password are not used yet.
-	c = pty.C
-
-	if c.pty_shell == "" {
-		return nil, nil, fmt.Errorf("blank pty shell")
-	}
-
-	cmd = exec.Command(c.pty_shell);
-	if c.pty_user != "" {
-		var uid int
-		var gid int
-		var u *user.User
-
-		u, err = user.Lookup(c.pty_user)
-		if err != nil { return nil, nil, err }
-
-		uid, _ = strconv.Atoi(u.Uid)
-		gid, _ = strconv.Atoi(u.Gid)
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Credential: &syscall.Credential{
-				Uid: uint32(uid),
-				Gid: uint32(gid),
-			},
-			Setsid:  true,
-		}
-		cmd.Dir = u.HomeDir
-		cmd.Env = append(cmd.Env,
-			"HOME=" + u.HomeDir,
-			"LOGNAME=" + u.Username,
-			"PATH=" + os.Getenv("PATH"),
-			"SHELL=" + c.pty_shell,
-			"TERM=xterm",
-			"USER=" + u.Username,
-		)
-	}
-
-	tty, err = pts.Start(cmd)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	//syscall.SetNonblock(int(tty.Fd()), true);
-	unix.SetNonblock(int(tty.Fd()), true);
-
-	return cmd, tty, nil
-}
-
 func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var c *Client
 	var req *http.Request
-	var username string
-	var password string
+	//var username string
+	//var password string
 	var in *os.File
 	var out *os.File
 	var tty *os.File
@@ -161,7 +95,7 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 						break
 					}
 					if n > 0 {
-						err = pty.send_ws_data(ws, "iov", string(buf[:n]))
+						err = send_ws_data_for_xterm(ws, "iov", string(buf[:n]))
 						if err != nil {
 							c.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
 							break
@@ -186,21 +120,21 @@ ws_recv_loop:
 				switch ev.Type {
 					case "open":
 						if tty == nil && len(ev.Data) == 2 {
-							username = string(ev.Data[0])
-							password = string(ev.Data[1])
+							//username = string(ev.Data[0])
+							//password = string(ev.Data[1])
 
 							wg.Add(1)
 							go func() {
 								var err error
 
 								defer wg.Done()
-								cmd, tty, err = pty.connect_pty(username, password)
+								cmd, tty, err = connect_pty(c.pty_shell, c.pty_user)
 								if err != nil {
 									c.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to connect pty - %s", req.RemoteAddr, err.Error())
-									pty.send_ws_data(ws, "error", err.Error())
+									send_ws_data_for_xterm(ws, "error", err.Error())
 									ws.Close() // dirty way to flag out the error
 								} else {
-									err = pty.send_ws_data(ws, "status", "opened")
+									err = send_ws_data_for_xterm(ws, "status", "opened")
 									if err != nil {
 										c.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
 										ws.Close() // dirty way to flag out the error
@@ -245,7 +179,7 @@ ws_recv_loop:
 	}
 
 	if tty != nil {
-		err = pty.send_ws_data(ws, "status", "closed")
+		err = send_ws_data_for_xterm(ws, "status", "closed")
 		if err != nil { goto done }
 	}
 

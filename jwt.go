@@ -23,7 +23,7 @@ func Sign(data []byte, privkey *rsa.PrivateKey) ([]byte, error) {
 
 func Verify(data []byte, pubkey *rsa.PublicKey, sig []byte) error {
 	var h hash.Hash
-	
+
 	h = crypto.SHA512.New()
 	h.Write(data)
 
@@ -41,7 +41,7 @@ func SignHS512(data []byte, key string) ([]byte, error) {
 
 func VerifyHS512(data []byte, key string, sig []byte) error {
 	var h hash.Hash
-	
+
 	h = crypto.SHA512.New()
 	h.Write(data)
 
@@ -78,7 +78,7 @@ func (j *JWT[T]) SignRS512() (string, error) {
 	h.Algo = "RS512"
 	h.Type = "JWT"
 
-	hb, err = json.Marshal(h)	
+	hb, err = json.Marshal(h)
 	if err != nil { return "", err }
 
 	cb, err = json.Marshal(j.claims)
