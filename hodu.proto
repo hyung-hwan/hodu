@@ -23,10 +23,9 @@ enum ROUTE_OPTION {
 	TCP    = 1;
 	TCP4   = 2;
 	TCP6   = 4;
-	UNUSED = 8;
-	HTTP   = 16;
-	HTTPS  = 32;
-	SSH    = 64;
+	HTTP   = 8;
+	HTTPS  = 16;
+	SSH    = 32;
 };
 
 message RouteDesc {

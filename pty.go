@@ -21,7 +21,7 @@ func connect_pty(pty_shell string, pty_user string) (*exec.Cmd, *os.File, error)
 		return nil, nil, fmt.Errorf("blank pty shell")
 	}
 
-	cmd = exec.Command(pty_shell);
+	cmd = exec.Command(pty_shell)
 	if pty_user != "" {
 		var uid int
 		var gid int
@@ -55,8 +55,8 @@ func connect_pty(pty_shell string, pty_user string) (*exec.Cmd, *os.File, error)
 		return nil, nil, err
 	}
 
-	//syscall.SetNonblock(int(tty.Fd()), true);
-	unix.SetNonblock(int(tty.Fd()), true);
+	//syscall.SetNonblock(int(tty.Fd()), true)
+	unix.SetNonblock(int(tty.Fd()), true)
 
 	return cmd, tty, nil
 }

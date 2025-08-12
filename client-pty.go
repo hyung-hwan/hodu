@@ -58,7 +58,7 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 		conn_ready = <-conn_ready_chan
 		if conn_ready { // connected
-			var poll_fds []unix.PollFd;
+			var poll_fds []unix.PollFd
 			var buf []byte
 			var n int
 			var err error
@@ -83,7 +83,7 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 				if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
 					c.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty stdout", req.RemoteAddr)
-					break;
+					break
 				}
 
 				if (poll_fds[0].Revents & unix.POLLIN) != 0 {

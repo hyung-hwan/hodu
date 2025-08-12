@@ -661,7 +661,7 @@ func (r *ClientRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event
 					r.cts.C.log.Write(r.cts.Sid, LOG_INFO,
 						"Ingested route_started(%d,%s,%s) for route(%d,%s,%v,%s,%s)",
 							rd.RouteId, rd.TargetAddrStr, rd.ServiceNetStr,
-							r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet);
+							r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet)
 				}
 			}
 
@@ -680,7 +680,7 @@ func (r *ClientRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event
 				r.cts.C.log.Write(r.cts.Sid, LOG_INFO,
 					"Ingested route_stopped(%d,%s,%s) for route(%d,%s,%v,%s,%s)",
 						rd.RouteId, rd.TargetAddrStr, rd.ServiceNetStr,
-						r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet);
+						r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet)
 			}
 			r.ReqStop()
 
@@ -1423,7 +1423,7 @@ func (cts *ClientConn) ReportPacket(route_id RouteId, pts_id PeerId, packet_type
 
 func (cts *ClientConn) ReadRptyLoop(crp *ClientRpty, wg *sync.WaitGroup) {
 
-	var poll_fds []unix.PollFd;
+	var poll_fds []unix.PollFd
 	var buf []byte
 	var n int
 	var err error

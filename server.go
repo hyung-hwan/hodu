@@ -32,8 +32,9 @@ const CTS_LIMIT int = 16384
 type PortId uint16
 const PORT_ID_MARKER string = "_"
 const HS_ID_CTL string = "ctl"
+const HS_ID_RPX string = "pxy"
+const HS_ID_PXY string = "rpx"
 const HS_ID_WPX string = "wpx"
-const HS_ID_PXY string = "pxy"
 
 type ServerConnMapByAddr map[net.Addr]*ServerConn
 type ServerConnMapByClientToken map[string]*ServerConn
@@ -63,6 +64,9 @@ type ServerConfig struct {
 	CtlPrefix string
 	CtlAuth *HttpAuthConfig
 	CtlCors bool
+
+	RpxAddrs []string
+	RpxTls *tls.Config
 
 	PxyAddrs []string
 	PxyTls *tls.Config
@@ -107,6 +111,11 @@ type Server struct {
 	ext_mtx          sync.Mutex
 	ext_svcs         []Service
 	ext_closed       bool
+
+	rpx_mux          *http.ServeMux
+	rpx              []*http.Server // proxy server
+	rpx_addrs_mtx    sync.Mutex
+	rpx_addrs        *list.List // of net.Addr
 
 	pxy_mux          *http.ServeMux
 	pxy              []*http.Server // proxy server
@@ -1514,6 +1523,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.bulletin = NewBulletin[*ServerEvent](&s, 1024)
 
 	s.ctl_addrs = list.New()
+	s.rpx_addrs = list.New()
 	s.pxy_addrs = list.New()
 	s.wpx_addrs = list.New()
 
@@ -1617,6 +1627,23 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.CtlAddrs[i],
 			Handler: s.ctl_mux,
 			TLSConfig: s.Cfg.CtlTls,
+			ErrorLog: hs_log,
+			// TODO: more settings
+		}
+	}
+
+	// ---------------------------------------------------------
+
+	s.rpx_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh/ws,_http configurable...
+	s.rpx_mux.Handle("/", s.WrapHttpHandler(&server_rpx{ S: &s, Id: HS_ID_RPX }))
+
+	s.rpx = make([]*http.Server, len(cfg.RpxAddrs))
+
+	for i = 0; i < len(cfg.RpxAddrs); i++ {
+		s.rpx[i] = &http.Server{
+			Addr: cfg.RpxAddrs[i],
+			Handler: s.rpx_mux,
+			TLSConfig: cfg.RpxTls,
 			ErrorLog: hs_log,
 			// TODO: more settings
 		}
@@ -1892,6 +1919,59 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 	l_wg.Wait()
 }
 
+func (s *Server) RunRpxTask(wg *sync.WaitGroup) {
+	var err error
+	var rpx *http.Server
+	var idx int
+	var l_wg sync.WaitGroup
+
+	defer wg.Done()
+
+	for idx, rpx = range s.rpx {
+		l_wg.Add(1)
+		go func(i int, cs *http.Server) {
+			var l net.Listener
+
+			s.log.Write("", LOG_INFO, "rpx channel[%d] started on %s", i, s.Cfg.RpxAddrs[i])
+
+			if s.stop_req.Load() == false {
+				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
+				if err == nil {
+					if s.stop_req.Load() == false {
+						var node *list.Element
+
+						s.rpx_addrs_mtx.Lock()
+						node = s.rpx_addrs.PushBack(l.Addr().(*net.TCPAddr))
+						s.rpx_addrs_mtx.Unlock()
+
+						if s.Cfg.RpxTls == nil { // TODO: change this
+							err = cs.Serve(l)
+						} else {
+							err = cs.ServeTLS(l, "", "") // s.Cfg.RpxTls must provide a certificate and a key
+						}
+
+						s.rpx_addrs_mtx.Lock()
+						s.rpx_addrs.Remove(node)
+						s.rpx_addrs_mtx.Unlock()
+					} else {
+						err = fmt.Errorf("stop requested")
+					}
+					l.Close()
+				}
+			} else {
+				err = fmt.Errorf("stop requested")
+			}
+			if errors.Is(err, http.ErrServerClosed) {
+				s.log.Write("", LOG_INFO, "rpx channel[%d] ended", i)
+			} else {
+				s.log.Write("", LOG_ERROR, "rpx channel[%d] error - %s", i, err.Error())
+			}
+			l_wg.Done()
+		}(idx, rpx)
+	}
+	l_wg.Wait()
+}
+
 func (s *Server) RunPxyTask(wg *sync.WaitGroup) {
 	var err error
 	var pxy *http.Server
@@ -2013,6 +2093,10 @@ func (s *Server) ReqStop() {
 
 		for _, hs = range s.ctl {
 			hs.Shutdown(s.Ctx) // to break s.ctl.Serve()
+		}
+
+		for _, hs = range s.rpx {
+			hs.Shutdown(s.Ctx) // to break s.rpx.Serve()
 		}
 
 		for _, hs = range s.pxy {
@@ -2382,6 +2466,11 @@ func (s *Server) StartExtService(svc Service, data interface{}) {
 func (s *Server) StartCtlService() {
 	s.wg.Add(1)
 	go s.RunCtlTask(&s.wg)
+}
+
+func (s *Server) StartRpxService() {
+	s.wg.Add(1)
+	go s.RunRpxTask(&s.wg)
 }
 
 func (s *Server) StartPxyService() {

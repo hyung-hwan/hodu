@@ -66,7 +66,7 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 		conn_ready = <-conn_ready_chan
 		if conn_ready { // connected
-			var poll_fds []unix.PollFd;
+			var poll_fds []unix.PollFd
 			var buf []byte
 			var n int
 			var err error

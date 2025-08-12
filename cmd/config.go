@@ -69,6 +69,10 @@ type CTLServiceConfig struct {
 	Auth   HttpAuthConfig `yaml:"auth"`
 }
 
+type RPXServiceConfig struct {
+	Addrs  []string `yaml:"addresses"`
+}
+
 type PXYServiceConfig struct {
 	Addrs  []string `yaml:"addresses"`
 }
@@ -121,6 +125,11 @@ type ServerConfig struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
 	} `yaml:"ctl"`
+
+	RPX struct {
+		Service RPXServiceConfig    `yaml:"service"`
+		TLS ServerTLSConfig         `yaml:"tls"`
+	} `yaml:"rpx"`
 
 	PXY struct {
 		Service PXYServiceConfig    `yaml:"service"`

@@ -28,10 +28,9 @@ const (
 	ROUTE_OPTION_TCP    ROUTE_OPTION = 1
 	ROUTE_OPTION_TCP4   ROUTE_OPTION = 2
 	ROUTE_OPTION_TCP6   ROUTE_OPTION = 4
-	ROUTE_OPTION_UNUSED ROUTE_OPTION = 8
-	ROUTE_OPTION_HTTP   ROUTE_OPTION = 16
-	ROUTE_OPTION_HTTPS  ROUTE_OPTION = 32
-	ROUTE_OPTION_SSH    ROUTE_OPTION = 64
+	ROUTE_OPTION_HTTP   ROUTE_OPTION = 8
+	ROUTE_OPTION_HTTPS  ROUTE_OPTION = 16
+	ROUTE_OPTION_SSH    ROUTE_OPTION = 32
 )
 
 // Enum value maps for ROUTE_OPTION.
@@ -41,20 +40,18 @@ var (
 		1:  "TCP",
 		2:  "TCP4",
 		4:  "TCP6",
-		8:  "UNUSED",
-		16: "HTTP",
-		32: "HTTPS",
-		64: "SSH",
+		8:  "HTTP",
+		16: "HTTPS",
+		32: "SSH",
 	}
 	ROUTE_OPTION_value = map[string]int32{
 		"UNSPEC": 0,
 		"TCP":    1,
 		"TCP4":   2,
 		"TCP6":   4,
-		"UNUSED": 8,
-		"HTTP":   16,
-		"HTTPS":  32,
-		"SSH":    64,
+		"HTTP":   8,
+		"HTTPS":  16,
+		"SSH":    32,
 	}
 )
 
@@ -866,18 +863,16 @@ const file_hodu_proto_rawDesc = "" +
 	"\bConnNoti\x18\a \x01(\v2\v.ConnNoticeH\x00R\bConnNoti\x12&\n" +
 	"\aRptyEvt\x18\b \x01(\v2\n" +
 	".RptyEventH\x00R\aRptyEvtB\x03\n" +
-	"\x01U*a\n" +
+	"\x01U*U\n" +
 	"\fROUTE_OPTION\x12\n" +
 	"\n" +
 	"\x06UNSPEC\x10\x00\x12\a\n" +
 	"\x03TCP\x10\x01\x12\b\n" +
 	"\x04TCP4\x10\x02\x12\b\n" +
-	"\x04TCP6\x10\x04\x12\n" +
-	"\n" +
-	"\x06UNUSED\x10\b\x12\b\n" +
-	"\x04HTTP\x10\x10\x12\t\n" +
-	"\x05HTTPS\x10 \x12\a\n" +
-	"\x03SSH\x10@*\xa2\x02\n" +
+	"\x04TCP6\x10\x04\x12\b\n" +
+	"\x04HTTP\x10\b\x12\t\n" +
+	"\x05HTTPS\x10\x10\x12\a\n" +
+	"\x03SSH\x10 *\xa2\x02\n" +
 	"\vPACKET_KIND\x12\f\n" +
 	"\bRESERVED\x10\x00\x12\x0f\n" +
 	"\vROUTE_START\x10\x01\x12\x0e\n" +

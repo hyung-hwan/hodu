@@ -28,6 +28,7 @@ SRCS=\
 	server-peer.go \
 	server-pty.go \
 	server-pxy.go \
+	server-rpx.go \
 	system.go \
 	transform.go \
 
