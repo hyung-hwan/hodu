@@ -375,7 +375,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 	}
 	proxy_url = pxy.req_to_proxy_url(req, pi)
 
-	s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.URL.String(), proxy_url)
+	s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, get_raw_url_path(req), proxy_url)
 
 	proxy_req, err = http.NewRequestWithContext(s.Ctx, req.Method, proxy_url.String(), req.Body)
 	if err != nil {
@@ -401,7 +401,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 	} else {
 		status_code = resp.StatusCode
 		if upgrade_required && resp.StatusCode == http.StatusSwitchingProtocols {
-			s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.URL.String(), status_code)
+			s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, get_raw_url_path(req), status_code)
 			err = pxy.serve_upgraded(w, req, resp)
 			if err != nil { goto oops }
 			return 0, nil// print the log mesage before calling serve_upgraded() and exit here
@@ -426,7 +426,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 
 			_, err = io.Copy(w, resp_body)
 			if err != nil {
-				s.log.Write(pxy.Id, LOG_WARN, "[%s] %s %s %s", req.RemoteAddr, req.Method, req.URL.String(), err.Error())
+				s.log.Write(pxy.Id, LOG_WARN, "[%s] %s %s %s", req.RemoteAddr, req.Method, get_raw_url_path(req), err.Error())
 			}
 
 			// TODO: handle trailers

@@ -225,7 +225,7 @@ func (option RouteOption) String() string {
 func dump_call_frame_and_exit(log Logger, req *http.Request, err interface{}) {
 	var buf []byte
 	buf = make([]byte, 65536); buf = buf[:min(65536, runtime.Stack(buf, false))]
-	log.Write("", LOG_ERROR, "[%s] %s %s - %v\n%s", req.RemoteAddr, req.Method, req.URL.String(), err, string(buf))
+	log.Write("", LOG_ERROR, "[%s] %s %s - %v\n%s", req.RemoteAddr, req.Method, get_raw_url_path(req), err, string(buf))
 	log.Close()
 	os.Exit(99) // fatal error. treat panic() as a fatal runtime error
 }
@@ -465,4 +465,14 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 	}
 
 	return http.StatusOK, ""
+}
+
+
+// ------------------------------------
+
+func get_raw_url_path(req *http.Request) string {
+	var path string
+	path = req.URL.Path
+	if req.URL.RawQuery != "" { path += "?" + req.URL.RawQuery }
+	return path
 }

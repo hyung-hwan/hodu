@@ -1700,9 +1700,9 @@ func (c *Client) WrapHttpHandler(handler ClientHttpHandler) http.Handler {
 
 		if status_code > 0 {
 			if err != nil {
-				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, get_raw_url_path(req), status_code, time_taken.Seconds(), err.Error())
 			} else {
-				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
+				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, get_raw_url_path(req), status_code, time_taken.Seconds())
 			}
 		}
 	})
@@ -1714,7 +1714,7 @@ func (c *Client) SafeWrapWebsocketHandler(handler websocket.Handler) http.Handle
 		   !strings.Contains(strings.ToLower(req.Header.Get("Connection")), "upgrade") {
 			var status_code int
 			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
-			c.log.Write("", LOG_INFO, "[%s] %s %s %d[non-websocket]", req.RemoteAddr, req.Method, req.URL.String(), status_code)
+			c.log.Write("", LOG_INFO, "[%s] %s %s %d[non-websocket]", req.RemoteAddr, req.Method, get_raw_url_path(req), status_code)
 			return
 		}
 		handler.ServeHTTP(w, req)
@@ -1728,9 +1728,11 @@ func (c *Client) WrapWebsocketHandler(handler ClientWebsocketHandler) websocket.
 		var start_time time.Time
 		var time_taken time.Duration
 		var req *http.Request
+		var raw_url_path string
 
 		req = ws.Request()
-		c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws]", req.RemoteAddr, req.Method, req.URL.String())
+		raw_url_path = get_raw_url_path(req)
+		c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws]", req.RemoteAddr, req.Method, raw_url_path)
 
 		start_time = time.Now()
 		status_code, err = handler.ServeWebsocket(ws)
@@ -1738,9 +1740,9 @@ func (c *Client) WrapWebsocketHandler(handler ClientWebsocketHandler) websocket.
 
 		if status_code > 0 {
 			if err != nil {
-				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f - %s", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds(), err.Error())
+				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f - %s", req.RemoteAddr, req.Method, raw_url_path, status_code, time_taken.Seconds(), err.Error())
 			} else {
-				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f", req.RemoteAddr, req.Method, req.URL.String(), status_code, time_taken.Seconds())
+				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f", req.RemoteAddr, req.Method, raw_url_path, status_code, time_taken.Seconds())
 			}
 		}
 	})
