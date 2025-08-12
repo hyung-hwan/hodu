@@ -1932,7 +1932,7 @@ func (s *Server) RunRpxTask(wg *sync.WaitGroup) {
 		go func(i int, cs *http.Server) {
 			var l net.Listener
 
-			s.log.Write("", LOG_INFO, "rpx channel[%d] started on %s", i, s.Cfg.RpxAddrs[i])
+			s.log.Write("", LOG_INFO, "RPX channel[%d] started on %s", i, s.Cfg.RpxAddrs[i])
 
 			if s.stop_req.Load() == false {
 				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
@@ -1962,9 +1962,9 @@ func (s *Server) RunRpxTask(wg *sync.WaitGroup) {
 				err = fmt.Errorf("stop requested")
 			}
 			if errors.Is(err, http.ErrServerClosed) {
-				s.log.Write("", LOG_INFO, "rpx channel[%d] ended", i)
+				s.log.Write("", LOG_INFO, "RPX channel[%d] ended", i)
 			} else {
-				s.log.Write("", LOG_ERROR, "rpx channel[%d] error - %s", i, err.Error())
+				s.log.Write("", LOG_ERROR, "RPX channel[%d] error - %s", i, err.Error())
 			}
 			l_wg.Done()
 		}(idx, rpx)

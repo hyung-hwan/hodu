@@ -536,7 +536,7 @@ func main() {
 	os.Exit(0)
 
 wrong_usage:
-	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [peer-addr:peer-port ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
