@@ -293,9 +293,10 @@ func (rpty *ServerRpty) ReqStop() {
 	rpty.ws.Close()
 }
 
-func (rpx *ServerRpx) ReqStop() {
+func (rpx *ServerRpx) ReqStop(close_web bool) {
 	rpx.done_chan <- true
 	rpx.pw.Close()
+	if close_web { rpx.br.Close() }
 }
 // ------------------------------------
 
@@ -894,7 +895,9 @@ func (cts *ServerConn) StartRpxWebById(srpx* ServerRpx, id uint64, data []byte) 
 }
 
 func (cts *ServerConn) StopRpxWebById(srpx* ServerRpx, id uint64) error {
-	srpx.ReqStop()
+	cts.S.log.Write(cts.Sid, LOG_DEBUG, "Requesting to stop rpx(%d)", srpx.id)
+	srpx.ReqStop(true)
+	cts.S.log.Write(cts.Sid, LOG_DEBUG, "Requested to stop rpx(%d)", srpx.id)
 	return nil
 }
 
@@ -903,13 +906,13 @@ func (cts *ServerConn) WroteRpxWebById(srpx* ServerRpx, id uint64, data []byte) 
 	_, err = srpx.pw.Write(data)
 	if err != nil {
 		cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to write rpx data(%d) to rpx pipe - %s", id, err.Error())
-		srpx.ReqStop()
+		srpx.ReqStop(true)
 	}
 	return err
 }
 
 func (cts *ServerConn) EofRpxWebById(srpx* ServerRpx, id uint64) error {
-	srpx.ReqStop()
+	srpx.ReqStop(false)
 	return nil
 }
 
@@ -1163,7 +1166,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 					if err != nil {
 						cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to handle %s event for rpty(%d) from %s - %s", pkt.Kind.String(), x.RptyEvt.Id, cts.RemoteAddr, err.Error())
 					} else {
-						cts.S.log.Write(cts.Sid, LOG_ERROR, "Handled %s event for rpty(%d) from %s", pkt.Kind.String(), x.RptyEvt.Id, cts.RemoteAddr)
+						cts.S.log.Write(cts.Sid, LOG_DEBUG, "Handled %s event for rpty(%d) from %s", pkt.Kind.String(), x.RptyEvt.Id, cts.RemoteAddr)
 					}
 				} else {
 					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid %s packet from %s", pkt.Kind.String(), cts.RemoteAddr)
@@ -1184,7 +1187,7 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 					if err != nil {
 						cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to handle %s event for rpx(%d) from %s - %s", pkt.Kind.String(), x.RpxEvt.Id, cts.RemoteAddr, err.Error())
 					} else {
-						cts.S.log.Write(cts.Sid, LOG_ERROR, "Handled %s event for rpx(%d) from %s", pkt.Kind.String(), x.RpxEvt.Id, cts.RemoteAddr)
+						cts.S.log.Write(cts.Sid, LOG_DEBUG, "Handled %s event for rpx(%d) from %s", pkt.Kind.String(), x.RpxEvt.Id, cts.RemoteAddr)
 					}
 				} else {
 					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid %s packet from %s", pkt.Kind.String(), cts.RemoteAddr)
@@ -1208,7 +1211,7 @@ done:
 	if len(cts.rpx_map) > 0 {
 		var rpx *ServerRpx
 		for _, rpx = range cts.rpx_map {
-			rpx.ReqStop()
+			rpx.ReqStop(false)
 		}
 	}
 	cts.rpx_mtx.Unlock()
@@ -1293,9 +1296,8 @@ func (cts *ServerConn) ReqStop() {
 		cts.rpty_mtx.Unlock()
 
 		cts.rpx_mtx.Lock()
-		for _, srpx = range cts.rpx_map { srpx.ReqStop() }
+		for _, srpx = range cts.rpx_map { srpx.ReqStop(true) }
 		cts.rpx_mtx.Unlock()
-
 
 		// there is no good way to break a specific connection client to
 		// the grpc server. while the global grpc server is closed in

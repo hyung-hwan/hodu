@@ -473,6 +473,8 @@ func get_http_req_line_and_headers(r *http.Request, force_host bool) []byte {
 	var value string
 	var values []string
 	var host_found bool
+	var x_forwarded_host_found bool
+	var x_forwarded_proto_found bool
 
 	fmt.Fprintf(&buf, "%s %s %s\r\n", r.Method, r.RequestURI, r.Proto)
 
@@ -485,7 +487,12 @@ func get_http_req_line_and_headers(r *http.Request, force_host bool) []byte {
 			continue
 		} else if strings.EqualFold(name, "Host") {
 			host_found = true
+		} else if strings.EqualFold(name, "X-Forwarded-Host") {
+			x_forwarded_host_found = true
+		} else if strings.EqualFold(name, "X-Forwarded-Proto") {
+			x_forwarded_proto_found = true
 		}
+
 		for _, value = range values {
 			fmt.Fprintf(&buf, "%s: %s\r\n", name, value)
 		}
@@ -494,7 +501,15 @@ func get_http_req_line_and_headers(r *http.Request, force_host bool) []byte {
 	if force_host && !host_found && r.Host != "" {
 		fmt.Fprintf(&buf, "Host: %s\r\n", r.Host)
 	}
-// TODO: host and x-forwarded-for, x-forwarded-proto, etc???
+	if !x_forwarded_host_found && r.Host != "" {
+		fmt.Fprintf(&buf, "X-Forwarded-Host: %s\r\n", r.Host)
+	}
+	if !x_forwarded_proto_found && r.Host != "" {
+		var proto string
+		if r.TLS != nil { proto = "https" } else { proto = "http" }
+		fmt.Fprintf(&buf, "X-Forwarded-Proto: %s\r\n", proto)
+	}
+// TODO: host and x-forwarded-for, etc???
 
 	buf.WriteString("\r\n") // End of headers
 	return buf.Bytes()

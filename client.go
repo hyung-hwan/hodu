@@ -1705,7 +1705,6 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 	//req_proto = flds[2]
 
 	// create a request assuming it's a normal http request
-
 	req, err = http.NewRequestWithContext(crpx.ctx, req_meth, cts.C.rpx_target_url + req_path, crpx.pr)
 	if err != nil {
 		cts.C.log.Write(cts.Sid, LOG_ERROR, "failed to create request for rpx(%d) - %s", crpx.id, err.Error())
@@ -1717,7 +1716,12 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 		if line == "" { break }
 		flds = strings.SplitN(line, ":", 2)
 		if len(flds) == 2 {
-			req.Header.Add(strings.TrimSpace(flds[0]), strings.TrimSpace(flds[1]))
+			var k string
+			var v string
+			k = strings.TrimSpace(flds[0])
+			v = strings.TrimSpace(flds[1])
+			req.Header.Add(k, v)
+//fmt.Printf ("ADDING HEADER %s: %v\n", k, v)
 		}
 	}
 	err = sc.Err()
@@ -1845,9 +1849,12 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 		var resp *http.Response
 
 		tr = &http.Transport {
-			TLSClientConfig: cts.C.rpx_target_tls,
+			DisableKeepAlives: true, // this implementation can't support keepalive..
 		}
-
+		if cts.C.rpx_target_tls != nil {
+			tr.TLSClientConfig = cts.C.rpx_target_tls
+		}
+//fmt.Printf("%+v\n", req)
 		resp, err = tr.RoundTrip(req)
 		if err != nil {
 			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send rpx(%d) request - %s", crpx.id, err.Error())
@@ -1864,6 +1871,7 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 
 		for {
 			n, err = resp.Body.Read(buf[:])
+//fmt.Printf ("READ RESPONSE [%s], %d, %v\n", string(buf[:n]), n, err)
 			if n > 0 {
 				var err2 error
 				err2 = cts.psc.Send(MakeRpxDataPacket(crpx.id, buf[:n]))
@@ -1880,6 +1888,7 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 				break
 			}
 		}
+//fmt.Printf ("READ RESPONSE LOOP IS OVER\n")
 	}
 
 done:
@@ -1946,6 +1955,7 @@ func (cts *ClientConn) WriteRpx(id uint64, data []byte) error {
 	}
 
 // TODO: may have to write it in a goroutine to avoid blocking?
+//fmt.Printf("UPLOADED DATA [%s]\n", string(data))
 	_, err = crpx.pw.Write(data)
 	if err != nil {
 		cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to write rpx(%d) data - %s", id, err.Error())

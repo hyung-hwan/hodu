@@ -283,7 +283,6 @@ func (rpx *server_rpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int,
 
 	for {
 		var n int
-
 		n, err = srpx.br.Read(buf[:])
 		if n > 0 {
 			var err2 error
