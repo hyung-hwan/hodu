@@ -211,6 +211,7 @@ func (rpx *server_rpx) alloc_server_rpx(cts *ServerConn, req *http.Request) (*Se
 	cts.rpx_map[assigned_id] = srpx
 
 	cts.rpx_mtx.Unlock()
+	cts.S.stats.rpx_sessions.Add(1)
 	return srpx, nil
 }
 
@@ -247,6 +248,7 @@ func (rpx *server_rpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int,
 		cts.rpx_mtx.Lock()
 		delete(cts.rpx_map, srpx.id)
 		cts.rpx_mtx.Unlock()
+		cts.S.stats.rpx_sessions.Add(-1)
 	}()
 
 	ws_upgrade = strings.EqualFold(req.Header.Get("Upgrade"), "websocket") && strings.Contains(strings.ToLower(req.Header.Get("Connection")), "upgrade");

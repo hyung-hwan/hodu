@@ -529,7 +529,7 @@ func get_regex_submatch(re *regexp.Regexp, str string, n int) string {
 
 	pos = n * 2
 	if pos + 1 >= len(idxs) { return "" }
-	
+
 	start, end = idxs[pos], idxs[pos + 1]
 	if start == -1 || end == -1 {
 		return ""

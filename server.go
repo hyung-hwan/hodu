@@ -172,6 +172,7 @@ type Server struct {
 		ssh_proxy_sessions atomic.Int64
 		pty_sessions atomic.Int64
 		rpty_sessions atomic.Int64
+		rpx_sessions atomic.Int64
 	}
 
 	wpx_resp_tf     ServerWpxResponseTransformer
@@ -1771,7 +1772,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.CtlAddrs[i],
 			Handler: s.ctl_mux,
 			// race condition issues without cloning. the http package modifies some fields in the configuration object
-			TLSConfig: cfg.CtlTls.Clone(), 
+			TLSConfig: cfg.CtlTls.Clone(),
 			ErrorLog: hs_log,
 			// TODO: more settings
 		}
@@ -1902,6 +1903,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.stats.ssh_proxy_sessions.Store(0)
 	s.stats.pty_sessions.Store(0)
 	s.stats.rpty_sessions.Store(0)
+	s.stats.rpx_sessions.Store(0)
 
 	return &s, nil
 
@@ -2100,7 +2102,7 @@ func (s *Server) run_single_rpx_server(i int, cs *http.Server, wg* sync.WaitGrou
 	} else {
 		s.log.Write("", LOG_ERROR, "RPX channel[%d] error - %s", i, err.Error())
 	}
-	
+
 }
 
 func (s *Server) RunRpxTask(wg *sync.WaitGroup) {

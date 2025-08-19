@@ -167,6 +167,7 @@ type Client struct {
 		peers atomic.Int64
 		pty_sessions atomic.Int64
 		rpty_sessions atomic.Int64
+		rpx_sessions atomic.Int64
 	}
 
 	pty_user string
@@ -1892,6 +1893,7 @@ done:
 	cts.rpx_mtx.Lock()
 	delete(cts.rpx_map, crpx.id)
 	cts.rpx_mtx.Unlock()
+	cts.C.stats.rpx_sessions.Add(-1)
 }
 
 func (cts *ClientConn) StartRpx(id uint64, data []byte, wg *sync.WaitGroup) error {
@@ -1914,6 +1916,7 @@ func (cts *ClientConn) StartRpx(id uint64, data []byte, wg *sync.WaitGroup) erro
 	crpx.ctx, crpx.cancel = context.WithCancel(cts.C.Ctx)
 
 	cts.rpx_mtx.Unlock()
+	cts.C.stats.rpx_sessions.Add(1)
 
 	wg.Add(1)
 	go cts.RpxLoop(crpx, data, wg)
@@ -2262,6 +2265,7 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.stats.peers.Store(0)
 	c.stats.pty_sessions.Store(0)
 	c.stats.rpty_sessions.Store(0)
+	c.stats.rpx_sessions.Store(0)
 
 	return &c
 }
