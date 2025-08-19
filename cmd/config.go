@@ -73,6 +73,12 @@ type RPXServiceConfig struct {
 	Addrs  []string `yaml:"addresses"`
 }
 
+type RPXClientTokenConfig struct {
+	AttrName string `yaml:"attr-name"`
+	Regex string `yaml:"regex"`	
+	SubmatchIndex int `yaml:"submatch-index"`
+}
+
 type PXYServiceConfig struct {
 	Addrs  []string `yaml:"addresses"`
 }
@@ -127,8 +133,9 @@ type ServerConfig struct {
 	} `yaml:"ctl"`
 
 	RPX struct {
-		Service RPXServiceConfig    `yaml:"service"`
-		TLS ServerTLSConfig         `yaml:"tls"`
+		Service RPXServiceConfig         `yaml:"service"`
+		TLS ServerTLSConfig              `yaml:"tls"`
+		ClientToken RPXClientTokenConfig `yaml:"client-token"`
 	} `yaml:"rpx"`
 
 	PXY struct {
@@ -158,6 +165,12 @@ type ClientConfig struct {
 		Endpoint RPCEndpointConfig  `yaml:"endpoint"`
 		TLS ClientTLSConfig         `yaml:"tls"`
 	} `yaml:"rpc"`
+	RPX struct {
+          Target struct {
+			Addr string 	        `yaml:"address"`
+			TLS ClientTLSConfig    `yaml:"tls"`
+		} `yaml:"target"`
+	}
 }
 
 func load_server_config_to(cfgfile string, cfg *ServerConfig) error {

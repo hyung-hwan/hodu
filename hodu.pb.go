@@ -101,7 +101,11 @@ const (
 	PACKET_KIND_RPTY_START    PACKET_KIND = 14
 	PACKET_KIND_RPTY_STOP     PACKET_KIND = 15
 	PACKET_KIND_RPTY_DATA     PACKET_KIND = 16
-	PACKET_KIND_RPTY_SIZE     PACKET_KIND = 17
+	PACKET_KIND_RPTY_SIZE     PACKET_KIND = 17 // terminal size
+	PACKET_KIND_RPX_START     PACKET_KIND = 18
+	PACKET_KIND_RPX_STOP      PACKET_KIND = 19
+	PACKET_KIND_RPX_DATA      PACKET_KIND = 20
+	PACKET_KIND_RPX_EOF       PACKET_KIND = 21
 )
 
 // Enum value maps for PACKET_KIND.
@@ -124,6 +128,10 @@ var (
 		15: "RPTY_STOP",
 		16: "RPTY_DATA",
 		17: "RPTY_SIZE",
+		18: "RPX_START",
+		19: "RPX_STOP",
+		20: "RPX_DATA",
+		21: "RPX_EOF",
 	}
 	PACKET_KIND_value = map[string]int32{
 		"RESERVED":      0,
@@ -143,6 +151,10 @@ var (
 		"RPTY_STOP":     15,
 		"RPTY_DATA":     16,
 		"RPTY_SIZE":     17,
+		"RPX_START":     18,
+		"RPX_STOP":      19,
+		"RPX_DATA":      20,
+		"RPX_EOF":       21,
 	}
 )
 
@@ -643,6 +655,58 @@ func (x *RptyEvent) GetData() []byte {
 	return nil
 }
 
+type RpxEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=Id,proto3" json:"Id,omitempty"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=Data,proto3" json:"Data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RpxEvent) Reset() {
+	*x = RpxEvent{}
+	mi := &file_hodu_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RpxEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RpxEvent) ProtoMessage() {}
+
+func (x *RpxEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_hodu_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RpxEvent.ProtoReflect.Descriptor instead.
+func (*RpxEvent) Descriptor() ([]byte, []int) {
+	return file_hodu_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RpxEvent) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *RpxEvent) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
 type Packet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Kind  PACKET_KIND            `protobuf:"varint,1,opt,name=Kind,proto3,enum=PACKET_KIND" json:"Kind,omitempty"`
@@ -655,6 +719,7 @@ type Packet struct {
 	//	*Packet_ConnErr
 	//	*Packet_ConnNoti
 	//	*Packet_RptyEvt
+	//	*Packet_RpxEvt
 	U             isPacket_U `protobuf_oneof:"U"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -662,7 +727,7 @@ type Packet struct {
 
 func (x *Packet) Reset() {
 	*x = Packet{}
-	mi := &file_hodu_proto_msgTypes[8]
+	mi := &file_hodu_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -674,7 +739,7 @@ func (x *Packet) String() string {
 func (*Packet) ProtoMessage() {}
 
 func (x *Packet) ProtoReflect() protoreflect.Message {
-	mi := &file_hodu_proto_msgTypes[8]
+	mi := &file_hodu_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -687,7 +752,7 @@ func (x *Packet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Packet.ProtoReflect.Descriptor instead.
 func (*Packet) Descriptor() ([]byte, []int) {
-	return file_hodu_proto_rawDescGZIP(), []int{8}
+	return file_hodu_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Packet) GetKind() PACKET_KIND {
@@ -767,6 +832,15 @@ func (x *Packet) GetRptyEvt() *RptyEvent {
 	return nil
 }
 
+func (x *Packet) GetRpxEvt() *RpxEvent {
+	if x != nil {
+		if x, ok := x.U.(*Packet_RpxEvt); ok {
+			return x.RpxEvt
+		}
+	}
+	return nil
+}
+
 type isPacket_U interface {
 	isPacket_U()
 }
@@ -799,6 +873,10 @@ type Packet_RptyEvt struct {
 	RptyEvt *RptyEvent `protobuf:"bytes,8,opt,name=RptyEvt,proto3,oneof"`
 }
 
+type Packet_RpxEvt struct {
+	RpxEvt *RpxEvent `protobuf:"bytes,9,opt,name=RpxEvt,proto3,oneof"`
+}
+
 func (*Packet_Route) isPacket_U() {}
 
 func (*Packet_Peer) isPacket_U() {}
@@ -812,6 +890,8 @@ func (*Packet_ConnErr) isPacket_U() {}
 func (*Packet_ConnNoti) isPacket_U() {}
 
 func (*Packet_RptyEvt) isPacket_U() {}
+
+func (*Packet_RpxEvt) isPacket_U() {}
 
 var File_hodu_proto protoreflect.FileDescriptor
 
@@ -850,7 +930,10 @@ const file_hodu_proto_rawDesc = "" +
 	"\x04Text\x18\x01 \x01(\tR\x04Text\"/\n" +
 	"\tRptyEvent\x12\x0e\n" +
 	"\x02Id\x18\x01 \x01(\x04R\x02Id\x12\x12\n" +
-	"\x04Data\x18\x02 \x01(\fR\x04Data\"\xb1\x02\n" +
+	"\x04Data\x18\x02 \x01(\fR\x04Data\".\n" +
+	"\bRpxEvent\x12\x0e\n" +
+	"\x02Id\x18\x01 \x01(\x04R\x02Id\x12\x12\n" +
+	"\x04Data\x18\x02 \x01(\fR\x04Data\"\xd6\x02\n" +
 	"\x06Packet\x12 \n" +
 	"\x04Kind\x18\x01 \x01(\x0e2\f.PACKET_KINDR\x04Kind\x12\"\n" +
 	"\x05Route\x18\x02 \x01(\v2\n" +
@@ -862,7 +945,8 @@ const file_hodu_proto_rawDesc = "" +
 	".ConnErrorH\x00R\aConnErr\x12)\n" +
 	"\bConnNoti\x18\a \x01(\v2\v.ConnNoticeH\x00R\bConnNoti\x12&\n" +
 	"\aRptyEvt\x18\b \x01(\v2\n" +
-	".RptyEventH\x00R\aRptyEvtB\x03\n" +
+	".RptyEventH\x00R\aRptyEvt\x12#\n" +
+	"\x06RpxEvt\x18\t \x01(\v2\t.RpxEventH\x00R\x06RpxEvtB\x03\n" +
 	"\x01U*U\n" +
 	"\fROUTE_OPTION\x12\n" +
 	"\n" +
@@ -872,7 +956,7 @@ const file_hodu_proto_rawDesc = "" +
 	"\x04TCP6\x10\x04\x12\b\n" +
 	"\x04HTTP\x10\b\x12\t\n" +
 	"\x05HTTPS\x10\x10\x12\a\n" +
-	"\x03SSH\x10 *\xa2\x02\n" +
+	"\x03SSH\x10 *\xda\x02\n" +
 	"\vPACKET_KIND\x12\f\n" +
 	"\bRESERVED\x10\x00\x12\x0f\n" +
 	"\vROUTE_START\x10\x01\x12\x0e\n" +
@@ -893,7 +977,11 @@ const file_hodu_proto_rawDesc = "" +
 	"RPTY_START\x10\x0e\x12\r\n" +
 	"\tRPTY_STOP\x10\x0f\x12\r\n" +
 	"\tRPTY_DATA\x10\x10\x12\r\n" +
-	"\tRPTY_SIZE\x10\x112I\n" +
+	"\tRPTY_SIZE\x10\x11\x12\r\n" +
+	"\tRPX_START\x10\x12\x12\f\n" +
+	"\bRPX_STOP\x10\x13\x12\f\n" +
+	"\bRPX_DATA\x10\x14\x12\v\n" +
+	"\aRPX_EOF\x10\x152I\n" +
 	"\x04Hodu\x12\x19\n" +
 	"\aGetSeed\x12\x05.Seed\x1a\x05.Seed\"\x00\x12&\n" +
 	"\fPacketStream\x12\a.Packet\x1a\a.Packet\"\x00(\x010\x01B\bZ\x06./hodub\x06proto3"
@@ -911,7 +999,7 @@ func file_hodu_proto_rawDescGZIP() []byte {
 }
 
 var file_hodu_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_hodu_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_hodu_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_hodu_proto_goTypes = []any{
 	(ROUTE_OPTION)(0),  // 0: ROUTE_OPTION
 	(PACKET_KIND)(0),   // 1: PACKET_KIND
@@ -923,7 +1011,8 @@ var file_hodu_proto_goTypes = []any{
 	(*ConnError)(nil),  // 7: ConnError
 	(*ConnNotice)(nil), // 8: ConnNotice
 	(*RptyEvent)(nil),  // 9: RptyEvent
-	(*Packet)(nil),     // 10: Packet
+	(*RpxEvent)(nil),   // 10: RpxEvent
+	(*Packet)(nil),     // 11: Packet
 }
 var file_hodu_proto_depIdxs = []int32{
 	1,  // 0: Packet.Kind:type_name -> PACKET_KIND
@@ -934,15 +1023,16 @@ var file_hodu_proto_depIdxs = []int32{
 	7,  // 5: Packet.ConnErr:type_name -> ConnError
 	8,  // 6: Packet.ConnNoti:type_name -> ConnNotice
 	9,  // 7: Packet.RptyEvt:type_name -> RptyEvent
-	2,  // 8: Hodu.GetSeed:input_type -> Seed
-	10, // 9: Hodu.PacketStream:input_type -> Packet
-	2,  // 10: Hodu.GetSeed:output_type -> Seed
-	10, // 11: Hodu.PacketStream:output_type -> Packet
-	10, // [10:12] is the sub-list for method output_type
-	8,  // [8:10] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	10, // 8: Packet.RpxEvt:type_name -> RpxEvent
+	2,  // 9: Hodu.GetSeed:input_type -> Seed
+	11, // 10: Hodu.PacketStream:input_type -> Packet
+	2,  // 11: Hodu.GetSeed:output_type -> Seed
+	11, // 12: Hodu.PacketStream:output_type -> Packet
+	11, // [11:13] is the sub-list for method output_type
+	9,  // [9:11] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_hodu_proto_init() }
@@ -950,7 +1040,7 @@ func file_hodu_proto_init() {
 	if File_hodu_proto != nil {
 		return
 	}
-	file_hodu_proto_msgTypes[8].OneofWrappers = []any{
+	file_hodu_proto_msgTypes[9].OneofWrappers = []any{
 		(*Packet_Route)(nil),
 		(*Packet_Peer)(nil),
 		(*Packet_Data)(nil),
@@ -958,6 +1048,7 @@ func file_hodu_proto_init() {
 		(*Packet_ConnErr)(nil),
 		(*Packet_ConnNoti)(nil),
 		(*Packet_RptyEvt)(nil),
+		(*Packet_RpxEvt)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -965,7 +1056,7 @@ func file_hodu_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hodu_proto_rawDesc), len(file_hodu_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

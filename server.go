@@ -10,6 +10,7 @@ import "log"
 import "net"
 import "net/http"
 import "net/netip"
+import "regexp"
 import "slices"
 import "strconv"
 import "strings"
@@ -32,8 +33,8 @@ const CTS_LIMIT int = 16384
 type PortId uint16
 const PORT_ID_MARKER string = "_"
 const HS_ID_CTL string = "ctl"
-const HS_ID_RPX string = "pxy"
-const HS_ID_PXY string = "rpx"
+const HS_ID_RPX string = "rpx"
+const HS_ID_PXY string = "pxy"
 const HS_ID_WPX string = "wpx"
 
 type ServerConnMapByAddr map[net.Addr]*ServerConn
@@ -45,6 +46,7 @@ type ServerSvcPortMap map[PortId]ConnRouteId
 
 type ServerRptyMap map[uint64]*ServerRpty
 type ServerRptyMapByWs map[*websocket.Conn]*ServerRpty
+type ServerRpxMap map[uint64]*ServerRpx
 
 type ServerWpxResponseTransformer func(r *ServerRouteProxyInfo, resp *http.Response) io.Reader
 type ServerWpxForeignPortProxyMaker func(wpx_type string, port_id string) (*ServerRouteProxyInfo, error)
@@ -67,6 +69,9 @@ type ServerConfig struct {
 
 	RpxAddrs []string
 	RpxTls *tls.Config
+	RpxClientTokenAttrName string
+	RpxClientTokenRegex *regexp.Regexp
+	RpxClientTokenSubmatchIndex int
 
 	PxyAddrs []string
 	PxyTls *tls.Config
@@ -166,11 +171,11 @@ type Server struct {
 		peers atomic.Int64
 		ssh_proxy_sessions atomic.Int64
 		pty_sessions atomic.Int64
+		rpty_sessions atomic.Int64
 	}
 
 	wpx_resp_tf     ServerWpxResponseTransformer
 	wpx_foreign_port_proxy_maker ServerWpxForeignPortProxyMaker
-
 
 	pty_user   string
 	pty_shell  string
@@ -201,6 +206,10 @@ type ServerConn struct {
 	rpty_mtx       sync.Mutex
 	rpty_map       ServerRptyMap
 	rpty_map_by_ws ServerRptyMapByWs
+
+	rpx_next_id    uint64
+	rpx_mtx        sync.Mutex
+	rpx_map        ServerRpxMap
 
 	wg             sync.WaitGroup
 	stop_req       atomic.Bool
@@ -236,6 +245,20 @@ type ServerRpty struct {
 	ws *websocket.Conn
 }
 
+type ServerRpx struct {
+	id uint64
+	pr *io.PipeReader
+	pw *io.PipeWriter
+	br io.ReadCloser // body reader
+	start_chan chan []byte
+	done_chan chan bool
+	br_chan chan bool
+
+	resp_status_code int
+	resp_error error
+	resp_done_chan chan bool
+}
+
 type GuardedPacketStreamServer struct {
 	mtx sync.Mutex
 	//pss Hodu_PacketStreamServer
@@ -263,6 +286,16 @@ func (g *GuardedPacketStreamServer) Context() context.Context {
 	return g.pss.Context()
 }*/
 
+// ------------------------------------
+
+func (rpty *ServerRpty) ReqStop() {
+	rpty.ws.Close()
+}
+
+func (rpx *ServerRpx) ReqStop() {
+	rpx.done_chan <- true
+	rpx.pw.Close()
+}
 // ------------------------------------
 
 func NewServerRoute(cts *ServerConn, id RouteId, option RouteOption, ptc_addr string, ptc_name string, svc_requested_addr string, svc_permitted_net string) (*ServerRoute, error) {
@@ -658,6 +691,7 @@ func (cts *ServerConn) ReqStopAllServerRoutes() {
 	cts.route_mtx.Unlock()
 }
 
+// Rpty
 func (cts *ServerConn) StartRpty(ws *websocket.Conn) (*ServerRpty, error) {
 	var ok bool
 	var start_id uint64
@@ -707,11 +741,11 @@ func (cts *ServerConn) StartRpty(ws *websocket.Conn) (*ServerRpty, error) {
 		return nil , err
 	}
 
+	cts.S.stats.rpty_sessions.Add(1)
 	return rpty, nil
 }
 
 func (cts *ServerConn) StopRpty(ws *websocket.Conn) error {
-
 	// called by the websocket handler.
 	var rpty *ServerRpty
 	var id uint64
@@ -721,7 +755,9 @@ func (cts *ServerConn) StopRpty(ws *websocket.Conn) error {
 	cts.rpty_mtx.Lock()
 	rpty, ok = cts.rpty_map_by_ws[ws]
 	if !ok {
-		return fmt.Errorf("unknown ws connection for rpty - %v", ws.RemoteAddr())
+		cts.rpty_mtx.Unlock()
+		cts.S.log.Write(cts.Sid, LOG_ERROR, "Unknown websocket connection for rpty - websocket %v", ws.RemoteAddr())
+		return fmt.Errorf("unknown websocket connection for rpty - %v", ws.RemoteAddr())
 	}
 
 	id = rpty.id
@@ -730,14 +766,24 @@ func (cts *ServerConn) StopRpty(ws *websocket.Conn) error {
 	// send the stop request to the client side
 	err = cts.pss.Send(MakeRptyStopPacket(id, ""))
 	if err !=  nil {
-		return fmt.Errorf("unable to send stop rpty request to client - %s", err.Error())
+		cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to send RPTY_STOP(%d) for server %s websocket %v - %s", id, cts.RemoteAddr, ws.RemoteAddr(), err.Error())
+		// carry on
 	}
 
+	// delete the rpty entry from the maps as the websocket
+	// handler is ending
+	cts.rpty_mtx.Lock()
+	delete(cts.rpty_map, id)
+	delete(cts.rpty_map_by_ws, ws)
+	cts.rpty_mtx.Unlock()
+	cts.S.stats.rpty_sessions.Add(-1)
+
+	cts.S.log.Write(cts.Sid, LOG_INFO, "Stopped rpty(%d) for server %s websocket %vs", id, cts.RemoteAddr, ws.RemoteAddr())
 	return nil
 }
 
 func (cts *ServerConn) StopRptyWsById(id uint64, msg string) error {
-	// called this when the stop requested comes from the client
+	// call this when the stop requested comes from the client.
 	// abort the websocket side.
 
 	var rpty *ServerRpty
@@ -746,11 +792,12 @@ func (cts *ServerConn) StopRptyWsById(id uint64, msg string) error {
 	cts.rpty_mtx.Lock()
 	rpty, ok = cts.rpty_map[id]
 	if !ok {
+		cts.rpty_mtx.Unlock()
 		return fmt.Errorf("unknown rpty id %d", id)
 	}
-	rpty.ws.Close()
 	cts.rpty_mtx.Unlock()
 
+	rpty.ReqStop()
 	cts.S.log.Write(cts.Sid, LOG_INFO, "Stopped rpty(%d) for %s - %s", id, cts.RemoteAddr, msg)
 	return nil
 }
@@ -764,6 +811,7 @@ func (cts *ServerConn) WriteRpty(ws *websocket.Conn, data []byte) error {
 	cts.rpty_mtx.Lock()
 	rpty, ok = cts.rpty_map_by_ws[ws]
 	if !ok {
+		cts.rpty_mtx.Unlock()
 		return fmt.Errorf("unknown ws connection for rpty - %v", ws.RemoteAddr())
 	}
 
@@ -787,6 +835,7 @@ func (cts *ServerConn) WriteRptySize(ws *websocket.Conn, data []byte) error {
 	cts.rpty_mtx.Lock()
 	rpty, ok = cts.rpty_map_by_ws[ws]
 	if !ok {
+		cts.rpty_mtx.Unlock()
 		return fmt.Errorf("unknown ws connection for rpty size - %v", ws.RemoteAddr())
 	}
 
@@ -812,31 +861,14 @@ func (cts *ServerConn) ReadRptyAndWriteWs(id uint64, data []byte) error {
 		cts.rpty_mtx.Unlock()
 		return fmt.Errorf("unknown rpty id - %d", id)
 	}
+	cts.rpty_mtx.Unlock()
 
 	err = send_ws_data_for_xterm(rpty.ws, "iov", string(data))
 	if err != nil {
-		cts.rpty_mtx.Unlock()
 		return fmt.Errorf("failed to write rpty data(%d) to ws - %s", id, err.Error())
 	}
 
-	cts.rpty_mtx.Unlock()
 	return nil
-}
-
-
-func (cts *ServerConn) ReportPacket(route_id RouteId, pts_id PeerId, packet_type PACKET_KIND, event_data interface{}) error {
-	var r *ServerRoute
-	var ok bool
-
-	cts.route_mtx.Lock()
-	r, ok = cts.route_map[route_id]
-	if !ok {
-		cts.route_mtx.Unlock()
-		return fmt.Errorf("non-existent route id - %d", route_id)
-	}
-	cts.route_mtx.Unlock()
-
-	return r.ReportPacket(pts_id, packet_type, event_data)
 }
 
 func (cts *ServerConn) HandleRptyEvent(packet_type PACKET_KIND, evt *RptyEvent) error {
@@ -851,6 +883,80 @@ func (cts *ServerConn) HandleRptyEvent(packet_type PACKET_KIND, evt *RptyEvent) 
 
 	// ignore other packet types
 	return nil
+}
+
+// Rpx
+func (cts *ServerConn) StartRpxWebById(srpx* ServerRpx, id uint64, data []byte) error {
+	// pass the initial response to code in server-rpx.go
+	srpx.start_chan <- data
+	return nil
+}
+
+func (cts *ServerConn) StopRpxWebById(srpx* ServerRpx, id uint64) error {
+	srpx.ReqStop()
+	return nil
+}
+
+func (cts *ServerConn) WroteRpxWebById(srpx* ServerRpx, id uint64, data []byte) error {
+	var err error
+	_, err = srpx.pw.Write(data)
+	if err != nil {
+		cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to write rpx data(%d) to rpx pipe - %s", id, err.Error())
+		srpx.ReqStop()
+	}
+	return err
+}
+
+func (cts *ServerConn) EofRpxWebById(srpx* ServerRpx, id uint64) error {
+	srpx.ReqStop()
+	return nil
+}
+
+func (cts *ServerConn) HandleRpxEvent(packet_type PACKET_KIND, evt *RpxEvent) error {
+	var ok bool
+	var rpx* ServerRpx
+
+	cts.rpx_mtx.Lock()
+	rpx, ok = cts.rpx_map[evt.Id]
+	if !ok {
+		cts.rpx_mtx.Unlock()
+		return fmt.Errorf("unknown rpx id - %v", evt.Id)
+	}
+	cts.rpx_mtx.Unlock()
+
+	switch packet_type {
+		case PACKET_KIND_RPX_START:
+			return cts.StartRpxWebById(rpx, evt.Id, evt.Data)
+
+		case PACKET_KIND_RPX_STOP:
+			// stop requested from the server
+			return cts.StopRpxWebById(rpx, evt.Id)
+
+		case PACKET_KIND_RPX_EOF:
+			return cts.EofRpxWebById(rpx, evt.Id)
+
+		case PACKET_KIND_RPX_DATA:
+			return cts.WroteRpxWebById(rpx, evt.Id, evt.Data)
+	}
+
+	// ignore other packet types
+	return nil
+}
+
+// Rpx
+func (cts *ServerConn) ReportPacket(route_id RouteId, pts_id PeerId, packet_type PACKET_KIND, event_data interface{}) error {
+	var r *ServerRoute
+	var ok bool
+
+	cts.route_mtx.Lock()
+	r, ok = cts.route_map[route_id]
+	if !ok {
+		cts.route_mtx.Unlock()
+		return fmt.Errorf("non-existent route id - %d", route_id)
+	}
+	cts.route_mtx.Unlock()
+
+	return r.ReportPacket(pts_id, packet_type, event_data)
 }
 
 func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
@@ -1055,10 +1161,30 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 					err = cts.HandleRptyEvent(pkt.Kind, x.RptyEvt)
 					if err != nil {
 						cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to handle %s event for rpty(%d) from %s - %s", pkt.Kind.String(), x.RptyEvt.Id, cts.RemoteAddr, err.Error())
-                         } else {
+					} else {
 						cts.S.log.Write(cts.Sid, LOG_ERROR, "Handled %s event for rpty(%d) from %s", pkt.Kind.String(), x.RptyEvt.Id, cts.RemoteAddr)
-                         }
+					}
+				} else {
+					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid %s packet from %s", pkt.Kind.String(), cts.RemoteAddr)
+				}
 
+			case PACKET_KIND_RPX_START: // the client sends the response header using START
+				fallthrough
+			case PACKET_KIND_RPX_STOP:
+				fallthrough
+			case PACKET_KIND_RPX_EOF:
+				fallthrough
+			case PACKET_KIND_RPX_DATA:
+				var x *Packet_RpxEvt
+				var ok bool
+				x, ok = pkt.U.(*Packet_RpxEvt)
+				if ok {
+					err = cts.HandleRpxEvent(pkt.Kind, x.RpxEvt)
+					if err != nil {
+						cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to handle %s event for rpx(%d) from %s - %s", pkt.Kind.String(), x.RpxEvt.Id, cts.RemoteAddr, err.Error())
+					} else {
+						cts.S.log.Write(cts.Sid, LOG_ERROR, "Handled %s event for rpx(%d) from %s", pkt.Kind.String(), x.RpxEvt.Id, cts.RemoteAddr)
+					}
 				} else {
 					cts.S.log.Write(cts.Sid, LOG_ERROR, "Invalid %s packet from %s", pkt.Kind.String(), cts.RemoteAddr)
 				}
@@ -1066,16 +1192,25 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 	}
 
 done:
-
 	// arrange to break all rpty resources
 	cts.rpty_mtx.Lock()
 	if len(cts.rpty_map) > 0 {
 		var rpty *ServerRpty
 		for _, rpty = range cts.rpty_map {
-			rpty.ws.Close()
+			rpty.ReqStop()
 		}
 	}
 	cts.rpty_mtx.Unlock()
+
+	// arrange to break all rpx resources
+	cts.rpx_mtx.Lock()
+	if len(cts.rpx_map) > 0 {
+		var rpx *ServerRpx
+		for _, rpx = range cts.rpx_map {
+			rpx.ReqStop()
+		}
+	}
+	cts.rpx_mtx.Unlock()
 
 	cts.S.log.Write(cts.Sid, LOG_INFO, "RPC stream receiver ended")
 }
@@ -1109,7 +1244,7 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 	cts.route_wg.Add(1)
 
 	// start the loop inside a goroutine so that route_wg counter
-	// is likely to be greater than 1  what Wait() is called.
+	// is likely to be greater than 1 when Wait() is called.
 	go func() {
 	waiting_loop:
 		for {
@@ -1145,10 +1280,21 @@ func (cts *ServerConn) RunTask(wg *sync.WaitGroup) {
 func (cts *ServerConn) ReqStop() {
 	if cts.stop_req.CompareAndSwap(false, true) {
 		var r *ServerRoute
+		var rpty *ServerRpty
+		var srpx *ServerRpx
 
 		cts.route_mtx.Lock()
 		for _, r = range cts.route_map { r.ReqStop() }
 		cts.route_mtx.Unlock()
+
+		cts.rpty_mtx.Lock()
+		for _, rpty = range cts.rpty_map { rpty.ReqStop() }
+		cts.rpty_mtx.Unlock()
+
+		cts.rpx_mtx.Lock()
+		for _, srpx = range cts.rpx_map { srpx.ReqStop() }
+		cts.rpx_mtx.Unlock()
+
 
 		// there is no good way to break a specific connection client to
 		// the grpc server. while the global grpc server is closed in
@@ -1359,13 +1505,14 @@ func unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServ
 
 type server_http_log_writer struct {
 	svr *Server
+	depth int
 }
 
 func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 	// the standard http.Server always requires *log.Logger
 	// use this iowriter to create a logger to pass it to the http server.
 	// since this is another log write wrapper, give adjustment value
-	hlw.svr.log.WriteWithCallDepth("", LOG_INFO, +1, string(p))
+	hlw.svr.log.WriteWithCallDepth("", LOG_INFO, hlw.depth, string(p))
 	return len(p), nil
 }
 
@@ -1422,13 +1569,13 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 				WriteEmptyRespHeader(w, status_code)
 			}
 		}
-		time_taken = time.Now().Sub(start_time)
+		time_taken = time.Since(start_time) // time.Now().Sub(start_time)
 
 		if status_code > 0 {
 			if err != nil {
-				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, get_raw_url_path(req), status_code, time_taken.Seconds(), err.Error())
+				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds(), err.Error())
 			} else {
-				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, get_raw_url_path(req), status_code, time_taken.Seconds())
+				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds())
 			}
 		}
 	})
@@ -1440,7 +1587,7 @@ func (s *Server) SafeWrapWebsocketHandler(handler websocket.Handler) http.Handle
 		   !strings.Contains(strings.ToLower(req.Header.Get("Connection")), "upgrade") {
 			var status_code int
 			status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
-			s.log.Write("", LOG_INFO, "[%s] %s %s %d[non-websocket]", req.RemoteAddr, req.Method, get_raw_url_path(req), status_code)
+			s.log.Write("", LOG_INFO, "[%s] %s %s %d[non-websocket]", req.RemoteAddr, req.Method, req.RequestURI, status_code)
 			return
 		}
 		handler.ServeHTTP(w, req)
@@ -1454,21 +1601,19 @@ func (s *Server) WrapWebsocketHandler(handler ServerWebsocketHandler) websocket.
 		var start_time time.Time
 		var time_taken time.Duration
 		var req *http.Request
-		var raw_url_path string
 
 		req = ws.Request()
-		raw_url_path = get_raw_url_path(req)
-		s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws]", req.RemoteAddr, req.Method, raw_url_path)
+		s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws]", req.RemoteAddr, req.Method, req.RequestURI)
 
 		start_time = time.Now()
 		status_code, err = handler.ServeWebsocket(ws)
-		time_taken = time.Now().Sub(start_time)
+		time_taken = time.Since(start_time) // time.Now().Sub(start_time)
 
 		if status_code > 0 {
 			if err != nil {
-				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f - %s", req.RemoteAddr, req.Method, raw_url_path, status_code, time_taken.Seconds(), err.Error())
+				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f - %s", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds(), err.Error())
 			} else {
-				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f", req.RemoteAddr, req.Method, raw_url_path, status_code, time_taken.Seconds())
+				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s [ws] %d %.9f", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds())
 			}
 		}
 	})
@@ -1479,7 +1624,6 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	var l *net.TCPListener
 	var rpcaddr *net.TCPAddr
 	var addr string
-	var gl *net.TCPListener
 	var i int
 	var hs_log *log.Logger
 	var opts []grpc.ServerOption
@@ -1536,7 +1680,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	// ---------------------------------------------------------
 
-	hs_log = log.New(&server_http_log_writer{svr: &s}, "", 0)
+	hs_log = log.New(&server_http_log_writer{svr: &s, depth: +2}, "", 0)
 
 	// ---------------------------------------------------------
 
@@ -1626,7 +1770,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.ctl[i] = &http.Server{
 			Addr: cfg.CtlAddrs[i],
 			Handler: s.ctl_mux,
-			TLSConfig: s.Cfg.CtlTls,
+			// race condition issues without cloning. the http package modifies some fields in the configuration object
+			TLSConfig: cfg.CtlTls.Clone(), 
 			ErrorLog: hs_log,
 			// TODO: more settings
 		}
@@ -1638,12 +1783,11 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.rpx_mux.Handle("/", s.WrapHttpHandler(&server_rpx{ S: &s, Id: HS_ID_RPX }))
 
 	s.rpx = make([]*http.Server, len(cfg.RpxAddrs))
-
 	for i = 0; i < len(cfg.RpxAddrs); i++ {
 		s.rpx[i] = &http.Server{
 			Addr: cfg.RpxAddrs[i],
 			Handler: s.rpx_mux,
-			TLSConfig: cfg.RpxTls,
+			TLSConfig: cfg.RpxTls.Clone(),
 			ErrorLog: hs_log,
 			// TODO: more settings
 		}
@@ -1696,7 +1840,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.pxy[i] = &http.Server{
 			Addr: cfg.PxyAddrs[i],
 			Handler: s.pxy_mux,
-			TLSConfig: cfg.PxyTls,
+			TLSConfig: cfg.PxyTls.Clone(),
 			ErrorLog: hs_log,
 			// TODO: more settings
 		}
@@ -1746,7 +1890,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.wpx[i] = &http.Server{
 			Addr: cfg.WpxAddrs[i],
 			Handler: s.wpx_mux,
-			TLSConfig: cfg.WpxTls,
+			TLSConfig: cfg.WpxTls.Clone(),
 			ErrorLog: hs_log,
 		}
 	}
@@ -1757,11 +1901,11 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.stats.peers.Store(0)
 	s.stats.ssh_proxy_sessions.Store(0)
 	s.stats.pty_sessions.Store(0)
+	s.stats.rpty_sessions.Store(0)
 
 	return &s, nil
 
 oops:
-	if gl != nil { gl.Close() }
 	for _, l = range s.rpc { l.Close() }
 	s.rpc = make([]*net.TCPListener, 0)
 	return nil, err
@@ -1840,16 +1984,10 @@ func (s *Server) RunTask(wg *sync.WaitGroup) {
 		go s.run_grpc_server(idx, &s.rpc_wg)
 	}
 
-	// most work is done by in separate goroutines (s.run_grp_server)
-	// this loop serves as a placeholder to prevent the logic flow from
+	// most work is done in separate goroutines (s.run_grp_server)
+	// this read on the stop channel serves as a placeholder to prevent the logic flow from
 	// descening down to s.ReqStop()
-task_loop:
-	for {
-		select {
-			case <-s.stop_chan:
-				break task_loop
-		}
-	}
+	<-s.stop_chan
 
 	s.ReqStop()
 
@@ -1863,8 +2001,52 @@ task_loop:
 	s.rpc_svr.Stop()
 }
 
-func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
+func (s* Server) run_single_ctl_server(i int, cs *http.Server, wg* sync.WaitGroup) {
+	var l net.Listener
 	var err error
+
+	defer wg.Done()
+
+	s.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, cs.Addr)
+
+	if s.stop_req.Load() == false {
+		// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
+		//  err = cs.ListenAndServe()
+		//  err = cs.ListenAndServeTLS("", "")
+		l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
+		if err == nil {
+			if s.stop_req.Load() == false {
+				var node *list.Element
+
+				s.ctl_addrs_mtx.Lock()
+				node = s.ctl_addrs.PushBack(l.Addr().(*net.TCPAddr))
+				s.ctl_addrs_mtx.Unlock()
+
+				if s.Cfg.CtlTls == nil {
+					err = cs.Serve(l)
+				} else {
+					err = cs.ServeTLS(l, "", "") // s.Cfg.CtlTls must provide a certificate and a key
+				}
+
+				s.ctl_addrs_mtx.Lock()
+				s.ctl_addrs.Remove(node)
+				s.ctl_addrs_mtx.Unlock()
+			} else {
+				err = fmt.Errorf("stop requested")
+			}
+			l.Close()
+		}
+	} else {
+		err = fmt.Errorf("stop requested")
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		s.log.Write("", LOG_INFO, "Control channel[%d] ended", i)
+	} else {
+		s.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())
+	}
+}
+
+func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 	var ctl *http.Server
 	var idx int
 	var l_wg sync.WaitGroup
@@ -1873,54 +2055,55 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 
 	for idx, ctl = range s.ctl {
 		l_wg.Add(1)
-		go func(i int, cs *http.Server) {
-			var l net.Listener
-
-			s.log.Write("", LOG_INFO, "Control channel[%d] started on %s", i, cs.Addr)
-
-			if s.stop_req.Load() == false {
-				// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
-				//  err = cs.ListenAndServe()
-				//  err = cs.ListenAndServeTLS("", "")
-				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
-				if err == nil {
-					if s.stop_req.Load() == false {
-						var node *list.Element
-
-						s.ctl_addrs_mtx.Lock()
-						node = s.ctl_addrs.PushBack(l.Addr().(*net.TCPAddr))
-						s.ctl_addrs_mtx.Unlock()
-
-						if s.Cfg.CtlTls == nil {
-							err = cs.Serve(l)
-						} else {
-							err = cs.ServeTLS(l, "", "") // s.Cfg.CtlTls must provide a certificate and a key
-						}
-
-						s.ctl_addrs_mtx.Lock()
-						s.ctl_addrs.Remove(node)
-						s.ctl_addrs_mtx.Unlock()
-					} else {
-						err = fmt.Errorf("stop requested")
-					}
-					l.Close()
-				}
-			} else {
-				err = fmt.Errorf("stop requested")
-			}
-			if errors.Is(err, http.ErrServerClosed) {
-				s.log.Write("", LOG_INFO, "Control channel[%d] ended", i)
-			} else {
-				s.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())
-			}
-			l_wg.Done()
-		}(idx, ctl)
+		go s.run_single_ctl_server(idx, ctl, &l_wg);
 	}
 	l_wg.Wait()
 }
 
-func (s *Server) RunRpxTask(wg *sync.WaitGroup) {
+func (s *Server) run_single_rpx_server(i int, cs *http.Server, wg* sync.WaitGroup) {
+	var l net.Listener
 	var err error
+
+	defer wg.Done()
+
+	s.log.Write("", LOG_INFO, "RPX channel[%d] started on %s", i, s.Cfg.RpxAddrs[i])
+
+	if s.stop_req.Load() == false {
+		l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
+		if err == nil {
+			if s.stop_req.Load() == false {
+				var node *list.Element
+
+				s.rpx_addrs_mtx.Lock()
+				node = s.rpx_addrs.PushBack(l.Addr().(*net.TCPAddr))
+				s.rpx_addrs_mtx.Unlock()
+
+				if s.Cfg.RpxTls == nil { // TODO: change this
+					err = cs.Serve(l)
+				} else {
+					err = cs.ServeTLS(l, "", "") // s.Cfg.RpxTls must provide a certificate and a key
+				}
+
+				s.rpx_addrs_mtx.Lock()
+				s.rpx_addrs.Remove(node)
+				s.rpx_addrs_mtx.Unlock()
+			} else {
+				err = fmt.Errorf("stop requested")
+			}
+			l.Close()
+		}
+	} else {
+		err = fmt.Errorf("stop requested")
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		s.log.Write("", LOG_INFO, "RPX channel[%d] ended", i)
+	} else {
+		s.log.Write("", LOG_ERROR, "RPX channel[%d] error - %s", i, err.Error())
+	}
+	
+}
+
+func (s *Server) RunRpxTask(wg *sync.WaitGroup) {
 	var rpx *http.Server
 	var idx int
 	var l_wg sync.WaitGroup
@@ -1929,51 +2112,54 @@ func (s *Server) RunRpxTask(wg *sync.WaitGroup) {
 
 	for idx, rpx = range s.rpx {
 		l_wg.Add(1)
-		go func(i int, cs *http.Server) {
-			var l net.Listener
-
-			s.log.Write("", LOG_INFO, "RPX channel[%d] started on %s", i, s.Cfg.RpxAddrs[i])
-
-			if s.stop_req.Load() == false {
-				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
-				if err == nil {
-					if s.stop_req.Load() == false {
-						var node *list.Element
-
-						s.rpx_addrs_mtx.Lock()
-						node = s.rpx_addrs.PushBack(l.Addr().(*net.TCPAddr))
-						s.rpx_addrs_mtx.Unlock()
-
-						if s.Cfg.RpxTls == nil { // TODO: change this
-							err = cs.Serve(l)
-						} else {
-							err = cs.ServeTLS(l, "", "") // s.Cfg.RpxTls must provide a certificate and a key
-						}
-
-						s.rpx_addrs_mtx.Lock()
-						s.rpx_addrs.Remove(node)
-						s.rpx_addrs_mtx.Unlock()
-					} else {
-						err = fmt.Errorf("stop requested")
-					}
-					l.Close()
-				}
-			} else {
-				err = fmt.Errorf("stop requested")
-			}
-			if errors.Is(err, http.ErrServerClosed) {
-				s.log.Write("", LOG_INFO, "RPX channel[%d] ended", i)
-			} else {
-				s.log.Write("", LOG_ERROR, "RPX channel[%d] error - %s", i, err.Error())
-			}
-			l_wg.Done()
-		}(idx, rpx)
+		go s.run_single_rpx_server(idx, rpx, &l_wg)
 	}
 	l_wg.Wait()
 }
 
-func (s *Server) RunPxyTask(wg *sync.WaitGroup) {
+func (s *Server) run_single_pxy_server(i int, cs *http.Server, wg* sync.WaitGroup) {
+	var l net.Listener
 	var err error
+
+	defer wg.Done()
+
+	s.log.Write("", LOG_INFO, "Proxy channel[%d] started on %s", i, s.Cfg.PxyAddrs[i])
+
+	if s.stop_req.Load() == false {
+		l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
+		if err == nil {
+			if s.stop_req.Load() == false {
+				var node *list.Element
+
+				s.pxy_addrs_mtx.Lock()
+				node = s.pxy_addrs.PushBack(l.Addr().(*net.TCPAddr))
+				s.pxy_addrs_mtx.Unlock()
+
+				if s.Cfg.PxyTls == nil { // TODO: change this
+					err = cs.Serve(l)
+				} else {
+					err = cs.ServeTLS(l, "", "") // s.Cfg.PxyTls must provide a certificate and a key
+				}
+
+				s.pxy_addrs_mtx.Lock()
+				s.pxy_addrs.Remove(node)
+				s.pxy_addrs_mtx.Unlock()
+			} else {
+				err = fmt.Errorf("stop requested")
+			}
+			l.Close()
+		}
+	} else {
+		err = fmt.Errorf("stop requested")
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		s.log.Write("", LOG_INFO, "Proxy channel[%d] ended", i)
+	} else {
+		s.log.Write("", LOG_ERROR, "Proxy channel[%d] error - %s", i, err.Error())
+	}
+}
+
+func (s *Server) RunPxyTask(wg *sync.WaitGroup) {
 	var pxy *http.Server
 	var idx int
 	var l_wg sync.WaitGroup
@@ -1982,51 +2168,55 @@ func (s *Server) RunPxyTask(wg *sync.WaitGroup) {
 
 	for idx, pxy = range s.pxy {
 		l_wg.Add(1)
-		go func(i int, cs *http.Server) {
-			var l net.Listener
-
-			s.log.Write("", LOG_INFO, "Proxy channel[%d] started on %s", i, s.Cfg.PxyAddrs[i])
-
-			if s.stop_req.Load() == false {
-				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
-				if err == nil {
-					if s.stop_req.Load() == false {
-						var node *list.Element
-
-						s.pxy_addrs_mtx.Lock()
-						node = s.pxy_addrs.PushBack(l.Addr().(*net.TCPAddr))
-						s.pxy_addrs_mtx.Unlock()
-
-						if s.Cfg.PxyTls == nil { // TODO: change this
-							err = cs.Serve(l)
-						} else {
-							err = cs.ServeTLS(l, "", "") // s.Cfg.PxyTls must provide a certificate and a key
-						}
-
-						s.pxy_addrs_mtx.Lock()
-						s.pxy_addrs.Remove(node)
-						s.pxy_addrs_mtx.Unlock()
-					} else {
-						err = fmt.Errorf("stop requested")
-					}
-					l.Close()
-				}
-			} else {
-				err = fmt.Errorf("stop requested")
-			}
-			if errors.Is(err, http.ErrServerClosed) {
-				s.log.Write("", LOG_INFO, "Proxy channel[%d] ended", i)
-			} else {
-				s.log.Write("", LOG_ERROR, "Proxy channel[%d] error - %s", i, err.Error())
-			}
-			l_wg.Done()
-		}(idx, pxy)
+		go s.run_single_pxy_server(idx, pxy, &l_wg);
 	}
 	l_wg.Wait()
 }
 
-func (s *Server) RunWpxTask(wg *sync.WaitGroup) {
+func (s *Server) run_single_wpx_server(i int, cs *http.Server, wg* sync.WaitGroup) {
+	var l net.Listener
 	var err error
+
+	defer wg.Done()
+
+	s.log.Write("", LOG_INFO, "Wpx channel[%d] started on %s", i, s.Cfg.WpxAddrs[i])
+
+	if s.stop_req.Load() == false {
+		l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
+		if err == nil {
+			if s.stop_req.Load() == false {
+				var node *list.Element
+
+				s.wpx_addrs_mtx.Lock()
+				node = s.wpx_addrs.PushBack(l.Addr().(*net.TCPAddr))
+				s.wpx_addrs_mtx.Unlock()
+
+				if s.Cfg.WpxTls == nil {
+					err = cs.Serve(l)
+				} else {
+					err = cs.ServeTLS(l, "", "") // s.Cfg.WpxTls must provide a certificate and a key
+				}
+
+				s.wpx_addrs_mtx.Lock()
+				s.wpx_addrs.Remove(node)
+				s.wpx_addrs_mtx.Unlock()
+			} else {
+				err = fmt.Errorf("stop requested")
+			}
+			l.Close()
+		}
+	} else {
+		err = fmt.Errorf("stop requested")
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		s.log.Write("", LOG_INFO, "Wpx channel[%d] ended", i)
+	} else {
+		s.log.Write("", LOG_ERROR, "Wpx channel[%d] error - %s", i, err.Error())
+	}
+
+}
+
+func (s *Server) RunWpxTask(wg *sync.WaitGroup) {
 	var wpx *http.Server
 	var idx int
 	var l_wg sync.WaitGroup
@@ -2035,45 +2225,7 @@ func (s *Server) RunWpxTask(wg *sync.WaitGroup) {
 
 	for idx, wpx = range s.wpx {
 		l_wg.Add(1)
-		go func(i int, cs *http.Server) {
-			var l net.Listener
-
-			s.log.Write("", LOG_INFO, "Wpx channel[%d] started on %s", i, s.Cfg.WpxAddrs[i])
-
-			if s.stop_req.Load() == false {
-				l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
-				if err == nil {
-					if s.stop_req.Load() == false {
-						var node *list.Element
-
-						s.wpx_addrs_mtx.Lock()
-						node = s.wpx_addrs.PushBack(l.Addr().(*net.TCPAddr))
-						s.wpx_addrs_mtx.Unlock()
-
-						if s.Cfg.WpxTls == nil {
-							err = cs.Serve(l)
-						} else {
-							err = cs.ServeTLS(l, "", "") // s.Cfg.WpxTls must provide a certificate and a key
-						}
-
-						s.wpx_addrs_mtx.Lock()
-						s.wpx_addrs.Remove(node)
-						s.wpx_addrs_mtx.Unlock()
-					} else {
-						err = fmt.Errorf("stop requested")
-					}
-					l.Close()
-				}
-			} else {
-				err = fmt.Errorf("stop requested")
-			}
-			if errors.Is(err, http.ErrServerClosed) {
-				s.log.Write("", LOG_INFO, "Wpx channel[%d] ended", i)
-			} else {
-				s.log.Write("", LOG_ERROR, "Wpx channel[%d] error - %s", i, err.Error())
-			}
-			l_wg.Done()
-		}(idx, wpx)
+		go s.run_single_wpx_server(idx, wpx, &l_wg)
 	}
 	l_wg.Wait()
 }
@@ -2141,6 +2293,7 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 
 	cts.rpty_map = make(ServerRptyMap)
 	cts.rpty_map_by_ws = make(ServerRptyMapByWs)
+	cts.rpx_map = make(ServerRpxMap)
 
 	s.cts_mtx.Lock()
 

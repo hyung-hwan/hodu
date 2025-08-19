@@ -76,7 +76,8 @@ type json_out_server_stats struct {
 	ServerPeers int64 `json:"server-peers"`
 
 	SshProxySessions int64 `json:"pxy-ssh-sessions"`
-     ServerPtySessions int64 `json:"server-pty-sessions"`
+    ServerPtySessions int64 `json:"server-pty-sessions"`
+	ServerRptySessions int64 `json:"server-rpty-sessions"`
 }
 
 // this is a more specialized variant of json_in_notice
@@ -921,6 +922,7 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.ServerPeers = s.stats.peers.Load()
 			stats.SshProxySessions = s.stats.ssh_proxy_sessions.Load()
 			stats.ServerPtySessions = s.stats.pty_sessions.Load()
+			stats.ServerRptySessions = s.stats.rpty_sessions.Load()
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(stats); err != nil { goto oops }
 

@@ -80,6 +80,7 @@ func MakeRptyStartPacket(id uint64) *Packet {
 }
 
 func MakeRptyStopPacket(id uint64, msg string) *Packet {
+	// the rpty stop conveys an error/info message
 	return &Packet{Kind: PACKET_KIND_RPTY_STOP, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id, Data: []byte(msg)}}}
 }
 
@@ -89,4 +90,22 @@ func MakeRptyDataPacket(id uint64, data []byte) *Packet {
 
 func MakeRptySizePacket(id uint64, data []byte) *Packet {
 	return &Packet{Kind: PACKET_KIND_RPTY_SIZE, U: &Packet_RptyEvt{RptyEvt: &RptyEvent{Id: id, Data: data}}}
+}
+
+func MakeRpxStartPacket(id uint64, hdr_part []byte) *Packet {
+	// the rpx start conveys the data unlike other Start packets...
+	return &Packet{Kind: PACKET_KIND_RPX_START, U: &Packet_RpxEvt{RpxEvt: &RpxEvent{Id: id, Data: hdr_part}}}
+}
+
+func MakeRpxStopPacket(id uint64) *Packet {
+	// the rpx start conveys the data unlike other Start packets...
+	return &Packet{Kind: PACKET_KIND_RPX_STOP, U: &Packet_RpxEvt{RpxEvt: &RpxEvent{Id: id}}}
+}
+
+func MakeRpxDataPacket(id uint64, data_part []byte) *Packet {
+	return &Packet{Kind: PACKET_KIND_RPX_DATA, U: &Packet_RpxEvt{RpxEvt: &RpxEvent{Id: id, Data: data_part}}}
+}
+
+func MakeRpxEofPacket(id uint64) *Packet {
+	return &Packet{Kind: PACKET_KIND_RPX_EOF, U: &Packet_RpxEvt{RpxEvt: &RpxEvent{Id: id}}}
 }

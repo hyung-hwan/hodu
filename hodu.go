@@ -1,5 +1,6 @@
 package hodu
 
+import "bytes"
 import "crypto/rsa"
 import _ "embed"
 import "encoding/base64"
@@ -8,6 +9,7 @@ import "net"
 import "net/http"
 import "net/netip"
 import "os"
+import "regexp"
 import "runtime"
 import "strings"
 import "sync"
@@ -77,11 +79,6 @@ type HttpAuthConfig struct {
 
 type JsonErrmsg struct {
 	Text string `json:"error-text"`
-}
-
-type json_in_cred struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
 }
 
 type json_in_notice struct {
@@ -224,8 +221,9 @@ func (option RouteOption) String() string {
 
 func dump_call_frame_and_exit(log Logger, req *http.Request, err interface{}) {
 	var buf []byte
-	buf = make([]byte, 65536); buf = buf[:min(65536, runtime.Stack(buf, false))]
-	log.Write("", LOG_ERROR, "[%s] %s %s - %v\n%s", req.RemoteAddr, req.Method, get_raw_url_path(req), err, string(buf))
+	buf = make([]byte, 65536)
+	buf = buf[:min(65536, runtime.Stack(buf, false))]
+	log.Write("", LOG_ERROR, "[%s] %s %s - %v\n%s", req.RemoteAddr, req.Method, req.RequestURI, err, string(buf))
 	log.Close()
 	os.Exit(99) // fatal error. treat panic() as a fatal runtime error
 }
@@ -467,12 +465,75 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 	return http.StatusOK, ""
 }
 
-
 // ------------------------------------
 
-func get_raw_url_path(req *http.Request) string {
-	var path string
-	path = req.URL.Path
-	if req.URL.RawQuery != "" { path += "?" + req.URL.RawQuery }
-	return path
+func get_http_req_line_and_headers(r *http.Request, force_host bool) []byte {
+	var buf bytes.Buffer
+	var name string
+	var value string
+	var values []string
+	var host_found bool
+
+	fmt.Fprintf(&buf, "%s %s %s\r\n", r.Method, r.RequestURI, r.Proto)
+
+	for name, values = range r.Header {
+		if strings.EqualFold(name, "Accept-Encoding") { // TODO: make it generic. parameterize it??
+			// skip Accept-Encoding as the go client side
+			// doesn't function properly when a certain enconding
+			// is specified. resp.Body.Read() returned EOF when
+			// not working
+			continue
+		} else if strings.EqualFold(name, "Host") {
+			host_found = true
+		}
+		for _, value = range values {
+			fmt.Fprintf(&buf, "%s: %s\r\n", name, value)
+		}
+	}
+
+	if force_host && !host_found && r.Host != "" {
+		fmt.Fprintf(&buf, "Host: %s\r\n", r.Host)
+	}
+// TODO: host and x-forwarded-for, x-forwarded-proto, etc???
+
+	buf.WriteString("\r\n") // End of headers
+	return buf.Bytes()
+}
+
+func get_http_resp_line_and_headers(r *http.Response) []byte {
+	var buf bytes.Buffer
+	var name string
+	var value string
+	var values []string
+
+	fmt.Fprintf(&buf, "%s %s\r\n", r.Proto, r.Status)
+
+	for name, values = range r.Header {
+		for _, value = range values {
+			fmt.Fprintf(&buf, "%s: %s\r\n", name, value)
+		}
+	}
+
+	buf.WriteString("\r\n") // End of headers
+	return buf.Bytes()
+}
+
+func get_regex_submatch(re *regexp.Regexp, str string, n int) string {
+	var idxs []int
+	var pos int
+	var start int
+	var end int
+
+	idxs = re.FindStringSubmatchIndex(str)
+	if idxs == nil { return "" }
+
+	pos = n * 2
+	if pos + 1 >= len(idxs) { return "" }
+	
+	start, end = idxs[pos], idxs[pos + 1]
+	if start == -1 || end == -1 {
+		return ""
+	}
+
+	return str[start:end]
 }

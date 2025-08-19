@@ -375,7 +375,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 	}
 	proxy_url = pxy.req_to_proxy_url(req, pi)
 
-	s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, get_raw_url_path(req), proxy_url)
+	s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.RequestURI, proxy_url)
 
 	proxy_req, err = http.NewRequestWithContext(s.Ctx, req.Method, proxy_url.String(), req.Body)
 	if err != nil {
@@ -401,7 +401,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 	} else {
 		status_code = resp.StatusCode
 		if upgrade_required && resp.StatusCode == http.StatusSwitchingProtocols {
-			s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, get_raw_url_path(req), status_code)
+			s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s %d", req.RemoteAddr, req.Method, req.RequestURI, status_code)
 			err = pxy.serve_upgraded(w, req, resp)
 			if err != nil { goto oops }
 			return 0, nil// print the log mesage before calling serve_upgraded() and exit here
@@ -426,7 +426,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 
 			_, err = io.Copy(w, resp_body)
 			if err != nil {
-				s.log.Write(pxy.Id, LOG_WARN, "[%s] %s %s %s", req.RemoteAddr, req.Method, get_raw_url_path(req), err.Error())
+				s.log.Write(pxy.Id, LOG_WARN, "[%s] %s %s %s", req.RemoteAddr, req.Method, req.RequestURI, err.Error())
 			}
 
 			// TODO: handle trailers
@@ -689,26 +689,26 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 		conn_ready = <-conn_ready_chan
 		if conn_ready { // connected
-			var buf []byte
+			var buf [2048]byte
 			var n int
 			var err error
 
 			s.stats.ssh_proxy_sessions.Add(1)
-			buf = make([]byte, 2048)
 			for {
-				n, err = out.Read(buf)
+				n, err = out.Read(buf[:])
+				if n > 0 {
+					var err2 error
+					err2 = send_ws_data_for_xterm(ws, "iov", string(buf[:n]))
+					if err2 != nil {
+						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err2.Error())
+						break
+					}
+				}
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
 						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to read from SSH stdout - %s", req.RemoteAddr, err.Error())
 					}
 					break
-				}
-				if n > 0 {
-					err = send_ws_data_for_xterm(ws, "iov", string(buf[:n]))
-					if err != nil {
-						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
-						break
-					}
 				}
 			}
 			s.stats.ssh_proxy_sessions.Add(-1)

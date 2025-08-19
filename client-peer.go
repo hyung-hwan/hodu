@@ -30,6 +30,16 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 
 	for {
 		n, err = cpc.conn.Read(buf[:])
+		if n > 0 {
+			var err2 error
+			err2 = cpc.route.cts.psc.Send(MakePeerDataPacket(cpc.route.Id, cpc.conn_id, buf[0:n]))
+			if err2 != nil {
+				cpc.route.cts.C.log.Write(cpc.route.cts.Sid, LOG_ERROR,
+					"Failed to write peer(%d,%d,%s,%s) data to server - %s",
+					cpc.route.Id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String(), err2.Error())
+				break
+			}
+		}
 		if err != nil {
 			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "use of closed network connection") { // i hate checking this condition with strings.Contains()
 				cpc.route.cts.C.log.Write(cpc.route.cts.Sid, LOG_INFO,
@@ -40,14 +50,6 @@ func (cpc *ClientPeerConn) RunTask(wg *sync.WaitGroup) error {
 					"Failed to read from client-side peer(%d,%d,%s,%s) - %s",
 					cpc.route.Id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String(), err.Error())
 			}
-			break
-		}
-
-		err = cpc.route.cts.psc.Send(MakePeerDataPacket(cpc.route.Id, cpc.conn_id, buf[0:n]))
-		if err != nil {
-			cpc.route.cts.C.log.Write(cpc.route.cts.Sid, LOG_ERROR,
-				"Failed to write peer(%d,%d,%s,%s) data to server - %s",
-				cpc.route.Id, cpc.conn_id, cpc.conn.RemoteAddr().String(), cpc.conn.LocalAddr().String(), err.Error())
 			break
 		}
 	}

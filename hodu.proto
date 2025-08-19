@@ -85,6 +85,11 @@ message RptyEvent {
 	bytes Data = 2;
 };
 
+message RpxEvent {
+	uint64 Id = 1;
+	bytes  Data = 2;
+};
+
 enum PACKET_KIND {
 	RESERVED      = 0; // not used
 	ROUTE_START   = 1;
@@ -103,7 +108,12 @@ enum PACKET_KIND {
 	RPTY_START    = 14;
 	RPTY_STOP     = 15;
 	RPTY_DATA     = 16;
-	RPTY_SIZE     = 17;
+	RPTY_SIZE     = 17; // terminal size
+
+	RPX_START     = 18;
+	RPX_STOP      = 19;
+	RPX_DATA      = 20;
+	RPX_EOF       = 21;
 };
 
 message Packet {
@@ -117,5 +127,6 @@ message Packet {
 		ConnError  ConnErr  = 6;
 		ConnNotice ConnNoti = 7;
 		RptyEvent  RptyEvt  = 8;
+		RpxEvent   RpxEvt   = 9;
 	};
 }

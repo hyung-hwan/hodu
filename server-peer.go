@@ -102,6 +102,16 @@ wait_for_started:
 
 	for {
 		n, err = spc.conn.Read(buf[:])
+		if n > 0 {
+			var err2 error
+			err2 = pss.Send(MakePeerDataPacket(spc.route.Id, spc.conn_id, buf[:n]))
+			if err2 != nil {
+				spc.route.Cts.S.log.Write(spc.route.Cts.Sid, LOG_ERROR,
+						"Failed to send data from peer(%d,%d,%s,%s) to client - %s",
+						spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err2.Error())
+				goto done
+			}
+		}
 		if err != nil {
 			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "use of closed network connection") { // i don't like this way to check this error.
 				err = pss.Send(MakePeerEofPacket(spc.route.Id, spc.conn_id))
@@ -118,14 +128,6 @@ wait_for_started:
 					spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 				goto done
 			}
-		}
-
-		err = pss.Send(MakePeerDataPacket(spc.route.Id, spc.conn_id, buf[:n]))
-		if err != nil {
-			spc.route.Cts.S.log.Write(spc.route.Cts.Sid, LOG_ERROR,
-					"Failed to send data from peer(%d,%d,%s,%s) to client - %s",
-					spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
-			goto done
 		}
 	}
 

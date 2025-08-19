@@ -121,7 +121,6 @@ main_loop:
 	}
 }
 
-
 func (l *AppLogger) Write(id string, level hodu.LogLevel, fmtstr string, args ...interface{}) {
 	if l.mask & hodu.LogMask(level) == 0 { return }
 	l.write(id, level, 1, fmtstr, args...)

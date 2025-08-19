@@ -67,7 +67,7 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		conn_ready = <-conn_ready_chan
 		if conn_ready { // connected
 			var poll_fds []unix.PollFd
-			var buf []byte
+			var buf [2048]byte
 			var n int
 			var err error
 
@@ -76,7 +76,6 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 			}
 
 			s.stats.pty_sessions.Add(1)
-			buf = make([]byte, 2048)
 			for {
 				n, err = unix.Poll(poll_fds, -1) // -1 means wait indefinitely
 				if err != nil {
@@ -94,19 +93,20 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 				}
 
 				if (poll_fds[0].Revents & unix.POLLIN) != 0 {
-					n, err = out.Read(buf)
+					n, err = out.Read(buf[:])
+					if n > 0 {
+						var err2 error
+						err2 = send_ws_data_for_xterm(ws, "iov", string(buf[:n]))
+						if err2 != nil {
+							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err2.Error())
+							break
+						}
+					}
 					if err != nil {
 						if !errors.Is(err, io.EOF) {
 							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to read pty stdout - %s", req.RemoteAddr, err.Error())
 						}
 						break
-					}
-					if n > 0 {
-						err = send_ws_data_for_xterm(ws, "iov", string(buf[:n]))
-						if err != nil {
-							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err.Error())
-							break
-						}
 					}
 				}
 			}

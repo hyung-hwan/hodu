@@ -10,6 +10,7 @@ import "net"
 import "os"
 import "os/signal"
 import "path/filepath"
+import "regexp"
 import "strings"
 import "sync"
 import "syscall"
@@ -130,6 +131,13 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 		if len(config.RpxAddrs) <= 0 { config.RpxAddrs = cfg.RPX.Service.Addrs }
 		if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
 		if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
+
+		config.RpxClientTokenAttrName = cfg.RPX.ClientToken.AttrName
+		if cfg.RPX.ClientToken.Regex != "" {
+			config.RpxClientTokenRegex, err = regexp.Compile(cfg.RPX.ClientToken.Regex)
+			if err != nil { return err }
+		}
+		config.RpxClientTokenSubmatchIndex = cfg.RPX.ClientToken.SubmatchIndex
 
 		config.CtlCors = cfg.CTL.Service.Cors
 		config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
@@ -282,10 +290,13 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 		if err != nil { return err }
 		config.RpcTls, err = make_tls_client_config(&cfg.RPC.TLS)
 		if err != nil { return err }
+		config.RpxTargetTls, err = make_tls_client_config(&cfg.RPX.Target.TLS)
+		if err != nil { return err }
 
 		if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
 		if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
 
+		config.RpxTargetAddr = cfg.RPX.Target.Addr
 		config.CtlPrefix = cfg.CTL.Service.Prefix
 		config.CtlCors = cfg.CTL.Service.Cors
 		config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
