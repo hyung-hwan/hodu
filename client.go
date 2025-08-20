@@ -2191,8 +2191,14 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.rpx_target_tls = cfg.RpxTargetTls
 	if c.rpx_target_tls != nil {
 		c.rpx_target_url = "https://" + c.rpx_target_addr
+		if !strings.Contains(cfg.RpxTargetAddr, ":") {
+			c.rpx_target_addr = cfg.RpxTargetAddr + ":443"
+		}
 	} else {
 		c.rpx_target_url = "http://" + c.rpx_target_addr
+		if !strings.Contains(cfg.RpxTargetAddr, ":") {
+			c.rpx_target_addr = cfg.RpxTargetAddr + ":80"
+		}
 	}
 
 	c.ctl_auth = cfg.CtlAuth
