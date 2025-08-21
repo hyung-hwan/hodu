@@ -9,6 +9,7 @@ import "runtime"
 import "strings"
 import "sync"
 import "sync/atomic"
+import "syscall"
 import "time"
 
 type app_logger_msg_t struct {
@@ -28,8 +29,27 @@ type AppLogger struct {
 	msg_chan        chan app_logger_msg_t
 	wg              sync.WaitGroup
 
+	use_color       bool
 	closed          atomic.Bool
 }
+
+func _is_ansi_tty(fd uintptr) bool {
+	var st syscall.Stat_t
+	var err error
+
+	err = syscall.Fstat(int(fd), &st)
+	if err != nil { return false }
+	if (st.Mode & syscall.S_IFMT) == syscall.S_IFCHR  {
+		var term string
+		// i assume this fd is bound to the current terminal if it's a character device
+		// if the assumption is wrong, you simply get extraneous ansi code in the output.
+		term = os.Getenv("TERM")
+		if term != "" && term != "dumb" { return true }
+	}
+
+	return false
+}
+
 
 func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
 	var l *AppLogger
@@ -38,6 +58,7 @@ func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
 		out: w,
 		mask: mask,
 		msg_chan: make(chan app_logger_msg_t, 256),
+		use_color: false,
 	}
 	l.closed.Store(false)
 	l.wg.Add(1)
@@ -73,6 +94,7 @@ func NewAppLoggerToFile (id string, file_name string, max_size int64, rotate int
 		file_max_size: max_size,
 		file_rotate: rotate,
 		msg_chan: make(chan app_logger_msg_t, 256),
+		use_color: _is_ansi_tty(f.Fd()),
 	}
 	l.closed.Store(false)
 	l.wg.Add(1)
@@ -169,7 +191,15 @@ func (l *AppLogger) write(id string, level hodu.LogLevel, call_depth int, fmtstr
 	}
 	sb.WriteString(": ")
 	msg = fmt.Sprintf(fmtstr, args...)
-	sb.WriteString(msg)
+	if (l.use_color) {
+		var code string
+		code = l.log_level_to_ansi_code(level)
+		sb.WriteString(code)
+		sb.WriteString(msg)
+		if code != "" { sb.WriteString("\x1B[0m") }
+	} else {
+		sb.WriteString(msg)
+	}
 	if msg[len(msg) - 1] != '\n' { sb.WriteRune('\n') }
 
 	// use queue to avoid blocking operation as much as possible
@@ -209,5 +239,26 @@ func (l *AppLogger) rotate() {
 		l.file.Close()
 		l.file = f
 		l.out = l.file
+	}
+}
+
+func (l* AppLogger) log_level_to_ansi_code(level hodu.LogLevel) string {
+	switch level {
+		case hodu.LOG_ERROR:
+			return "\x1B[31m" // red
+
+		case hodu.LOG_WARN:
+			return "\x1B[33m" // yellow
+
+		case hodu.LOG_INFO:
+			if (l.mask & hodu.LogMask(hodu.LOG_DEBUG)) != 0 {
+				// if debug is enabled, change the color of info.
+				// otherwisse no color
+				return "\x1B[32m" // green
+			}
+			fallthrough
+
+		default:
+			return ""
 	}
 }

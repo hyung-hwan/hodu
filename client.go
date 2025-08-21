@@ -1543,11 +1543,11 @@ func (cts *ClientConn) RptyLoop(crp *ClientRpty, wg *sync.WaitGroup) {
 		}
 
 		if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-			cts.C.log.Write(cts.Sid, LOG_ERROR, "EOF detected on rpty(%d) stdout", crp.id)
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rpty(%d) stdout", crp.id)
 			break
 		}
 		if (poll_fds[1].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-			cts.C.log.Write(cts.Sid, LOG_ERROR, "EOF detected on rpty(%d) event pipe", crp.id)
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rpty(%d) event pipe", crp.id)
 			break
 		}
 

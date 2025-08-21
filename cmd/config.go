@@ -75,7 +75,7 @@ type RPXServiceConfig struct {
 
 type RPXClientTokenConfig struct {
 	AttrName string `yaml:"attr-name"`
-	Regex string `yaml:"regex"`	
+	Regex string `yaml:"regex"`
 	SubmatchIndex int `yaml:"submatch-index"`
 }
 
