@@ -1844,7 +1844,8 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 	var flds []string
 	var req_meth string
 	var req_path string
-	var req_proto string
+	//var req_proto string
+	var x_forwarded_host string
 	var raw_req bytes.Buffer
 	var status_code int
 	var req *http.Request
@@ -1867,7 +1868,7 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 // TODO: handle trailers...
 	req_meth = flds[0]
 	req_path = flds[1]
-	req_proto = flds[2]
+	//req_proto = flds[2]
 
 	raw_req.WriteString(line)
 	raw_req.WriteString("\r\n")
@@ -1890,14 +1891,18 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 			v = strings.TrimSpace(flds[1])
 			req.Header.Add(k, v)
 
-			if strings.EqualFold(flds[0], "Host") {
+			if strings.EqualFold(k, "Host") {
 				// a normal http client would set HOst to be the target address.
 				// the raw header is coming from the server. so it's different
 				// from the host it's supposed to be. correct it to the right value.
-				fmt.Fprintf(&raw_req, "%s: %s\r\n", flds[0], req.Host)
+				fmt.Fprintf(&raw_req, "%s: %s\r\n", k, req.Host)
 			} else {
 				raw_req.WriteString(line)
 				raw_req.WriteString("\r\n")
+
+				if strings.EqualFold(k, "X-Forwarded-Host") {
+					x_forwarded_host = v
+				}
 			}
 		}
 	}
@@ -1907,6 +1912,9 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 		goto done
 	}
 	raw_req.WriteString("\r\n")
+	if x_forwarded_host == "" {
+		x_forwarded_host = req.Host
+	}
 
 	if strings.EqualFold(req.Header.Get("Upgrade"), "websocket") && strings.Contains(strings.ToLower(req.Header.Get("Connection")), "upgrade") {
 		// websocket
@@ -1918,10 +1926,10 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 
 	time_taken = time.Since(start_time)
 	if err != nil {
-		cts.C.log.Write(cts.Sid, LOG_ERROR, "rpx(%d), - %s %s %s %d %.9f - failed to proxy - %s", crpx.id, req_meth, req_path, req_proto, status_code, time_taken.Seconds(), err.Error())
+		cts.C.log.Write(cts.Sid, LOG_ERROR, "rpx(%d) %s - %s %s %d %.9f - failed to proxy - %s", crpx.id, x_forwarded_host, req_meth, req_path, status_code, time_taken.Seconds(), err.Error())
 		goto done
 	} else {
-		cts.C.log.Write(cts.Sid, LOG_INFO, "rpx(%d) - %s %s %s %d %.9f", crpx.id, req_meth, req_path, req_proto, status_code, time_taken.Seconds())
+		cts.C.log.Write(cts.Sid, LOG_INFO, "rpx(%d) %s - %s %s %d %.9f", crpx.id, x_forwarded_host, req_meth, req_path, status_code, time_taken.Seconds())
 	}
 
 done:
