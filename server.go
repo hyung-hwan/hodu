@@ -2521,6 +2521,19 @@ func (s *Server) FindServerRouteById(id ConnId, route_id RouteId) *ServerRoute {
 	return cts.FindServerRouteById(route_id)
 }
 
+func (s *Server) FindServerRouteByIdAndPtcName(id ConnId, ptc_name string) *ServerRoute {
+	var cts *ServerConn
+	var ok bool
+
+	s.cts_mtx.Lock()
+	defer s.cts_mtx.Unlock()
+
+	cts, ok = s.cts_map[id]
+	if !ok { return nil }
+
+	return cts.FindServerRouteByPtcName(ptc_name)
+}
+
 func (s *Server) FindServerRouteByClientTokenAndRouteId(token string, route_id RouteId) *ServerRoute {
 	var cts *ServerConn
 	var ok bool
@@ -2642,13 +2655,23 @@ func (s *Server) FindServerRouteByIdStr(conn_id string, route_id string) (*Serve
 		conn_nid, err1 = strconv.ParseUint(conn_id, 10, int(unsafe.Sizeof(ConnId(0)) * 8))
 		route_nid, err2 = strconv.ParseUint(route_id, 10, int(unsafe.Sizeof(RouteId(0)) * 8))
 
-		if err1 != nil || err2 != nil {
-			// if not numeric, attempt to use it as a token and ptc name
-			r = s.FindServerRouteByClientTokenAndPtcName(conn_id, route_id)
-			if r == nil { return nil, fmt.Errorf("route(%d,%d) not found", conn_id, route_id) }
-		} else {
+		if err1 == nil && err2 == nil {
 			r = s.FindServerRouteById(ConnId(conn_nid), RouteId(route_nid))
 			if r == nil { return nil, fmt.Errorf("route(%d,%d) not found", conn_nid, route_nid) }
+		} else if err2 == nil {
+			// route id is numeric while the conn id is not.
+			// if you know the client token but don't know the client-side peer name,
+			// this condition will be reached.
+			r = s.FindServerRouteByClientTokenAndRouteId(conn_id, RouteId(route_nid))
+			if r == nil { return nil, fmt.Errorf("route(%s,%d) not found", conn_id, route_nid) }
+		} else if err1 == nil {
+			// numeric route id and ptc name
+			r = s.FindServerRouteByIdAndPtcName(ConnId(conn_nid), route_id)
+			if r == nil { return nil, fmt.Errorf("route(%d,%s) not found", conn_nid, route_id) }
+		} else {
+			// if not numeric, attempt to use it as a token and ptc name
+			r = s.FindServerRouteByClientTokenAndPtcName(conn_id, route_id)
+			if r == nil { return nil, fmt.Errorf("route(%s,%s) not found", conn_id, route_id) }
 		}
 	}
 
