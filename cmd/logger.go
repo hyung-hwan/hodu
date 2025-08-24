@@ -51,14 +51,22 @@ func _is_ansi_tty(fd uintptr) bool {
 }
 
 
-func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
+func NewAppLogger(id string, w io.Writer, mask hodu.LogMask) *AppLogger {
 	var l *AppLogger
+	var f *os.File
+	var ok bool
+	var use_color bool
+
+	use_color = false
+	f, ok = w.(*os.File)
+	if ok { use_color = _is_ansi_tty(f.Fd()) }
+
 	l = &AppLogger{
 		id: id,
 		out: w,
 		mask: mask,
 		msg_chan: make(chan app_logger_msg_t, 256),
-		use_color: false,
+		use_color: use_color,
 	}
 	l.closed.Store(false)
 	l.wg.Add(1)
@@ -66,7 +74,7 @@ func NewAppLogger (id string, w io.Writer, mask hodu.LogMask) *AppLogger {
 	return l
 }
 
-func NewAppLoggerToFile (id string, file_name string, max_size int64, rotate int, mask hodu.LogMask) (*AppLogger, error) {
+func NewAppLoggerToFile(id string, file_name string, max_size int64, rotate int, mask hodu.LogMask) (*AppLogger, error) {
 	var l *AppLogger
 	var f *os.File
 	var matched bool

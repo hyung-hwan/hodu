@@ -191,7 +191,7 @@ func (pxy *server_pxy) Authenticate(req *http.Request) (int, string) {
 
 // ------------------------------------
 
-func prevent_follow_redirect (req *http.Request, via []*http.Request) error {
+func prevent_follow_redirect(req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
@@ -289,7 +289,7 @@ func (pxy *server_pxy_http_main) serve_upgraded(w http.ResponseWriter, req *http
 	return err
 }
 
-func (pxy *server_pxy_http_main) addr_to_transport (ctx context.Context, addr *net.TCPAddr) (*http.Transport, error) {
+func (pxy *server_pxy_http_main) addr_to_transport(ctx context.Context, addr *net.TCPAddr) (*http.Transport, error) {
 	var dialer *net.Dialer
 	var waitctx context.Context
 	var cancel_wait context.CancelFunc
@@ -318,7 +318,7 @@ func (pxy *server_pxy_http_main) addr_to_transport (ctx context.Context, addr *n
 	}, nil
 }
 
-func (pxy *server_pxy_http_main) req_to_proxy_url (req *http.Request, r *ServerRouteProxyInfo) *url.URL {
+func (pxy *server_pxy_http_main) req_to_proxy_url(req *http.Request, r *ServerRouteProxyInfo) *url.URL {
 	var proxy_proto string
 	var proxy_url_path string
 
@@ -568,7 +568,7 @@ func (pxy *server_pxy_ssh_ws) Identity() string {
 // TODO: put this task to sync group.
 // TODO: put the above proxy task to sync group too.
 
-func (pxy *server_pxy_ssh_ws) connect_ssh (ctx context.Context, username string, password string, r *ServerRoute) (*ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
+func (pxy *server_pxy_ssh_ws) connect_ssh(ctx context.Context, username string, password string, r *ServerRoute) (*ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
 	var cc *ssh.ClientConfig
 	var addr *net.TCPAddr
 	var dialer *net.Dialer

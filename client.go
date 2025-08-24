@@ -490,13 +490,13 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	err = r.cts.psc.Send(MakeRouteStartPacket(r.Id, r.ServerPeerOption, r.PeerAddr, r.PeerName, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet))
 	if err != nil {
 		r.cts.C.log.Write(r.cts.Sid, LOG_DEBUG,
-			"Failed to send route_start for route(%d,%s,%v,%s,%s) to %s - %s",
-			r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.cts.remote_addr_p, err.Error())
+			"Failed to send route_start for route(%d,%s,%v,%s,%s,%s) to %s - %s",
+			r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName, r.cts.remote_addr_p, err.Error())
 		goto done
 	} else {
 		r.cts.C.log.Write(r.cts.Sid, LOG_DEBUG,
-			"Sent route_start for route(%d,%s,%v,%s,%s) to %s",
-			r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.cts.remote_addr_p)
+			"Sent route_start for route(%d,%s,%v,%s,%s,%s) to %s",
+			r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName, r.cts.remote_addr_p)
 	}
 
 	r.ptc_wg.Add(1) // increment counter here
@@ -702,9 +702,9 @@ func (r *ClientRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event
 					r.cts.C.FireRouteEvent(CLIENT_EVENT_ROUTE_UPDATED, r)
 
 					r.cts.C.log.Write(r.cts.Sid, LOG_INFO,
-						"Ingested route_started(%d,%s,%s) for route(%d,%s,%v,%s,%s)",
+						"Ingested route_started(%d,%s,%s) for route(%d,%s,%v,%s,%s,%s)",
 							rd.RouteId, rd.TargetAddrStr, rd.ServiceNetStr,
-							r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet)
+							r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName)
 				}
 			}
 
@@ -721,9 +721,9 @@ func (r *ClientRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event
 				r.cts.C.log.Write(r.cts.Sid, LOG_ERROR, "Protocol error - invalid data in route_started event(%d)", r.Id)
 			} else {
 				r.cts.C.log.Write(r.cts.Sid, LOG_INFO,
-					"Ingested route_stopped(%d,%s,%s) for route(%d,%s,%v,%s,%s)",
+					"Ingested route_stopped(%d,%s,%s) for route(%d,%s,%v,%s,%s,%s)",
 						rd.RouteId, rd.TargetAddrStr, rd.ServiceNetStr,
-						r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet)
+						r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName)
 			}
 			r.ReqStop()
 
