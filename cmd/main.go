@@ -154,7 +154,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 		xterm_html_file = cfg.APP.XtermHtmlFile
 
 		logmask = log_strings_to_mask(cfg.APP.LogMask)
-		if logfile != "" { cfg.APP.LogFile = logfile }
+		if logfile == "" { logfile = cfg.APP.LogFile }
 		logfile_maxsize = cfg.APP.LogMaxSize
 		logfile_rotate = cfg.APP.LogRotate
 	}
