@@ -123,6 +123,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 		if err != nil { return err }
 		config.PxyTls, err = make_tls_server_config(&cfg.PXY.TLS)
 		if err != nil { return err }
+		config.PxyTargetTls, err = make_tls_client_config(&cfg.PXY.Target.TLS)
+		if err != nil { return err }
 		config.WpxTls, err = make_tls_server_config(&cfg.WPX.TLS)
 		if err != nil { return err }
 

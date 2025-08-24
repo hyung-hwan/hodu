@@ -294,6 +294,7 @@ func (pxy *server_pxy_http_main) addr_to_transport (ctx context.Context, addr *n
 	var waitctx context.Context
 	var cancel_wait context.CancelFunc
 	var conn net.Conn
+	var tls_config *tls.Config
 	var err error
 
 	// establish the connection.
@@ -303,12 +304,17 @@ func (pxy *server_pxy_http_main) addr_to_transport (ctx context.Context, addr *n
 	cancel_wait()
 	if err != nil { return nil, err }
 
+	if pxy.S.Cfg.PxyTargetTls != nil {
+		tls_config = pxy.S.Cfg.PxyTargetTls.Clone()
+	} else {
+		tls_config = &tls.Config{InsecureSkipVerify: true}
+	}
 	// create a transport that uses the connection
 	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return conn, nil
 		},
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // TODO: make this part configurable?
+		TLSClientConfig: tls_config,
 	}, nil
 }
 

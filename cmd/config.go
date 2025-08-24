@@ -141,6 +141,9 @@ type ServerConfig struct {
 	PXY struct {
 		Service PXYServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
+		Target struct {
+			TLS ClientTLSConfig `yaml:"tls"`
+		} `yaml:"target"`
 	} `yaml:"pxy"`
 
 	WPX struct {

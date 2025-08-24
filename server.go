@@ -75,6 +75,7 @@ type ServerConfig struct {
 
 	PxyAddrs []string
 	PxyTls *tls.Config
+	PxyTargetTls *tls.Config
 
 	WpxAddrs []string
 	WpxTls *tls.Config
