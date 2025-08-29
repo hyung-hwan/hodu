@@ -70,8 +70,8 @@ func (spc *ServerPeerConn) RunTask(wg *sync.WaitGroup) {
 	err = pss.Send(MakePeerStartedPacket(spc.route.Id, spc.conn_id, conn_raddr, conn_laddr))
 	if err != nil {
 		spc.route.Cts.S.log.Write(spc.route.Cts.Sid, LOG_ERROR,
-			"Failed to send peer_started event(%d,%d,%s,%s) to client - %s",
-			spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
+			"Failed to send %s event(%d,%d,%s,%s) to client - %s",
+			PACKET_KIND_PEER_STARTED.String(), spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 		goto done_without_stop
 	}
 
@@ -107,8 +107,8 @@ wait_for_started:
 			err2 = pss.Send(MakePeerDataPacket(spc.route.Id, spc.conn_id, buf[:n]))
 			if err2 != nil {
 				spc.route.Cts.S.log.Write(spc.route.Cts.Sid, LOG_ERROR,
-						"Failed to send data from peer(%d,%d,%s,%s) to client - %s",
-						spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err2.Error())
+						"Failed to send %s from peer(%d,%d,%s,%s) to client - %s",
+						PACKET_KIND_PEER_DATA.String(), spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err2.Error())
 				goto done
 			}
 		}
@@ -117,8 +117,8 @@ wait_for_started:
 				err = pss.Send(MakePeerEofPacket(spc.route.Id, spc.conn_id))
 				if err != nil {
 					spc.route.Cts.S.log.Write(spc.route.Cts.Sid, LOG_ERROR,
-						"Failed to send peer_eof event(%d,%d,%s,%s) to client - %s",
-						spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
+						"Failed to send %s event(%d,%d,%s,%s) to client - %s",
+						PACKET_KIND_PEER_EOF.String(), spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 					goto done
 				}
 				goto wait_for_stopped
@@ -145,8 +145,8 @@ done:
 	err = pss.Send(MakePeerStoppedPacket(spc.route.Id, spc.conn_id, spc.conn.RemoteAddr().String(), spc.conn.LocalAddr().String()))
 	if err != nil {
 		spc.route.Cts.S.log.Write(spc.route.Cts.Sid, LOG_ERROR,
-			"Failed to send peer_stopped(%d,%d,%s,%s) to client - %s",
-			spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
+			"Failed to send %s(%d,%d,%s,%s) to client - %s",
+			PACKET_KIND_PEER_STOPPED.String(), spc.route.Id, spc.conn_id, conn_raddr, conn_laddr, err.Error())
 		// nothing much to do about the failure of sending this
 	}
 

@@ -809,7 +809,7 @@ func (cts *ServerConn) StopRpty(ws *websocket.Conn) error {
 	// send the stop request to the client side
 	err = cts.pss.Send(MakeRptyStopPacket(id, ""))
 	if err !=  nil {
-		cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to send RPTY_STOP(%d) for server %s websocket %v - %s", id, cts.RemoteAddr, ws.RemoteAddr(), err.Error())
+		cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s(%d) for server %s websocket %v - %s", PACKET_KIND_RPTY_STOP.String(), id, cts.RemoteAddr, ws.RemoteAddr(), err.Error())
 		// carry on
 	}
 
@@ -1038,13 +1038,13 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						err = cts.pss.Send(MakeRouteStoppedPacket(RouteId(x.Route.RouteId), RouteOption(x.Route.ServiceOption), x.Route.TargetAddrStr, x.Route.TargetName, x.Route.ServiceAddrStr, x.Route.ServiceNetStr))
 						if err != nil {
 							cts.S.log.Write(cts.Sid, LOG_ERROR,
-								"Failed to send ROUTE_STOPPED event(%d,%s,%v,%s) to client %s - %s",
-								x.Route.RouteId, x.Route.TargetAddrStr,  x.Route.ServiceOption, x.Route.ServiceNetStr, cts.RemoteAddr, err.Error())
+								"Failed to send %s event(%d,%s,%v,%s) to client %s - %s",
+								PACKET_KIND_ROUTE_STOPPED.String(), x.Route.RouteId, x.Route.TargetAddrStr,  x.Route.ServiceOption, x.Route.ServiceNetStr, cts.RemoteAddr, err.Error())
 							goto done
 						} else {
 							cts.S.log.Write(cts.Sid, LOG_DEBUG,
-								"Sent ROUTE_STOPPED event(%d,%s,%v,%s) to client %s",
-								x.Route.RouteId, x.Route.TargetAddrStr,  x.Route.ServiceOption, x.Route.ServiceNetStr, cts.RemoteAddr)
+								"Sent %s event(%d,%s,%v,%s) to client %s",
+								PACKET_KIND_ROUTE_STOPPED.String(), x.Route.RouteId,x.Route.TargetAddrStr,  x.Route.ServiceOption, x.Route.ServiceNetStr, cts.RemoteAddr)
 						}
 
 					} else {
@@ -1055,9 +1055,13 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						if err != nil {
 							r.ReqStop()
 							cts.S.log.Write(cts.Sid, LOG_ERROR,
-								"Failed to send ROUTE_STARTED event(%d,%s,%s,%s%v,%v) to client %s - %s",
-								r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet, cts.RemoteAddr, err.Error())
+								"Failed to send %s event(%d,%s,%s,%s%v,%v) to client %s - %s",
+								PACKET_KIND_ROUTE_STARTED.String(), r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet, cts.RemoteAddr, err.Error())
 							goto done
+						} else {
+							cts.S.log.Write(cts.Sid, LOG_DEBUG,
+								"Sent %s event(%d,%s,%s,%s%v,%v) to client %s",
+								PACKET_KIND_ROUTE_STARTED.String(), r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet, cts.RemoteAddr)
 						}
 					}
 				} else {
@@ -1085,9 +1089,13 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						if err != nil {
 							r.ReqStop()
 							cts.S.log.Write(cts.Sid, LOG_ERROR,
-								"Failed to send ROUTE_STOPPED event(%d,%s,%s,%v.%v) to client %s - %s",
-								r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet.String(), cts.RemoteAddr, err.Error())
+								"Failed to send %s event(%d,%s,%s,%v.%v) to client %s - %s",
+								PACKET_KIND_ROUTE_STOPPED.String(), r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet.String(), cts.RemoteAddr, err.Error())
 							goto done
+						} else {
+							cts.S.log.Write(cts.Sid, LOG_DEBUG,
+								"Sent %s event(%d,%s,%s,%v.%v) to client %s",
+								PACKET_KIND_ROUTE_STOPPED.String(), r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet.String(), cts.RemoteAddr)
 						}
 					}
 				} else {
@@ -2461,7 +2469,7 @@ func (s *Server) RemoveServerConnByClientToken(token string) (*ServerConn, error
 	}
 	delete(s.cts_map, cts.Id)
 	delete(s.cts_map_by_addr, cts.RemoteAddr)
-	delete(s.cts_map_by_token, cts.ClientToken.Get()) // no Empty check becuase an empty token is never found in the map
+	delete(s.cts_map_by_token, cts.ClientToken.Get()) // no emptiness check because an empty token is never found in the map
 	s.stats.conns.Store(int64(len(s.cts_map)))
 	s.cts_mtx.Unlock()
 
@@ -2696,7 +2704,7 @@ func (s *Server) FindServerConnByIdStr(conn_id string) (*ServerConn, error) {
 	return cts, nil
 }
 
-func (s *Server) StartService(cfg interface{}) {
+func (s *Server) StartService(data interface{}) {
 	s.wg.Add(1)
 	go s.bulletin.RunTask(&s.wg)
 	s.wg.Add(1)

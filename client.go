@@ -490,13 +490,15 @@ func (r *ClientRoute) RunTask(wg *sync.WaitGroup) {
 	err = r.cts.psc.Send(MakeRouteStartPacket(r.Id, r.ServerPeerOption, r.PeerAddr, r.PeerName, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet))
 	if err != nil {
 		r.cts.C.log.Write(r.cts.Sid, LOG_DEBUG,
-			"Failed to send route_start for route(%d,%s,%v,%s,%s,%s) to %s - %s",
-			r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName, r.cts.remote_addr_p, err.Error())
+			"Failed to send %s for route(%d,%s,%v,%s,%s,%s) to %s - %s",
+			PACKET_KIND_ROUTE_START.String(), r.Id, r.PeerAddr, r.ServerPeerOption,
+			r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName, r.cts.remote_addr_p, err.Error())
 		goto done
 	} else {
 		r.cts.C.log.Write(r.cts.Sid, LOG_DEBUG,
-			"Sent route_start for route(%d,%s,%v,%s,%s,%s) to %s",
-			r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName, r.cts.remote_addr_p)
+			"Sent %s for route(%d,%s,%v,%s,%s,%s) to %s",
+			PACKET_KIND_ROUTE_START.String(), r.Id, r.PeerAddr, r.ServerPeerOption,
+			r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName, r.cts.remote_addr_p)
 	}
 
 	r.ptc_wg.Add(1) // increment counter here
@@ -544,12 +546,12 @@ done:
 	err = r.cts.psc.Send(MakeRouteStopPacket(r.Id, r.ServerPeerOption, r.PeerAddr, r.PeerName, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet))
 	if err != nil {
 		r.cts.C.log.Write(r.cts.Sid, LOG_DEBUG,
-			"Failed to route_stop for route(%d,%s) to %s - %s",
-			r.Id, r.PeerAddr, r.cts.remote_addr_p, err.Error())
+			"Failed to send %s for route(%d,%s) to %s - %s",
+			PACKET_KIND_ROUTE_STOP.String(), r.Id, r.PeerAddr, r.cts.remote_addr_p, err.Error())
 	} else {
 		r.cts.C.log.Write(r.cts.Sid, LOG_DEBUG,
-			"Sent route_stop for route(%d,%s) to %s",
-			r.Id, r.PeerAddr, r.cts.remote_addr_p)
+			"Sent %s for route(%d,%s) to %s",
+			PACKET_KIND_ROUTE_STOP.String(), r.Id, r.PeerAddr, r.cts.remote_addr_p)
 	}
 
 	r.cts.RemoveClientRoute(r)
@@ -634,8 +636,8 @@ func (r *ClientRoute) ConnectToPeer(pts_id PeerId, route_option RouteOption, pts
 	err = r.cts.psc.Send(MakePeerStartedPacket(r.Id, ptc.conn_id, real_conn_raddr, real_conn_laddr))
 	if err != nil {
 		r.cts.C.log.Write(r.cts.Sid, LOG_ERROR,
-			"Failed to send peer_start(%d,%d,%s,%s) for route(%d,%d,%s,%s) - %s",
-			r.Id, ptc.conn_id, real_conn_raddr, real_conn_laddr,
+			"Failed to send %s(%d,%d,%s,%s) for route(%d,%d,%s,%s) - %s",
+			PACKET_KIND_PEER_STARTED.String(), r.Id, ptc.conn_id, real_conn_raddr, real_conn_laddr,
 			r.Id, pts_id, pts_raddr, pts_laddr, err.Error())
 		goto peer_aborted
 	}
@@ -649,8 +651,8 @@ peer_aborted:
 	err = r.cts.psc.Send(MakePeerAbortedPacket(r.Id, pts_id, real_conn_raddr, real_conn_laddr))
 	if err != nil {
 		r.cts.C.log.Write(r.cts.Sid, LOG_ERROR,
-			"Failed to send peer_aborted(%d,%d) for route(%d,%d,%s,%s) - %s",
-			r.Id, pts_id, r.Id, pts_id, pts_raddr, pts_laddr, err.Error())
+			"Failed to send %s(%d,%d) for route(%d,%d,%s,%s) - %s",
+			PACKET_KIND_PEER_ABORTED.String(), r.Id, pts_id, r.Id, pts_id, pts_raddr, pts_laddr, err.Error())
 	}
 	if conn != nil {
 		conn.Close()
@@ -702,8 +704,8 @@ func (r *ClientRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event
 					r.cts.C.FireRouteEvent(CLIENT_EVENT_ROUTE_UPDATED, r)
 
 					r.cts.C.log.Write(r.cts.Sid, LOG_INFO,
-						"Ingested route_started(%d,%s,%s) for route(%d,%s,%v,%s,%s,%s)",
-							rd.RouteId, rd.TargetAddrStr, rd.ServiceNetStr,
+						"Ingested %s(%d,%s,%s) for route(%d,%s,%v,%s,%s,%s)",
+							packet_type.String(), rd.RouteId, rd.TargetAddrStr, rd.ServiceNetStr,
 							r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName)
 				}
 			}
@@ -721,8 +723,8 @@ func (r *ClientRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event
 				r.cts.C.log.Write(r.cts.Sid, LOG_ERROR, "Protocol error - invalid data in route_started event(%d)", r.Id)
 			} else {
 				r.cts.C.log.Write(r.cts.Sid, LOG_INFO,
-					"Ingested route_stopped(%d,%s,%s) for route(%d,%s,%v,%s,%s,%s)",
-						rd.RouteId, rd.TargetAddrStr, rd.ServiceNetStr,
+					"Ingested %s(%d,%s,%s) for route(%d,%s,%v,%s,%s,%s)",
+						packet_type.String(), rd.RouteId, rd.TargetAddrStr, rd.ServiceNetStr,
 						r.Id, r.PeerAddr, r.ServerPeerOption, r.ReqServerPeerSvcAddr, r.ReqServerPeerSvcNet, r.PeerName)
 			}
 			r.ReqStop()
@@ -745,8 +747,8 @@ func (r *ClientRoute) ReportPacket(pts_id PeerId, packet_type PACKET_KIND, event
 					err = r.cts.psc.Send(MakePeerAbortedPacket(r.Id, pts_id, "", ""))
 					if err != nil {
 						r.cts.C.log.Write(r.cts.Sid, LOG_ERROR,
-							"Failed to send peer_aborted(%d,%d) for route(%d,%d,%s,%s) - %s",
-							r.Id, pts_id, r.Id, pts_id, "", "", err.Error())
+							"Failed to send %s(%d,%d) for route(%d,%d,%s,%s) - %s",
+							PACKET_KIND_PEER_ABORTED.String(), r.Id, pts_id, r.Id, pts_id, "", "", err.Error())
 					}
 				} else {
 					r.ptc_wg.Add(1)
@@ -1145,6 +1147,158 @@ func timed_interceptor(tmout time.Duration) grpc.UnaryClientInterceptor {
 	}
 }
 
+func (cts *ClientConn) dispatch_packet(pkt *Packet) bool {
+	var ok bool
+	var err error
+
+	switch pkt.Kind {
+		case PACKET_KIND_ROUTE_STARTED:
+			fallthrough
+		case PACKET_KIND_ROUTE_STOPPED:
+			// the server side managed to set up the route the client requested
+			var x *Packet_Route
+			x, ok = pkt.U.(*Packet_Route)
+			if ok {
+				err = cts.ReportPacket(RouteId(x.Route.RouteId), 0, pkt.Kind, x.Route)
+				if err != nil {
+					cts.C.log.Write(cts.Sid, LOG_ERROR,
+						"Failed to handle %s event(%d,%s) from %s - %s",
+						pkt.Kind.String(), x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr_p, err.Error())
+				} else {
+					cts.C.log.Write(cts.Sid, LOG_DEBUG,
+						"Handled %s event(%d,%s) from %s",
+						pkt.Kind.String(), x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr_p)
+				}
+			} else {
+				cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
+			}
+
+		// PACKET_KIND_PEER_ABORTED is never sent by server to client.
+		// the code here doesn't handle the event.
+		case PACKET_KIND_PEER_STARTED:
+			fallthrough
+		case PACKET_KIND_PEER_STOPPED:
+			fallthrough
+		case PACKET_KIND_PEER_EOF:
+			// the connection from the client to a peer has been established
+			var x *Packet_Peer
+			x, ok = pkt.U.(*Packet_Peer)
+			if ok {
+				err = cts.ReportPacket(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), pkt.Kind, x.Peer)
+				if err != nil {
+					cts.C.log.Write(cts.Sid, LOG_ERROR,
+						"Failed to handle %s event from %s for peer(%d,%d,%s,%s) - %s",
+						pkt.Kind.String(), cts.remote_addr_p, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr, err.Error())
+				} else {
+					cts.C.log.Write(cts.Sid, LOG_DEBUG,
+						"Handled %s event from %s for peer(%d,%d,%s,%s)",
+						pkt.Kind.String(), cts.remote_addr_p, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr)
+				}
+			} else {
+				cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
+			}
+
+		case PACKET_KIND_PEER_DATA:
+			// the connection from the client to a peer has been established
+			var x *Packet_Data
+			x, ok = pkt.U.(*Packet_Data)
+			if ok {
+				err = cts.ReportPacket(RouteId(x.Data.RouteId), PeerId(x.Data.PeerId), pkt.Kind, x.Data.Data)
+				if err != nil {
+					cts.C.log.Write(cts.Sid, LOG_ERROR,
+						"Failed to handle %s event from %s for peer(%d,%d) - %s",
+						pkt.Kind.String(), cts.remote_addr_p, x.Data.RouteId, x.Data.PeerId, err.Error())
+				} else {
+					cts.C.log.Write(cts.Sid, LOG_DEBUG,
+						"Handled %s event from %s for peer(%d,%d)",
+						pkt.Kind.String(), cts.remote_addr_p, x.Data.RouteId, x.Data.PeerId)
+				}
+			} else {
+				cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
+			}
+
+		case PACKET_KIND_CONN_ERROR:
+			var x *Packet_ConnErr
+			x, ok = pkt.U.(*Packet_ConnErr)
+			if ok {
+				cts.C.log.Write(cts.Sid, LOG_ERROR, "Received %s(%d, %s) event from %s", pkt.Kind.String(), x.ConnErr.ErrorId, x.ConnErr.Text, cts.remote_addr_p)
+				if cts.cfg.CloseOnConnErrorEvent { return false }
+			} else {
+				cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %sevent from %s", pkt.Kind.String(), cts.remote_addr_p)
+			}
+
+		case PACKET_KIND_CONN_NOTICE:
+			// the connection from the client to a peer has been established
+			var x *Packet_ConnNoti
+			x, ok = pkt.U.(*Packet_ConnNoti)
+			if ok {
+				cts.C.log.Write(cts.Sid, LOG_DEBUG, "%s message '%s' received from %s", pkt.Kind.String(), x.ConnNoti.Text, cts.remote_addr_p)
+				if cts.C.conn_notice_handlers != nil {
+					var handler ClientConnNoticeHandler
+					for _, handler = range cts.C.conn_notice_handlers {
+						handler.Handle(cts, x.ConnNoti.Text)
+					}
+				}
+			} else {
+				cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s packet from %s", pkt.Kind.String(), cts.remote_addr_p)
+			}
+
+
+		case PACKET_KIND_RPTY_START:
+			fallthrough
+		case PACKET_KIND_RPTY_STOP:
+			fallthrough
+		case PACKET_KIND_RPTY_DATA:
+			fallthrough
+		case PACKET_KIND_RPTY_SIZE:
+			var x *Packet_RptyEvt
+			x, ok = pkt.U.(*Packet_RptyEvt)
+			if ok {
+				err = cts.HandleRptyEvent(pkt.Kind, x.RptyEvt)
+				if err != nil {
+					cts.C.log.Write(cts.Sid, LOG_ERROR,
+						"Failed to handle %s event for rpty(%d) from %s - %s",
+						pkt.Kind.String(), x.RptyEvt.Id, cts.remote_addr_p, err.Error())
+				} else {
+					cts.C.log.Write(cts.Sid, LOG_DEBUG,
+						"Handled %s event for rpty(%d) from %s",
+						pkt.Kind.String(), x.RptyEvt.Id, cts.remote_addr_p)
+				}
+			} else {
+				cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
+			}
+
+		case PACKET_KIND_RPX_START:
+			fallthrough
+		case PACKET_KIND_RPX_STOP:
+			fallthrough
+		case PACKET_KIND_RPX_DATA:
+			fallthrough
+		case PACKET_KIND_RPX_EOF:
+			var x *Packet_RpxEvt
+			x, ok = pkt.U.(*Packet_RpxEvt)
+			if ok {
+				err = cts.HandleRpxEvent(pkt.Kind, x.RpxEvt)
+				if err != nil {
+					cts.C.log.Write(cts.Sid, LOG_ERROR,
+						"Failed to handle %s event for rpx(%d) from %s - %s",
+						pkt.Kind.String(), x.RpxEvt.Id, cts.remote_addr_p, err.Error())
+				} else {
+					cts.C.log.Write(cts.Sid, LOG_DEBUG,
+						"Handled %s event for rpx(%d) from %s",
+						pkt.Kind.String(), x.RpxEvt.Id, cts.remote_addr_p)
+				}
+			} else {
+				cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
+			}
+
+		default:
+			// do nothing. ignore the rest
+	}
+
+	return true
+}
+
 func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	var psc PacketStreamClient
 	var slpctx context.Context
@@ -1225,14 +1379,13 @@ start_over:
 
 	cts.psc = &GuardedPacketStreamClient{Hodu_PacketStreamClient: psc}
 
-
 	if cts.Token.Get() != "" {
 		err = cts.psc.Send(MakeConnDescPacket(cts.Token.Get()))
 		if err != nil {
-			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send conn-desc(%s) to server[%d] %s - %s", cts.Token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
+			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s(%s) to server[%d] %s - %s", PACKET_KIND_CONN_DESC.String(), cts.Token.Get(), cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index], err.Error())
 			goto reconnect_to_server
 		} else {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sending conn-desc(%s) to server[%d] %s", cts.Token, cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sending %s(%s) to server[%d] %s", PACKET_KIND_CONN_DESC.String(), cts.Token.Get(), cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
 		}
 	}
 
@@ -1277,157 +1430,7 @@ start_over:
 			}
 		}
 
-		switch pkt.Kind {
-			case PACKET_KIND_ROUTE_STARTED:
-				fallthrough
-			case PACKET_KIND_ROUTE_STOPPED:
-				// the server side managed to set up the route the client requested
-				var x *Packet_Route
-				var ok bool
-				x, ok = pkt.U.(*Packet_Route)
-				if ok {
-					err = cts.ReportPacket(RouteId(x.Route.RouteId), 0, pkt.Kind, x.Route)
-					if err != nil {
-						cts.C.log.Write(cts.Sid, LOG_ERROR,
-							"Failed to handle %s event(%d,%s) from %s - %s",
-							pkt.Kind.String(), x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr_p, err.Error())
-					} else {
-						cts.C.log.Write(cts.Sid, LOG_DEBUG,
-							"Handled %s event(%d,%s) from %s",
-							pkt.Kind.String(), x.Route.RouteId, x.Route.TargetAddrStr, cts.remote_addr_p)
-					}
-				} else {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
-				}
-
-			// PACKET_KIND_PEER_ABORTED is never sent by server to client.
-			// the code here doesn't handle the event.
-			case PACKET_KIND_PEER_STARTED:
-				fallthrough
-			case PACKET_KIND_PEER_STOPPED:
-				fallthrough
-			case PACKET_KIND_PEER_EOF:
-				// the connection from the client to a peer has been established
-				var x *Packet_Peer
-				var ok bool
-				x, ok = pkt.U.(*Packet_Peer)
-				if ok {
-					err = cts.ReportPacket(RouteId(x.Peer.RouteId), PeerId(x.Peer.PeerId), pkt.Kind, x.Peer)
-					if err != nil {
-						cts.C.log.Write(cts.Sid, LOG_ERROR,
-							"Failed to handle %s event from %s for peer(%d,%d,%s,%s) - %s",
-							pkt.Kind.String(), cts.remote_addr_p, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr, err.Error())
-					} else {
-						cts.C.log.Write(cts.Sid, LOG_DEBUG,
-							"Handled %s event from %s for peer(%d,%d,%s,%s)",
-							pkt.Kind.String(), cts.remote_addr_p, x.Peer.RouteId, x.Peer.PeerId, x.Peer.LocalAddrStr, x.Peer.RemoteAddrStr)
-					}
-				} else {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
-				}
-
-			case PACKET_KIND_PEER_DATA:
-				// the connection from the client to a peer has been established
-				var x *Packet_Data
-				var ok bool
-				x, ok = pkt.U.(*Packet_Data)
-				if ok {
-					err = cts.ReportPacket(RouteId(x.Data.RouteId), PeerId(x.Data.PeerId), pkt.Kind, x.Data.Data)
-					if err != nil {
-						cts.C.log.Write(cts.Sid, LOG_ERROR,
-							"Failed to handle %s event from %s for peer(%d,%d) - %s",
-							pkt.Kind.String(), cts.remote_addr_p, x.Data.RouteId, x.Data.PeerId, err.Error())
-					} else {
-						cts.C.log.Write(cts.Sid, LOG_DEBUG,
-							"Handled %s event from %s for peer(%d,%d)",
-							pkt.Kind.String(), cts.remote_addr_p, x.Data.RouteId, x.Data.PeerId)
-					}
-				} else {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
-				}
-
-			case PACKET_KIND_CONN_ERROR:
-				var x *Packet_ConnErr
-				var ok bool
-				x, ok = pkt.U.(*Packet_ConnErr)
-				if ok {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Received %s(%d, %s) event from %s", pkt.Kind.String(), x.ConnErr.ErrorId, x.ConnErr.Text, cts.remote_addr_p)
-					if cts.cfg.CloseOnConnErrorEvent { goto done }
-				} else {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %sevent from %s", pkt.Kind.String(), cts.remote_addr_p)
-				}
-
-			case PACKET_KIND_CONN_NOTICE:
-				// the connection from the client to a peer has been established
-				var x *Packet_ConnNoti
-				var ok bool
-				x, ok = pkt.U.(*Packet_ConnNoti)
-				if ok {
-					cts.C.log.Write(cts.Sid, LOG_DEBUG, "%s message '%s' received from %s", pkt.Kind.String(), x.ConnNoti.Text, cts.remote_addr_p)
-					if cts.C.conn_notice_handlers != nil {
-						var handler ClientConnNoticeHandler
-						for _, handler = range cts.C.conn_notice_handlers {
-							handler.Handle(cts, x.ConnNoti.Text)
-						}
-					}
-				} else {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s packet from %s", pkt.Kind.String(), cts.remote_addr_p)
-				}
-
-
-			case PACKET_KIND_RPTY_START:
-				fallthrough
-			case PACKET_KIND_RPTY_STOP:
-				fallthrough
-			case PACKET_KIND_RPTY_DATA:
-				fallthrough
-			case PACKET_KIND_RPTY_SIZE:
-				var x *Packet_RptyEvt
-				var ok bool
-				x, ok = pkt.U.(*Packet_RptyEvt)
-				if ok {
-					err = cts.HandleRptyEvent(pkt.Kind, x.RptyEvt)
-					if err != nil {
-						cts.C.log.Write(cts.Sid, LOG_ERROR,
-							"Failed to handle %s event for rpty(%d) from %s - %s",
-							pkt.Kind.String(), x.RptyEvt.Id, cts.remote_addr_p, err.Error())
-					} else {
-						cts.C.log.Write(cts.Sid, LOG_DEBUG,
-							"Handled %s event for rpty(%d) from %s",
-							pkt.Kind.String(), x.RptyEvt.Id, cts.remote_addr_p)
-					}
-				} else {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
-				}
-
-			case PACKET_KIND_RPX_START:
-				fallthrough
-			case PACKET_KIND_RPX_STOP:
-				fallthrough
-			case PACKET_KIND_RPX_DATA:
-				fallthrough
-			case PACKET_KIND_RPX_EOF:
-				var x *Packet_RpxEvt
-				var ok bool
-				x, ok = pkt.U.(*Packet_RpxEvt)
-				if ok {
-					err = cts.HandleRpxEvent(pkt.Kind, x.RpxEvt)
-					if err != nil {
-						cts.C.log.Write(cts.Sid, LOG_ERROR,
-							"Failed to handle %s event for rpx(%d) from %s - %s",
-							pkt.Kind.String(), x.RpxEvt.Id, cts.remote_addr_p, err.Error())
-					} else {
-						cts.C.log.Write(cts.Sid, LOG_DEBUG,
-							"Handled %s event for rpx(%d) from %s",
-							pkt.Kind.String(), x.RpxEvt.Id, cts.remote_addr_p)
-					}
-				} else {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid %s event from %s", pkt.Kind.String(), cts.remote_addr_p)
-				}
-
-			default:
-				// do nothing. ignore the rest
-		}
+		if !cts.dispatch_packet(pkt) { goto done }
 	}
 
 done:
@@ -1557,7 +1560,7 @@ func (cts *ClientConn) RptyLoop(crp *ClientRpty, wg *sync.WaitGroup) {
 				var err2 error
 				err2 = cts.psc.Send(MakeRptyDataPacket(crp.id, buf[:n]))
 				if err2 != nil {
-					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send rpty(%d) stdout to server - %s", crp.id, err2.Error())
+					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s from rpty(%d) stdout to server - %s", PACKET_KIND_RPTY_DATA.String(), crp.id, err2.Error())
 					break
 				}
 			}
@@ -1978,7 +1981,7 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 done:
 	err = cts.psc.Send(MakeRpxStopPacket(crpx.id))
 	if err != nil {
-		cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send rpx(%d) stp to server - %s", crpx.id, err.Error())
+		cts.C.log.Write(cts.Sid, LOG_ERROR, "rpx(%d) Failed to send %s to server - %s", crpx.id, PACKET_KIND_RPX_STOP.String(), err.Error())
 	}
 	cts.C.log.Write(cts.Sid, LOG_INFO, "Ending rpx(%d) loop", crpx.id)
 
