@@ -493,8 +493,8 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 				route_id = PORT_ID_MARKER
 				_, err = s.FindServerRouteByIdStr(conn_id, route_id)
 				if err != nil && s.wpx_foreign_port_proxy_maker != nil {
-                         _, err = s.wpx_foreign_port_proxy_maker("ssh", conn_id)
-                    }
+					_, err = s.wpx_foreign_port_proxy_maker("ssh", conn_id)
+				}
 			} else  {
 				conn_id = req.PathValue("conn_id")
 				route_id = req.PathValue("route_id")

@@ -76,7 +76,7 @@ type json_out_server_stats struct {
 	ServerPeers int64 `json:"server-peers"`
 
 	SshProxySessions int64 `json:"pxy-ssh-sessions"`
-    ServerPtySessions int64 `json:"server-pty-sessions"`
+	ServerPtySessions int64 `json:"server-pty-sessions"`
 	ServerRptySessions int64 `json:"server-rpty-sessions"`
 	ServerRpxSessions int64 `json:"server-rpx-sessions"`
 }
@@ -979,13 +979,13 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 	wg.Add(1)
 	go func() {
-          var c chan *ServerEvent
+		var c chan *ServerEvent
 		var err error
 
-          defer wg.Done()
-          c = sbsc.C
+		defer wg.Done()
+		c = sbsc.C
 
-          for c != nil {
+		for c != nil {
 			var e *ServerEvent
 			var ok bool
 			var msg[] byte
@@ -1010,7 +1010,7 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		}
 
 		ws.Close() // hack to break the recv loop. don't care about double closes
-     }()
+	}()
 
 ws_recv_loop:
 	for {

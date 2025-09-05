@@ -193,7 +193,7 @@ func (ctl *client_ctl) Cors(req *http.Request) bool {
 
 func (ctl *client_ctl) Authenticate(req *http.Request) (int, string) {
 	if ctl.c.ctl_auth == nil { return http.StatusOK, "" }
-     return ctl.c.ctl_auth.Authenticate(req)
+	return ctl.c.ctl_auth.Authenticate(req)
 }
 
 // ------------------------------------
@@ -1196,13 +1196,13 @@ func (ctl *client_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 	wg.Add(1)
 	go func() {
-          var c chan *ClientEvent
+		var c chan *ClientEvent
 		var err error
 
-          defer wg.Done()
-          c = sbsc.C
+		defer wg.Done()
+		c = sbsc.C
 
-          for c != nil {
+		for c != nil {
 			var e *ClientEvent
 			var ok bool
 			var msg[] byte
@@ -1227,7 +1227,7 @@ func (ctl *client_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		}
 
 		ws.Close() // hack to break the recv loop. don't care about double closes
-     }()
+	}()
 
 ws_recv_loop:
 	for {
