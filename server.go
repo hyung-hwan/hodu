@@ -2092,7 +2092,7 @@ func (s* Server) run_single_ctl_server(i int, cs *http.Server, wg* sync.WaitGrou
 	} else {
 		err = fmt.Errorf("stop requested")
 	}
-	if errors.Is(err, http.ErrServerClosed) {
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
 		s.log.Write("", LOG_INFO, "Control channel[%d] ended", i)
 	} else {
 		s.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())
@@ -2148,7 +2148,7 @@ func (s *Server) run_single_rpx_server(i int, cs *http.Server, wg* sync.WaitGrou
 	} else {
 		err = fmt.Errorf("stop requested")
 	}
-	if errors.Is(err, http.ErrServerClosed) {
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
 		s.log.Write("", LOG_INFO, "RPX channel[%d] ended", i)
 	} else {
 		s.log.Write("", LOG_ERROR, "RPX channel[%d] error - %s", i, err.Error())
@@ -2205,7 +2205,7 @@ func (s *Server) run_single_pxy_server(i int, cs *http.Server, wg* sync.WaitGrou
 	} else {
 		err = fmt.Errorf("stop requested")
 	}
-	if errors.Is(err, http.ErrServerClosed) {
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
 		s.log.Write("", LOG_INFO, "Proxy channel[%d] ended", i)
 	} else {
 		s.log.Write("", LOG_ERROR, "Proxy channel[%d] error - %s", i, err.Error())
@@ -2261,7 +2261,7 @@ func (s *Server) run_single_wpx_server(i int, cs *http.Server, wg* sync.WaitGrou
 	} else {
 		err = fmt.Errorf("stop requested")
 	}
-	if errors.Is(err, http.ErrServerClosed) {
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
 		s.log.Write("", LOG_INFO, "Wpx channel[%d] ended", i)
 	} else {
 		s.log.Write("", LOG_ERROR, "Wpx channel[%d] error - %s", i, err.Error())

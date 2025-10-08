@@ -2721,7 +2721,7 @@ func (c *Client) run_single_ctl_server(i int, cs *http.Server, wg *sync.WaitGrou
 	} else {
 		err = fmt.Errorf("stop requested")
 	}
-	if errors.Is(err, http.ErrServerClosed) {
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
 		c.log.Write("", LOG_INFO, "Control channel[%d] ended", i)
 	} else {
 		c.log.Write("", LOG_ERROR, "Control channel[%d] error - %s", i, err.Error())

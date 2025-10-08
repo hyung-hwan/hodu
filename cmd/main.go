@@ -63,6 +63,7 @@ chan_loop:
 	//signal.Reset(syscall.SIGTERM)
 	signal.Stop(sighup_chan)
 	signal.Stop(sigterm_chan)
+	signal.Ignore(syscall.SIGHUP, syscall.SIGTERM, os.Interrupt)
 }
 
 func (sh *signal_handler) StartService(data interface{}) {
