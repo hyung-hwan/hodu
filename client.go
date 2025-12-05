@@ -13,6 +13,7 @@ import "net"
 import "net/http"
 import "os"
 import "os/exec"
+import "runtime"
 import "slices"
 import "strconv"
 import "strings"
@@ -1106,6 +1107,7 @@ func (cts *ClientConn) disconnect_from_server(logmsg bool) {
 		cts.rpx_mtx.Unlock()
 
 		// don't care about double closes when this function is called from both RunTask() and ReqStop()
+		if cts.psc != nil { cts.psc.CloseSend() }
 		cts.conn.Close()
 
 		// don't reset cts.conn to nil here
@@ -1302,7 +1304,7 @@ func (cts *ClientConn) dispatch_packet(pkt *Packet) bool {
 func (cts *ClientConn) RunTask(wg *sync.WaitGroup) {
 	var psc PacketStreamClient
 	var slpctx context.Context
-	var cancel_sleep context.CancelFunc
+	var slpctx_cancel context.CancelFunc
 	var c_seed Seed
 	var s_seed *Seed
 	var p *peer.Peer
@@ -1318,6 +1320,8 @@ start_over:
 	cts.State.Store(CLIENT_CONN_CONNECTING)
 	cts.cfg.Index = (cts.cfg.Index + 1) % len(cts.cfg.ServerAddrs)
 	cts.C.log.Write(cts.Sid, LOG_INFO, "Connecting to server[%d] %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
+
+	opts = []grpc.DialOption{ }
 	if cts.C.rpc_tls == nil {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if cts.cfg.ServerAuthority != "" { opts = append(opts, grpc.WithAuthority(cts.cfg.ServerAuthority)) }
@@ -1458,17 +1462,19 @@ reconnect_to_server:
 	cts.State.Store(CLIENT_CONN_DISCONNECTED)
 	cts.C.FireConnEvent(CLIENT_EVENT_CONN_UPDATED, cts)
 
+	runtime.GC()
+
 	// wait for 2 seconds
-	slpctx, cancel_sleep = context.WithTimeout(cts.C.Ctx, 2 * time.Second)
+	slpctx, slpctx_cancel = context.WithTimeout(cts.C.Ctx, 2 * time.Second)
 	select {
 		case <-cts.C.Ctx.Done():
 			// need to log cts.C.Ctx.Err().Error()?
-			cancel_sleep()
+			slpctx_cancel()
 			goto req_stop_and_wait_for_termination
 		case <-cts.stop_chan:
 			// this signal indicates that ReqStop() has been called
 			// so jump to the waiting label
-			cancel_sleep()
+			slpctx_cancel()
 			goto wait_for_termination
 		case <-slpctx.Done():
 			select {
@@ -1483,7 +1489,7 @@ reconnect_to_server:
 					// do nothing. go on
 			}
 	}
-	cancel_sleep()
+	slpctx_cancel()
 	goto start_over // and reconnect
 }
 
@@ -1501,7 +1507,6 @@ func (cts *ClientConn) ReportPacket(route_id RouteId, pts_id PeerId, packet_type
 
 	return r.ReportPacket(pts_id, packet_type, event_data)
 }
-
 
 // rpty
 func (cts *ClientConn) FindClientRptyById(id uint64) *ClientRpty {
