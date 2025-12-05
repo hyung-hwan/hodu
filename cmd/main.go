@@ -13,6 +13,7 @@ import "path/filepath"
 import "regexp"
 import "strings"
 import "sync"
+import "sync/atomic"
 import "syscall"
 
 // Don't change these items to 'const' as they can be overridden externally with a linker option
@@ -29,6 +30,7 @@ var hodu_rsa_key_text []byte
 // --------------------------------------------------------------------
 type signal_handler struct {
 	svc hodu.Service
+	stop_req atomic.Bool
 }
 
 func (sh *signal_handler) RunTask(wg *sync.WaitGroup) {
@@ -53,8 +55,9 @@ chan_loop:
 			sh.svc.FixServices()
 
 		case sig = <-sigterm_chan:
-			sh.svc.StopServices()
 			sh.svc.WriteLog ("", hodu.LOG_INFO, "Received %s signal", sig)
+			sh.stop_req.Store(true)
+			sh.svc.StopServices()
 			break chan_loop
 		}
 	}
@@ -76,7 +79,9 @@ func (sh *signal_handler) StartService(data interface{}) {
 }
 
 func (sh *signal_handler) StopServices() {
-	syscall.Kill(syscall.Getpid(), syscall.SIGTERM) // TODO: find a better to terminate the signal handler...
+	if sh.stop_req.CompareAndSwap(false, true) {
+		syscall.Kill(syscall.Getpid(), syscall.SIGTERM) // TODO: find a better to terminate the signal handler...
+	}
 }
 
 func (sh *signal_handler) FixServices() {
