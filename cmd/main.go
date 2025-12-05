@@ -59,11 +59,12 @@ chan_loop:
 		}
 	}
 
+	signal.Ignore(syscall.SIGHUP, syscall.SIGTERM, os.Interrupt)
 	//signal.Reset(syscall.SIGHUP)
 	//signal.Reset(syscall.SIGTERM)
-	signal.Stop(sighup_chan)
-	signal.Stop(sigterm_chan)
-	signal.Ignore(syscall.SIGHUP, syscall.SIGTERM, os.Interrupt)
+	//signal.Stop(sighup_chan)
+	//signal.Stop(sigterm_chan)
+	sh.svc.WriteLog ("", hodu.LOG_INFO, "End of signal handler task")
 }
 
 func (sh *signal_handler) StartService(data interface{}) {
