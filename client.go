@@ -2132,6 +2132,7 @@ func (m ClientConnMap) get_sorted_keys() []ConnId {
 
 type client_ctl_log_writer struct {
 	cli *Client
+	id string
 	depth int
 }
 
@@ -2251,7 +2252,7 @@ func (c *Client) WrapWebsocketHandler(handler ClientWebsocketHandler) websocket.
 func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfig) *Client {
 	var c Client
 	var i int
-	var hs_log *log.Logger
+	var hs_log_ctl *log.Logger
 
 	c.name = name
 	c.log = logger
@@ -2358,14 +2359,14 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.ctl = make([]*http.Server, len(cfg.CtlAddrs))
 	copy(c.ctl_addr, cfg.CtlAddrs)
 
-	hs_log = log.New(&client_ctl_log_writer{cli: &c, depth: 0}, "", 0)
+	hs_log_ctl = log.New(&client_ctl_log_writer{cli: &c, id: "ctl", depth: 0}, "", 0)
 
 	for i = 0; i < len(cfg.CtlAddrs); i++ {
 		c.ctl[i] = &http.Server{
 			Addr: cfg.CtlAddrs[i],
 			Handler: c.ctl_mux,
 			TLSConfig: c.ctl_tls.Clone(),
-			ErrorLog: hs_log,
+			ErrorLog: hs_log_ctl,
 			// TODO: more settings
 		}
 	}

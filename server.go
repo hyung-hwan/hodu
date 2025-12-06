@@ -1557,6 +1557,7 @@ func unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServ
 
 type server_http_log_writer struct {
 	svr *Server
+	id string
 	depth int
 }
 
@@ -1564,7 +1565,7 @@ func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 	// the standard http.Server always requires *log.Logger
 	// use this iowriter to create a logger to pass it to the http server.
 	// since this is another log write wrapper, give adjustment value
-	hlw.svr.log.WriteWithCallDepth("", LOG_INFO, hlw.depth, string(p))
+	hlw.svr.log.WriteWithCallDepth(hlw.id, LOG_INFO, hlw.depth, string(p))
 	return len(p), nil
 }
 
@@ -1677,7 +1678,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	var rpcaddr *net.TCPAddr
 	var addr string
 	var i int
-	var hs_log *log.Logger
+	var hs_log_ctl *log.Logger
+	var hs_log_rpx *log.Logger
+	var hs_log_pxy *log.Logger
+	var hs_log_wpx *log.Logger
 	var opts []grpc.ServerOption
 	var err error
 
@@ -1732,7 +1736,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	// ---------------------------------------------------------
 
-	hs_log = log.New(&server_http_log_writer{svr: &s, depth: +2}, "", 0)
+	hs_log_ctl = log.New(&server_http_log_writer{svr: &s, id: "ctl", depth: +2}, "", 0)
+	hs_log_rpx = log.New(&server_http_log_writer{svr: &s, id: "rpx", depth: +2}, "", 0)
+	hs_log_pxy = log.New(&server_http_log_writer{svr: &s, id: "pxy", depth: +2}, "", 0)
+	hs_log_wpx = log.New(&server_http_log_writer{svr: &s, id: "wpx", depth: +2}, "", 0)
 
 	// ---------------------------------------------------------
 
@@ -1824,7 +1831,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Handler: s.ctl_mux,
 			// race condition issues without cloning. the http package modifies some fields in the configuration object
 			TLSConfig: cfg.CtlTls.Clone(),
-			ErrorLog: hs_log,
+			ErrorLog: hs_log_ctl,
 			// TODO: more settings
 		}
 	}
@@ -1840,7 +1847,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.RpxAddrs[i],
 			Handler: s.rpx_mux,
 			TLSConfig: cfg.RpxTls.Clone(),
-			ErrorLog: hs_log,
+			ErrorLog: hs_log_rpx,
 			// TODO: more settings
 		}
 	}
@@ -1893,7 +1900,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.PxyAddrs[i],
 			Handler: s.pxy_mux,
 			TLSConfig: cfg.PxyTls.Clone(),
-			ErrorLog: hs_log,
+			ErrorLog: hs_log_pxy,
 			// TODO: more settings
 		}
 	}
@@ -1943,7 +1950,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.WpxAddrs[i],
 			Handler: s.wpx_mux,
 			TLSConfig: cfg.WpxTls.Clone(),
-			ErrorLog: hs_log,
+			ErrorLog: hs_log_wpx,
 		}
 	}
 	// ---------------------------------------------------------
