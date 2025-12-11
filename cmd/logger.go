@@ -77,20 +77,17 @@ func NewAppLogger(id string, w io.Writer, mask hodu.LogMask) *AppLogger {
 func NewAppLoggerToFile(id string, file_name string, max_size int64, rotate int, mask hodu.LogMask) (*AppLogger, error) {
 	var l *AppLogger
 	var f *os.File
-	var matched bool
+	var fi os.FileInfo
 	var err error
 
 	f, err = os.OpenFile(file_name, os.O_CREATE | os.O_APPEND | os.O_WRONLY, 0666)
 	if err != nil { return nil, err }
 
-	if os.PathSeparator == '/' {
-		// this check is performed only on systems where the path separator is /.
-		matched, _ = filepath.Match("/dev/*", file_name)
-		if matched {
-			// if the log file is under /dev, disable rotation
-			max_size = 0
-			rotate = 0
-		}
+	fi, err = f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		// disable rotation if the log file is not a regular file
+		max_size = 0
+		rotate = 0
 	}
 
 	l = &AppLogger{
