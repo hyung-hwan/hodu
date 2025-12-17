@@ -1,5 +1,6 @@
 package hodu
 
+import "encoding/base64"
 import "encoding/json"
 import "errors"
 import "fmt"
@@ -102,7 +103,7 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					n, err = out.Read(buf[:])
 					if n > 0 {
 						var err2 error
-						err2 = send_ws_data_for_xterm(ws, "iov", string(buf[:n]))
+						err2 = send_ws_data_for_xterm(ws, "iov", base64.StdEncoding.EncodeToString(buf[:n]))
 						if err2 != nil {
 							s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err2.Error())
 							break
@@ -195,7 +196,14 @@ ws_recv_loop:
 						if tty != nil {
 							var i int
 							for i, _ = range ev.Data {
-								in.Write([]byte(ev.Data[i]))
+								//in.Write([]byte(ev.Data[i]))
+								var bytes []byte
+								bytes, err = base64.StdEncoding.DecodeString(ev.Data[i])
+								if err != nil {
+									s.log.Write(pty.Id, LOG_WARN, "[%s] Invalid pty iov data received - %s", req.RemoteAddr, ev.Data[i])
+								} else {
+									in.Write(bytes)
+								}
 							}
 						}
 
@@ -310,8 +318,15 @@ ws_recv_loop:
 					case "iov":
 						var i int
 						for i, _ = range ev.Data {
-							cts.WriteRpty(ws, []byte(ev.Data[i]))
-							// ignore error for now
+							//cts.WriteRpty(ws, []byte(ev.Data[i]))
+							var bytes []byte
+							bytes, err = base64.StdEncoding.DecodeString(ev.Data[i])
+							if err != nil {
+								s.log.Write(rpty.Id, LOG_WARN, "[%s] Invalid rpty iov data received - %s", req.RemoteAddr, ev.Data[i])
+							} else {
+								cts.WriteRpty(ws, bytes)
+								// ignore error for now
+							}
 						}
 
 					case "size":

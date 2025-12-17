@@ -94,6 +94,22 @@ const xt_mode = '{{ .Mode }}';
 const conn_id = '{{ .ConnId }}';
 const route_id = '{{ .RouteId }}';
 
+function utf8ToBase64(str) {
+	const encoder = new TextEncoder();
+	const data = encoder.encode(str);
+	const binaryString = String.fromCharCode.apply(null, data);
+	return btoa(binaryString);
+}
+
+function base64ToBinary(b64) {
+	const binaryString = atob(b64);
+	const bytes = new Uint8Array(binaryString.length);
+	for (let i = 0; i < binaryString.length; i++) {
+		bytes[i] = binaryString.charCodeAt(i);
+	}
+	return bytes;
+}
+
 window.onload = function(event) {
 	const terminal_container = document.getElementById('terminal-container');
 	const terminal_target = document.getElementById('terminal-target');
@@ -235,9 +251,9 @@ window.onload = function(event) {
 				let event_text;
 				event_text = (typeof event.data === 'string')? event.data: text_decoder.decode(new Uint8Array(event.data));
 				const msg = JSON.parse(event_text);
-				if (msg.type == "iov") {
-					for (const data of msg.data) term.write(data);
-				} else if (msg.type == "status") {
+				if (msg.type == 'iov') {
+					for (const data of msg.data) term.write(base64ToBinary(data));
+				} else if (msg.type == 'status') {
 					if (msg.data.length >= 1) {
 						if (msg.data[0] == 'opened') {
 							set_terminal_status('Connected', '');
@@ -248,7 +264,7 @@ window.onload = function(event) {
 							// socket.onclose() will be executed anyway
 						}
 					}
-				} else if (msg.type == "error") {
+				} else if (msg.type == 'error') {
 					toggle_login_form(true);
 					window.onresize = adjust_terminal_size_unconnected;
 					set_terminal_status(null, msg.data.join(' '))
@@ -275,7 +291,7 @@ window.onload = function(event) {
 
 		term.onData(function(data) {
 			if (socket.readyState == 1) // if open
-				socket.send(JSON.stringify({ type: 'iov', data: [data] }));
+				socket.send(JSON.stringify({ type: 'iov', data: [utf8ToBase64(data)] }));
 		});
 
 		window.onresize = adjust_terminal_size_connected;
