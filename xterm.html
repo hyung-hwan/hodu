@@ -88,6 +88,7 @@
 </style>
 <script src="xterm.js"></script>
 <script src="xterm-addon-fit.js"></script>
+<script src="xterm-addon-unicode11.js"></script>
 
 <script>
 const xt_mode = '{{ .Mode }}';
@@ -142,22 +143,26 @@ window.onload = function(event) {
 	const term = new window.Terminal({
 		lineHeight: 1.2,
 		//fontSize: 14,
-		fontFamily: 'Ubuntu Mono, Consolas, SF Mono, courier-new, courier, monospace'
+		fontFamily: 'Ubuntu Mono, Consolas, SF Mono, courier-new, courier, monospace',
+		allowProposedApi: true
 	});
 	const fit_addon = new window.FitAddon.FitAddon();
+	const unicode11_addon = new window.Unicode11Addon.Unicode11Addon();
 	const text_decoder = new TextDecoder();
 
-	term.loadAddon(fit_addon)
+	term.loadAddon(fit_addon);
+	term.loadAddon(unicode11_addon);
+	term.unicode.activeVersion = '11';
 	term.open(terminal_view_container);
 
 	let set_terminal_target = function(name) {
 		terminal_target.innerText = name;
-		login_form_title.innerText = name
+		login_form_title.innerText = name;
 	}
 
 	let set_terminal_status = function(msg, errmsg) {
 		if (msg != null) terminal_status.innerText = msg;
-		if (errmsg != null) terminal_errmsg.innerText = errmsg
+		if (errmsg != null) terminal_errmsg.innerText = errmsg;
 	}
 
 	let adjust_terminal_size_unconnected = function() {

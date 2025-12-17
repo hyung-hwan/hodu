@@ -479,6 +479,9 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 		case "xterm-addon-fit.js":
 			status_code = WriteJsRespHeader(w, http.StatusOK)
 			w.Write(xterm_addon_fit_js)
+		case "xterm-addon-unicode11.js":
+			status_code = WriteJsRespHeader(w, http.StatusOK)
+			w.Write(xterm_addon_unicode11_js)
 		case "xterm.css":
 			status_code = WriteCssRespHeader(w, http.StatusOK)
 			w.Write(xterm_css)

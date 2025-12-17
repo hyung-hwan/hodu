@@ -126,6 +126,8 @@ type json_xterm_ws_event struct {
 var xterm_js []byte
 //go:embed xterm-addon-fit.js
 var xterm_addon_fit_js []byte
+//go:embed xterm-addon-unicode11.js
+var xterm_addon_unicode11_js []byte
 //go:embed xterm.css
 var xterm_css []byte
 //go:embed xterm.html

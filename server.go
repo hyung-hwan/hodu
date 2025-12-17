@@ -3,6 +3,7 @@ package hodu
 import "container/list"
 import "context"
 import "crypto/tls"
+import "encoding/base64"
 import "errors"
 import "fmt"
 import "io"
@@ -906,7 +907,7 @@ func (cts *ServerConn) ReadRptyAndWriteWs(id uint64, data []byte) error {
 	}
 	cts.rpty_mtx.Unlock()
 
-	err = send_ws_data_for_xterm(rpty.ws, "iov", string(data))
+	err = send_ws_data_for_xterm(rpty.ws, "iov", base64.StdEncoding.EncodeToString(data))
 	if err != nil {
 		return fmt.Errorf("failed to write rpty data(%d) to ws - %s", id, err.Error())
 	}
@@ -1792,6 +1793,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
 	s.ctl_mux.Handle("/_pty/xterm-addon-fit.js/",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+	s.ctl_mux.Handle("/_pty/xterm-addon-unicode11.js",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-unicode11.js"}))
+	s.ctl_mux.Handle("/_pty/xterm-addon-unicode11.js/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
 	s.ctl_mux.Handle("/_pty/xterm.css",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
 	s.ctl_mux.Handle("/_pty/xterm.css/",
@@ -1812,6 +1817,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.ctl_mux.Handle("/_rpty/xterm-addon-fit.js",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
 	s.ctl_mux.Handle("/_rpty/xterm-addon-fit.js/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+	s.ctl_mux.Handle("/_rpty/xterm-addon-unicode11.js",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-unicode11.js"}))
+	s.ctl_mux.Handle("/_rpty/xterm-addon-unicode11.js/",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
 	s.ctl_mux.Handle("/_rpty/xterm.css",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
@@ -1877,6 +1886,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm-addon-fit.js"}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm-addon-fit.js/",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
+	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm-addon-unicode11.js",
+		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm-addon-unicode11.js"}))
+	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm-addon-unicode11.js/",
+		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
 
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY})))
@@ -1926,6 +1939,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.wpx_mux.Handle("/_ssh/{port_id}/xterm-addon-fit.js",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm-addon-fit.js"}))
 	s.wpx_mux.Handle("/_ssh/{port_id}/xterm-addon-fit.js/",
+		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))
+	s.wpx_mux.Handle("/_ssh/{port_id}/xterm-addon-unicode11.js",
+		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm-addon-unicode11.js"}))
+	s.wpx_mux.Handle("/_ssh/{port_id}/xterm-addon-unicode11.js/",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))
 
 	s.wpx_mux.Handle("/_ssh/{port_id}/ws",
