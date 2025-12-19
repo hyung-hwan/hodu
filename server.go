@@ -1056,12 +1056,12 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						if err != nil {
 							r.ReqStop()
 							cts.S.log.Write(cts.Sid, LOG_ERROR,
-								"Failed to send %s event(%d,%s,%s,%s%v,%v) to client %s - %s",
+								"Failed to send %s event(%d,%s,%s,%v,%v) to client %s - %s",
 								PACKET_KIND_ROUTE_STARTED.String(), r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet, cts.RemoteAddr, err.Error())
 							goto done
 						} else {
 							cts.S.log.Write(cts.Sid, LOG_DEBUG,
-								"Sent %s event(%d,%s,%s,%s%v,%v) to client %s",
+								"Sent %s event(%d,%s,%s,%v,%v) to client %s",
 								PACKET_KIND_ROUTE_STARTED.String(), r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet, cts.RemoteAddr)
 						}
 					}
@@ -1090,12 +1090,12 @@ func (cts *ServerConn) receive_from_stream(wg *sync.WaitGroup) {
 						if err != nil {
 							r.ReqStop()
 							cts.S.log.Write(cts.Sid, LOG_ERROR,
-								"Failed to send %s event(%d,%s,%s,%v.%v) to client %s - %s",
+								"Failed to send %s event(%d,%s,%s,%v,%v) to client %s - %s",
 								PACKET_KIND_ROUTE_STOPPED.String(), r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet.String(), cts.RemoteAddr, err.Error())
 							goto done
 						} else {
 							cts.S.log.Write(cts.Sid, LOG_DEBUG,
-								"Sent %s event(%d,%s,%s,%v.%v) to client %s",
+								"Sent %s event(%d,%s,%s,%v,%v) to client %s",
 								PACKET_KIND_ROUTE_STOPPED.String(), r.Id, r.PtcAddr, r.SvcAddr.String(), r.SvcOption, r.SvcPermNet.String(), cts.RemoteAddr)
 						}
 					}

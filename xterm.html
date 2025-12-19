@@ -162,7 +162,14 @@ window.onload = function(event) {
 
 	let set_terminal_status = function(msg, errmsg) {
 		if (msg != null) terminal_status.innerText = msg;
-		if (errmsg != null) terminal_errmsg.innerText = errmsg;
+		if (errmsg != null) {
+			if (errmsg != "") {
+				const d = new Date();
+				terminal_errmsg.innerText = "[" + d.toLocaleString() + "] " + errmsg;
+			} else {
+				terminal_errmsg.innerText = errmsg;
+			}
+		}
 	}
 
 	let adjust_terminal_size_unconnected = function() {
@@ -192,7 +199,7 @@ window.onload = function(event) {
 		} catch (e) {
 			set_terminal_target('');
 			document.title = '';
-			set_terminal_status (null, e);
+			set_terminal_status(null, e);
 		}
 	}
 
@@ -270,14 +277,12 @@ window.onload = function(event) {
 						}
 					}
 				} else if (msg.type == 'error') {
-					toggle_login_form(true);
-					window.onresize = adjust_terminal_size_unconnected;
+					// retain the session but show the exception message
 					set_terminal_status(null, msg.data.join(' '))
 				}
 			} catch (e) {
-				set_terminal_status('Disconnected', e);
-				toggle_login_form(true)
-				window.onresize = adjust_terminal_size_unconnected;
+				// retain the session but show the exception message
+				set_terminal_status(null, e);
 			}
 		};
 
