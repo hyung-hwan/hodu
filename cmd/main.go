@@ -98,20 +98,15 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 
 // --------------------------------------------------------------------
 
-func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy_addrs []string, wpx_addrs []string, logfile string, cfg *ServerConfig) error {
+func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy_addrs []string, wpx_addrs []string, cfg *ServerConfig) error {
 	var s *hodu.Server
 	var config *hodu.ServerConfig
 	var logger *AppLogger
-	var logmask hodu.LogMask
-	var logfile_maxsize int64
-	var logfile_rotate int
 	var pty_user string
 	var pty_shell string
 	var xterm_html_file string
 	var xterm_html string
 	var err error
-
-	logmask = hodu.LOG_ALL
 
 	config = &hodu.ServerConfig{
 		CtlAddrs: ctl_addrs,
@@ -121,59 +116,54 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 		WpxAddrs: wpx_addrs,
 	}
 
-	if cfg != nil {
-		config.CtlTls, err = make_tls_server_config(&cfg.CTL.TLS)
-		if err != nil { return err }
-		config.RpcTls, err = make_tls_server_config(&cfg.RPC.TLS)
-		if err != nil { return err }
-		config.RpxTls, err = make_tls_server_config(&cfg.RPX.TLS)
-		if err != nil { return err }
-		config.PxyTls, err = make_tls_server_config(&cfg.PXY.TLS)
-		if err != nil { return err }
-		config.PxyTargetTls, err = make_tls_client_config(&cfg.PXY.Target.TLS)
-		if err != nil { return err }
-		config.WpxTls, err = make_tls_server_config(&cfg.WPX.TLS)
-		if err != nil { return err }
+	// load configuration from cfg
+	config.CtlTls, err = make_tls_server_config(&cfg.CTL.TLS)
+	if err != nil { return err }
+	config.RpcTls, err = make_tls_server_config(&cfg.RPC.TLS)
+	if err != nil { return err }
+	config.RpxTls, err = make_tls_server_config(&cfg.RPX.TLS)
+	if err != nil { return err }
+	config.PxyTls, err = make_tls_server_config(&cfg.PXY.TLS)
+	if err != nil { return err }
+	config.PxyTargetTls, err = make_tls_client_config(&cfg.PXY.Target.TLS)
+	if err != nil { return err }
+	config.WpxTls, err = make_tls_server_config(&cfg.WPX.TLS)
+	if err != nil { return err }
 
-		if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
-		if len(config.RpcAddrs) <= 0 { config.RpcAddrs = cfg.RPC.Service.Addrs }
-		if len(config.RpxAddrs) <= 0 { config.RpxAddrs = cfg.RPX.Service.Addrs }
-		if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
-		if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
+	if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
+	if len(config.RpcAddrs) <= 0 { config.RpcAddrs = cfg.RPC.Service.Addrs }
+	if len(config.RpxAddrs) <= 0 { config.RpxAddrs = cfg.RPX.Service.Addrs }
+	if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
+	if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
-		config.RpxClientTokenAttrName = cfg.RPX.ClientToken.AttrName
-		if cfg.RPX.ClientToken.Regex != "" {
-			config.RpxClientTokenRegex, err = regexp.Compile(cfg.RPX.ClientToken.Regex)
-			if err != nil { return err }
-		}
-		config.RpxClientTokenSubmatchIndex = cfg.RPX.ClientToken.SubmatchIndex
-
-		config.CtlCors = cfg.CTL.Service.Cors
-		config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
+	config.RpxClientTokenAttrName = cfg.RPX.ClientToken.AttrName
+	if cfg.RPX.ClientToken.Regex != "" {
+		config.RpxClientTokenRegex, err = regexp.Compile(cfg.RPX.ClientToken.Regex)
 		if err != nil { return err }
-
-		config.CtlPrefix = cfg.CTL.Service.Prefix
-		config.RpcMaxConns = cfg.APP.MaxRpcConns
-		config.MaxPeers = cfg.APP.MaxPeers
-
-		pty_user = cfg.APP.PtyUser
-		pty_shell = cfg.APP.PtyShell
-		xterm_html_file = cfg.APP.XtermHtmlFile
-
-		logmask = log_strings_to_mask(cfg.APP.LogMask)
-		if logfile == "" { logfile = cfg.APP.LogFile }
-		logfile_maxsize = cfg.APP.LogMaxSize
-		logfile_rotate = cfg.APP.LogRotate
 	}
+	config.RpxClientTokenSubmatchIndex = cfg.RPX.ClientToken.SubmatchIndex
+
+	config.CtlCors = cfg.CTL.Service.Cors
+	config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
+	if err != nil { return err }
+
+	config.CtlPrefix = cfg.CTL.Service.Prefix
+	config.RpcMaxConns = cfg.APP.MaxRpcConns
+	config.MaxPeers = cfg.APP.MaxPeers
+
+	pty_user = cfg.APP.PtyUser
+	pty_shell = cfg.APP.PtyShell
+	xterm_html_file = cfg.APP.XtermHtmlFile
+	// end of loading configuration from cfg
 
 	if len(config.RpcAddrs) <= 0 {
 		return fmt.Errorf("no rpc service addresses specified")
 	}
 
-	if logfile == "" {
-		logger = NewAppLogger("server", os.Stderr, logmask)
+	if cfg.APP.LogFile == "" {
+		logger = NewAppLogger("server", os.Stderr, log_strings_to_mask(cfg.APP.LogMask))
 	} else {
-		logger, err = NewAppLoggerToFile("server", logfile, logfile_maxsize, logfile_rotate, logmask)
+		logger, err = NewAppLoggerToFile("server", cfg.APP.LogFile, cfg.APP.LogMaxSize, cfg.APP.LogRotate, log_strings_to_mask(cfg.APP.LogMask))
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
@@ -273,14 +263,11 @@ func parse_client_route_config(v string) (*hodu.ClientRouteConfig, error) {
 	return &hodu.ClientRouteConfig{PeerAddr: va[0], PeerName: ptc_name, ServiceOption: option, ServiceAddr: svc_addr}, nil // TODO: other fields
 }
 
-func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string, logfile string, cfg *ClientConfig) error {
+func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string, cfg *ClientConfig) error {
 	var c *hodu.Client
 	var config *hodu.ClientConfig
 	var cc hodu.ClientConnConfig
 	var logger *AppLogger
-	var logmask hodu.LogMask
-	var logfile_maxsize int64
-	var logfile_rotate int
 	var pty_user string
 	var pty_shell string
 	var xterm_html_file string
@@ -288,53 +275,47 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var i int
 	var err error
 
-	logmask = hodu.LOG_ALL
-
 	config = &hodu.ClientConfig{
 		CtlAddrs: ctl_addrs,
 	}
 
-	if cfg != nil {
-		config.CtlTls, err = make_tls_server_config(&cfg.CTL.TLS)
-		if err != nil { return err }
-		config.RpcTls, err = make_tls_client_config(&cfg.RPC.TLS)
-		if err != nil { return err }
-		config.RpxTargetTls, err = make_tls_client_config(&cfg.RPX.Target.TLS)
-		if err != nil { return err }
+	// load configuration from cfg
+	config.CtlTls, err = make_tls_server_config(&cfg.CTL.TLS)
+	if err != nil { return err }
+	config.RpcTls, err = make_tls_client_config(&cfg.RPC.TLS)
+	if err != nil { return err }
+	config.RpxTargetTls, err = make_tls_client_config(&cfg.RPX.Target.TLS)
+	if err != nil { return err }
 
-		if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
-		if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
+	if len(rpc_addrs) <= 0 { rpc_addrs = cfg.RPC.Endpoint.Addrs }
+	if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
 
-		config.RpxTargetAddr = cfg.RPX.Target.Addr
-		config.CtlPrefix = cfg.CTL.Service.Prefix
-		config.CtlCors = cfg.CTL.Service.Cors
-		config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
-		if err != nil { return err }
+	config.RpxTargetAddr = cfg.RPX.Target.Addr
+	config.CtlPrefix = cfg.CTL.Service.Prefix
+	config.CtlCors = cfg.CTL.Service.Cors
+	config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
+	if err != nil { return err }
 
-		cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
-		cc.ServerAuthority = cfg.RPC.Endpoint.Authority
-		logmask = log_strings_to_mask(cfg.APP.LogMask)
-		if logfile == "" { logfile = cfg.APP.LogFile }
-		logfile_maxsize = cfg.APP.LogMaxSize
-		logfile_rotate = cfg.APP.LogRotate
-		pty_user = cfg.APP.PtyUser
-		pty_shell = cfg.APP.PtyShell
-		xterm_html_file = cfg.APP.XtermHtmlFile
-		config.RpcConnMax = cfg.APP.MaxRpcConns
-		config.PeerConnMax = cfg.APP.MaxPeers
-		config.PeerConnTmout = cfg.APP.PeerConnTmout
+	cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
+	cc.ServerAuthority = cfg.RPC.Endpoint.Authority
+	pty_user = cfg.APP.PtyUser
+	pty_shell = cfg.APP.PtyShell
+	xterm_html_file = cfg.APP.XtermHtmlFile
+	config.RpcConnMax = cfg.APP.MaxRpcConns
+	config.PeerConnMax = cfg.APP.MaxPeers
+	config.PeerConnTmout = cfg.APP.PeerConnTmout
 
-		if cfg.APP.TokenText != "" {
-			config.Token = cfg.APP.TokenText
-		} else if cfg.APP.TokenFile != "" {
-			var bytes []byte
-			bytes, err = os.ReadFile(cfg.APP.TokenFile)
-			if err != nil {
-				return fmt.Errorf("unable to read token file - %s", err.Error())
-			}
-			config.Token = string(bytes)
+	if cfg.APP.TokenText != "" {
+		config.Token = cfg.APP.TokenText
+	} else if cfg.APP.TokenFile != "" {
+		var bytes []byte
+		bytes, err = os.ReadFile(cfg.APP.TokenFile)
+		if err != nil {
+			return fmt.Errorf("unable to read token file - %s", err.Error())
 		}
+		config.Token = string(bytes)
 	}
+	// end of loading configuration from cfg
 
 	// unlke the server, we allow the client to start with no rpc address.
 	// no check if len(rpc_addrs) <= 0 is mdde here.
@@ -347,10 +328,10 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 		cc.Routes[i] = *c
 	}
 
-	if logfile == "" {
-		logger = NewAppLogger("client", os.Stderr, logmask)
+	if cfg.APP.LogFile == "" {
+		logger = NewAppLogger("client", os.Stderr, log_strings_to_mask(cfg.APP.LogMask))
 	} else {
-		logger, err = NewAppLoggerToFile("client", logfile, logfile_maxsize, logfile_rotate, logmask)
+		logger, err = NewAppLoggerToFile("client", cfg.APP.LogFile, cfg.APP.LogMaxSize, cfg.APP.LogRotate, log_strings_to_mask(cfg.APP.LogMask))
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger - %s", err.Error())
 		}
@@ -471,7 +452,11 @@ func main() {
 			}
 		}
 
-		err = server_main(ctl_addrs, rpc_addrs, rpx_addrs, pxy_addrs, wpx_addrs, logfile, &cfg)
+		if logfile != "" {
+			cfg.APP.LogFile = logfile
+		}
+
+		err = server_main(ctl_addrs, rpc_addrs, rpx_addrs, pxy_addrs, wpx_addrs, &cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops
@@ -483,6 +468,7 @@ func main() {
 		var cfgpat string
 		var logfile string
 		var client_token string
+		var pty_shell string
 		var cfg ClientConfig
 
 		ctl_addrs = make([]string, 0)
@@ -511,6 +497,10 @@ func main() {
 		})
 		flgs.Func("client-token", "specify a client token", func(v string) error {
 			client_token = v
+			return nil
+		})
+		flgs.Func("pty-shell", "specify the program to execute for pty access", func(v string) error {
+			pty_shell = v
 			return nil
 		})
 		flgs.SetOutput(io.Discard)
@@ -550,8 +540,14 @@ func main() {
 			cfg.APP.TokenText = client_token
 			cfg.APP.TokenFile = ""
 		}
+		if pty_shell != "" {
+			cfg.APP.PtyShell = pty_shell
+		}
+		if logfile != "" {
+			cfg.APP.LogFile = logfile
+		}
 
-		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), logfile, &cfg)
+		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), &cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: client error - %s\n", err.Error())
 			goto oops
