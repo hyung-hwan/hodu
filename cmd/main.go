@@ -482,6 +482,7 @@ func main() {
 		var cfgfile string
 		var cfgpat string
 		var logfile string
+		var client_token string
 		var cfg ClientConfig
 
 		ctl_addrs = make([]string, 0)
@@ -506,6 +507,10 @@ func main() {
 		})
 		flgs.Func("config-file-pattern", "specify a file pattern for additional configuration files", func(v string) error {
 			cfgpat = v
+			return nil
+		})
+		flgs.Func("client-token", "specify a client token", func(v string) error {
+			client_token = v
 			return nil
 		})
 		flgs.SetOutput(io.Discard)
@@ -541,6 +546,11 @@ func main() {
 			}
 		}
 
+		if client_token != "" {
+			cfg.APP.TokenText = client_token
+			cfg.APP.TokenFile = ""
+		}
+
 		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), logfile, &cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: client error - %s\n", err.Error())
@@ -557,7 +567,7 @@ func main() {
 
 wrong_usage:
 	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [peer-addr:peer-port ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--client-token=string] [peer-addr:peer-port ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
 
