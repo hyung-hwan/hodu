@@ -376,6 +376,7 @@ func main() {
 		var cfgfile string
 		var cfgpat string
 		var logfile string
+		var pty_shell string
 		var cfg ServerConfig
 
 		ctl_addrs = make([]string, 0)
@@ -417,6 +418,10 @@ func main() {
 			cfgpat = v
 			return nil
 		})
+		flgs.Func("pty-shell", "specify the program to execute for pty access", func(v string) error {
+			pty_shell = v
+			return nil
+		})
 		flgs.SetOutput(io.Discard) // prevent usage output
 		err = flgs.Parse(os.Args[2:])
 		if err != nil {
@@ -454,6 +459,9 @@ func main() {
 
 		if logfile != "" {
 			cfg.APP.LogFile = logfile
+		}
+		if pty_shell != "" {
+			cfg.APP.PtyShell = pty_shell
 		}
 
 		err = server_main(ctl_addrs, rpc_addrs, rpx_addrs, pxy_addrs, wpx_addrs, &cfg)
@@ -495,12 +503,12 @@ func main() {
 			cfgpat = v
 			return nil
 		})
-		flgs.Func("client-token", "specify a client token", func(v string) error {
-			client_token = v
-			return nil
-		})
 		flgs.Func("pty-shell", "specify the program to execute for pty access", func(v string) error {
 			pty_shell = v
+			return nil
+		})
+		flgs.Func("client-token", "specify a client token", func(v string) error {
+			client_token = v
 			return nil
 		})
 		flgs.SetOutput(io.Discard)
@@ -540,11 +548,11 @@ func main() {
 			cfg.APP.TokenText = client_token
 			cfg.APP.TokenFile = ""
 		}
-		if pty_shell != "" {
-			cfg.APP.PtyShell = pty_shell
-		}
 		if logfile != "" {
 			cfg.APP.LogFile = logfile
+		}
+		if pty_shell != "" {
+			cfg.APP.PtyShell = pty_shell
 		}
 
 		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), &cfg)
@@ -562,8 +570,8 @@ func main() {
 	os.Exit(0)
 
 wrong_usage:
-	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--client-token=string] [peer-addr:peer-port ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--client-token=string] [peer-addr:peer-port ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
 
