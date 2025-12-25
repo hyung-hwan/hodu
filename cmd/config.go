@@ -92,9 +92,11 @@ type RPCServiceConfig struct { // rpc server-side configuration
 }
 
 type RPCEndpointConfig struct { // rpc client-side configuration
-	Authority   string        `yaml:"authority"`
-	Addrs       []string      `yaml:"addresses"`
-	SeedTmout   time.Duration `yaml:"seed-timeout"`
+	Authority    string        `yaml:"authority"`
+	Addrs        []string      `yaml:"addresses"`
+	PingIntvl    time.Duration `yaml:"ping-interval"`
+	PingTmout    time.Duration `yaml:"ping-timeout"`
+	SeedTmout    time.Duration `yaml:"seed-timeout"`
 }
 
 type ServerAppConfig  struct {
@@ -122,6 +124,9 @@ type ClientAppConfig  struct {
 	TokenFile     string        `yaml:"token-file"`
 	PtyUser       string        `yaml:"pty-user"`
 	PtyShell      string        `yaml:"pty-shell"`
+	RpcPingIntvl  time.Duration `yaml:"rpc-ping-interval"`
+	RpcPingTmout  time.Duration `yaml:"rpc-ping-timeout"`
+	RpcSeedTmout  time.Duration `yaml:"rpc-seed-timeout"`
 	XtermHtmlFile string        `yaml:"xterm-html-file"`
 }
 

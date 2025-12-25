@@ -297,6 +297,8 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
 	if err != nil { return err }
 
+	cc.ServerPingIntvl = cfg.RPC.Endpoint.PingIntvl
+	cc.ServerPingTmout = cfg.RPC.Endpoint.PingTmout
 	cc.ServerSeedTmout = cfg.RPC.Endpoint.SeedTmout
 	cc.ServerAuthority = cfg.RPC.Endpoint.Authority
 	pty_user = cfg.APP.PtyUser
@@ -305,6 +307,10 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	config.RpcConnMax = cfg.APP.MaxRpcConns
 	config.PeerConnMax = cfg.APP.MaxPeers
 	config.PeerConnTmout = cfg.APP.PeerConnTmout
+
+	config.RpcPingIntvl = cfg.APP.RpcPingIntvl // app-level default
+	config.RpcPingTmout = cfg.APP.RpcPingTmout // app-level default
+	config.RpcSeedTmout = cfg.APP.RpcSeedTmout // app-level default
 
 	if cfg.APP.TokenText != "" {
 		config.Token = cfg.APP.TokenText
