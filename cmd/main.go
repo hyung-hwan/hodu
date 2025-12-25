@@ -149,6 +149,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 
 	config.CtlPrefix = cfg.CTL.Service.Prefix
 	config.RpcMaxConns = cfg.APP.MaxRpcConns
+	config.RpcMinPingIntvl = cfg.APP.MinRpcPingIntvl
 	config.MaxPeers = cfg.APP.MaxPeers
 
 	pty_user = cfg.APP.PtyUser

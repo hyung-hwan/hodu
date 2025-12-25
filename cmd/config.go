@@ -98,15 +98,16 @@ type RPCEndpointConfig struct { // rpc client-side configuration
 }
 
 type ServerAppConfig  struct {
-	LogMask       []string  `yaml:"log-mask"`
-	LogFile       string    `yaml:"log-file"`
-	LogMaxSize    int64     `yaml:"log-max-size"`
-	LogRotate     int       `yaml:"log-rotate"`
-	MaxPeers      int       `yaml:"max-peer-conns"` // maximum number of connections from peers
-	MaxRpcConns   int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
-	PtyUser       string    `yaml:"pty-user"`
-	PtyShell      string    `yaml:"pty-shell"`
-	XtermHtmlFile string    `yaml:"xterm-html-file"`
+	LogMask         []string  `yaml:"log-mask"`
+	LogFile         string    `yaml:"log-file"`
+	LogMaxSize      int64     `yaml:"log-max-size"`
+	LogRotate       int       `yaml:"log-rotate"`
+	MaxPeers        int       `yaml:"max-peer-conns"` // maximum number of connections from peers
+	MaxRpcConns     int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
+	MinRpcPingIntvl time.Duration  `yaml:"min-rpc-ping-interval"`
+	PtyUser         string    `yaml:"pty-user"`
+	PtyShell        string    `yaml:"pty-shell"`
+	XtermHtmlFile   string    `yaml:"xterm-html-file"`
 }
 
 type ClientAppConfig  struct {

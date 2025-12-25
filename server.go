@@ -23,6 +23,7 @@ import "unsafe"
 import "golang.org/x/net/websocket"
 import "google.golang.org/grpc"
 import "google.golang.org/grpc/credentials"
+import "google.golang.org/grpc/keepalive"
 import "google.golang.org/grpc/peer"
 import "google.golang.org/grpc/stats"
 import "github.com/prometheus/client_golang/prometheus"
@@ -61,6 +62,7 @@ type ServerConfig struct {
 	RpcAddrs []string
 	RpcTls *tls.Config
 	RpcMaxConns int
+	RpcMinPingIntvl time.Duration
 	MaxPeers int
 
 	CtlAddrs []string
@@ -1729,6 +1731,14 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.wpx_addrs = list.New()
 
 	opts = append(opts, grpc.StatsHandler(&ConnCatcher{server: &s}))
+	if s.Cfg.RpcMinPingIntvl > 0 {
+		// https://pkg.go.dev/google.golang.org/grpc/keepalive
+		// grpc library default is 5 minutes if this option is not added.
+		opts = append(opts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime: s.Cfg.RpcMinPingIntvl,
+			PermitWithoutStream: true,
+		}))
+	}
 	if s.Cfg.RpcTls != nil { opts = append(opts, grpc.Creds(credentials.NewTLS(s.Cfg.RpcTls))) }
 	//opts = append(opts, grpc.UnaryInterceptor(unaryInterceptor))
 	//opts = append(opts, grpc.StreamInterceptor(streamInterceptor))
