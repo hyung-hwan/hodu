@@ -27,6 +27,9 @@ import "golang.org/x/net/websocket"
 
 type json_in_client_conn struct {
 	ServerAddrs []string `json:"server-addrs"` // multiple addresses for round-robin connection re-attempts
+	PingIntvl time.Duration `json:"ping-interval"`
+	PingTmout time.Duration `json:"ping-timeout"`
+	SeedTmout time.Duration `json:"seed-timeout"`
 	ClientToken string `json:"client-token"`
 	CloseOnConnErrorEvent bool `json:"close-on-conn-error-event"`
 }
@@ -330,9 +333,12 @@ func (ctl *client_ctl_client_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			}
 
 			cc.ServerAddrs = in_cc.ServerAddrs
+			cc.ServerPingIntvl = in_cc.PingIntvl
+			cc.ServerPingTmout = in_cc.PingTmout
+			cc.ServerSeedTmout = in_cc.SeedTmout
 			cc.ClientToken = in_cc.ClientToken
 			cc.CloseOnConnErrorEvent = in_cc.CloseOnConnErrorEvent
-			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeed or fail at each attempt.  however ok as ServeHTTP itself is in a goroutine?
+			cts, err = c.start_service(&cc) // TODO: this can be blocking. do we have to resolve addresses before calling this? also not good because resolution succeeds or fails at each attempt.  however ok as ServeHTTP itself is in a goroutine?
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
 				je.Encode(JsonErrmsg{Text: err.Error()})
