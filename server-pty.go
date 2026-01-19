@@ -12,6 +12,7 @@ import "strconv"
 import "strings"
 import "sync"
 import "text/template"
+import "time"
 
 import pts "github.com/creack/pty"
 import "golang.org/x/net/websocket"
@@ -64,7 +65,8 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		var conn_ready bool
 
 		defer wg.Done()
-		defer ws.Close() // dirty way to break the main loop
+		//defer ws.Close() // dirty way to break the main loop
+		defer ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 
 		conn_ready = <-conn_ready_chan
 		if conn_ready { // connected
@@ -129,7 +131,10 @@ ws_recv_loop:
 	for {
 		var msg []byte
 		err = websocket.Message.Receive(ws, &msg)
-		if err != nil { goto done }
+		if err != nil {
+			s.log.Write(pty.Id, LOG_ERROR, "[%s] websocket receive error - %s", req.RemoteAddr, err.Error())
+			goto done
+		}
 
 		if len(msg) > 0 {
 			var ev json_xterm_ws_event
@@ -152,7 +157,8 @@ ws_recv_loop:
 								if err != nil {
 									s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to create event pipe for pty - %s", req.RemoteAddr, err.Error())
 									send_ws_data_for_xterm(ws, "error", err.Error())
-									ws.Close() // dirty way to flag out the error
+									//ws.Close() // dirty way to flag out the error
+									ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 									return
 								}
 
@@ -160,7 +166,8 @@ ws_recv_loop:
 								if err != nil {
 									s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to connect pty - %s", req.RemoteAddr, err.Error())
 									send_ws_data_for_xterm(ws, "error", err.Error())
-									ws.Close() // dirty way to flag out the error - this will make websocket.MessageReceive to fail
+									//ws.Close() // dirty way to flag out the error - this will make websocket.MessageReceive to fail
+									ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 									unix.Close(pfd[0]); pfd[0] = -1
 									unix.Close(pfd[1]); pfd[1] = -1
 									return
@@ -169,7 +176,8 @@ ws_recv_loop:
 								err = send_ws_data_for_xterm(ws, "status", "opened")
 								if err != nil {
 									s.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to write 'opened' event to websocket - %s", req.RemoteAddr, err.Error())
-									ws.Close() // dirty way to flag out the error
+									//ws.Close() // dirty way to flag out the error
+									ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 									unix.Close(pfd[0]); pfd[0] = -1
 									unix.Close(pfd[1]); pfd[1] = -1
 									return
@@ -283,7 +291,10 @@ ws_recv_loop:
 	for {
 		var msg []byte
 		err = websocket.Message.Receive(ws, &msg)
-		if err != nil { goto done }
+		if err != nil {
+			s.log.Write(rpty.Id, LOG_ERROR, "[%s] websocket receive error - %s", req.RemoteAddr, err.Error())
+			goto done
+		}
 
 		if len(msg) > 0 {
 			var ev json_xterm_ws_event
@@ -297,16 +308,18 @@ ws_recv_loop:
 
 							rp, err = cts.StartRpty(ws)
 							if err != nil {
-								s.log.Write(rpty.Id, LOG_ERROR, "[%s] Failed to connect pty - %s", req.RemoteAddr, err.Error())
+								s.log.Write(rpty.Id, LOG_ERROR, "[%s] Failed to connect rpty - %s", req.RemoteAddr, err.Error())
 								send_ws_data_for_xterm(ws, "error", err.Error())
-								ws.Close() // dirty way to flag out the error by making websocket.Message.Receive() fail
+								//ws.Close() // dirty way to flag out the error by making websocket.Message.Receive() fail
+								ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 							} else {
 								err = send_ws_data_for_xterm(ws, "status", "opened")
 								if err != nil {
 									s.log.Write(rpty.Id, LOG_ERROR, "[%s] Failed to write 'opened' event to websocket - %s", req.RemoteAddr, err.Error())
-									ws.Close() // dirty way to flag out the error
+									//ws.Close() // dirty way to flag out the error
+									ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 								} else {
-									s.log.Write(rpty.Id, LOG_DEBUG, "[%s] Opened pty session", req.RemoteAddr)
+									s.log.Write(rpty.Id, LOG_DEBUG, "[%s] Opened rpty session", req.RemoteAddr)
 								}
 							}
 						}

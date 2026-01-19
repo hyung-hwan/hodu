@@ -695,7 +695,8 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		var conn_ready bool
 
 		defer wg.Done()
-		defer ws.Close() // dirty way to break the main loop
+		//defer ws.Close() // dirty way to break the main loop
+		defer ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 
 		conn_ready = <-conn_ready_chan
 		if conn_ready { // connected
@@ -755,12 +756,14 @@ ws_recv_loop:
 								if err != nil {
 									s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to connect ssh - %s", req.RemoteAddr, err.Error())
 									send_ws_data_for_xterm(ws, "error", err.Error())
-									ws.Close() // dirty way to flag out the error
+									//ws.Close() // dirty way to flag out the error
+									ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 								} else {
 									err = send_ws_data_for_xterm(ws, "status", "opened")
 									if err != nil {
 										s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
-										ws.Close() // dirty way to flag out the error
+										//ws.Close() // dirty way to flag out the error
+										ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 									} else {
 										s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Opened SSH session", req.RemoteAddr)
 										conn_ready_chan <- true

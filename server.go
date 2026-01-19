@@ -296,7 +296,8 @@ func (g *GuardedPacketStreamServer) Context() context.Context {
 // ------------------------------------
 
 func (rpty *ServerRpty) ReqStop() {
-	rpty.ws.Close()
+	//rpty.ws.Close() // dirty way
+	rpty.ws.SetReadDeadline(time.Now()) // slightly cleaner way
 }
 
 func (rpx *ServerRpx) ReqStop(close_web bool) {
