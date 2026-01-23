@@ -1,10 +1,13 @@
 package hodu
 
+import "bufio"
 import "bytes"
 import "crypto/rsa"
 import _ "embed"
 import "encoding/base64"
+import "errors"
 import "fmt"
+import "io"
 import "net"
 import "net/http"
 import "net/netip"
@@ -431,7 +434,7 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 					// verification ok. let's check the actual payload
 					var now time.Time
 					now = time.Now()
-					if now.After(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return http.StatusOK, "" } // not expired
+					if !now.Before(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return http.StatusOK, "" } // not expired
 				}
 			}
 		}
@@ -553,4 +556,29 @@ func get_regex_submatch(re *regexp.Regexp, str string, n int) string {
 	}
 
 	return str[start:end]
+}
+
+func read_line_limited(r *bufio.Reader, max int) (string, error) {
+	var b []byte
+	var line []byte
+	var err error
+
+	for {
+		b, err = r.ReadSlice('\n')
+		if errors.Is(err, bufio.ErrBufferFull) {
+			line = append(line, b...)
+			if len(line) > max {
+				return "", fmt.Errorf("line too long")
+			}
+			continue
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
+		}
+		line = append(line, b...)
+		if len(line) > max {
+			return "", fmt.Errorf("line too long")
+		}
+		return string(line), err
+	}
 }

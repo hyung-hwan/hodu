@@ -175,8 +175,8 @@ type ClientConfig struct {
 		TLS ClientTLSConfig         `yaml:"tls"`
 	} `yaml:"rpc"`
 	RPX struct {
-          Target struct {
-			Addr string 	        `yaml:"address"`
+		Target struct {
+			Addr string 	       `yaml:"address"`
 			TLS ClientTLSConfig    `yaml:"tls"`
 		} `yaml:"target"`
 	}
@@ -399,7 +399,7 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 	config.Creds = make(hodu.HttpAuthCredMap)
 	config.TokenTtl, err = hodu.ParseDurationString(cfg.TokenTtl)
 	if err != nil {
-		return nil, fmt.Errorf("invalid token ttl %s - %s", cred, err.Error())
+		return nil, fmt.Errorf("invalid token ttl %s - %s", cfg.TokenTtl, err.Error())
 	}
 
 	// convert user credentials
@@ -428,12 +428,14 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 
 	pb, b = pem.Decode(rsa_key_text)
 	if pb == nil || len(b) > 0 {
-		return nil, fmt.Errorf("invalid token rsa key text %s - no block or too many blocks", string(rsa_key_text))
+		// show up to first 8 characters only
+		return nil, fmt.Errorf("invalid token rsa key text %.8s... - no block or too many blocks", string(rsa_key_text))
 	}
 
 	rk, err = x509.ParsePKCS1PrivateKey(pb.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("invalid token rsa key text %s - %s", string(rsa_key_text), err.Error())
+		// show up to first 8 characters only
+		return nil, fmt.Errorf("invalid token rsa key text %.8s... - %s", string(rsa_key_text), err.Error())
 	}
 
 	config.TokenRsaKey = rk

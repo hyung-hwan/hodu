@@ -44,15 +44,20 @@ func (rpx *server_rpx) get_client_token(req *http.Request) string {
 }
 
 func (rpx* server_rpx) handle_header_data(rpx_id uint64, data []byte, w http.ResponseWriter) (int, error) {
-	var sc *bufio.Scanner
+	var r *bufio.Reader
 	var line string
 	var flds []string
 	var status_code int
 	var err error
 
-	sc = bufio.NewScanner(bytes.NewReader(data))
-	sc.Scan()
-	line = sc.Text()
+	const rpx_header_line_max = 65535 // TODO: make this configurable
+
+	r = bufio.NewReader(bytes.NewReader(data))
+	line, err = read_line_limited(r, rpx_header_line_max)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return http.StatusBadGateway, fmt.Errorf("failed to parse response for rpx(%d) - %s", rpx_id, err.Error())
+	}
+	line = strings.TrimRight(line, "\r\n")
 
 	flds = strings.Fields(line)
 	if (len(flds) < 2) { // i care about the status code..
@@ -63,17 +68,18 @@ func (rpx* server_rpx) handle_header_data(rpx_id uint64, data []byte, w http.Res
 		return http.StatusBadGateway, fmt.Errorf("invalid response code for rpx(%d) - %s", rpx_id, err.Error())
 	}
 
-	for sc.Scan() {
-		line = sc.Text()
+	for {
+		line, err = read_line_limited(r, rpx_header_line_max)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return http.StatusBadGateway, fmt.Errorf("failed to parse response for rpx(%d) - %s", rpx_id, err.Error())
+		}
+		line = strings.TrimRight(line, "\r\n")
 		if line == "" { break }
 		flds = strings.SplitN(line, ":", 2)
 		if len(flds) == 2 {
 			w.Header().Add(strings.TrimSpace(flds[0]), strings.TrimSpace(flds[1]))
 		}
-	}
-	err = sc.Err()
-	if err != nil {
-		return http.StatusBadGateway, fmt.Errorf("failed to parse response for rpx(%d) - %s", rpx_id, err.Error())
+		if errors.Is(err, io.EOF) { break }
 	}
 
 	w.WriteHeader(status_code)

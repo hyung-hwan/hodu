@@ -484,6 +484,7 @@ func main() {
 		var logfile string
 		var client_token string
 		var pty_shell string
+		var rpx_target_addr string
 		var cfg ClientConfig
 
 		ctl_addrs = make([]string, 0)
@@ -516,6 +517,10 @@ func main() {
 		})
 		flgs.Func("client-token", "specify a client token", func(v string) error {
 			client_token = v
+			return nil
+		})
+		flgs.Func("rpx-target-addr", "specify the target address for rpx service", func(v string) error {
+			rpx_target_addr = v
 			return nil
 		})
 		flgs.SetOutput(io.Discard)
@@ -561,6 +566,9 @@ func main() {
 		if pty_shell != "" {
 			cfg.APP.PtyShell = pty_shell
 		}
+		if rpx_target_addr != "" {
+			cfg.RPX.Target.Addr = rpx_target_addr
+		}
 
 		err = client_main(ctl_addrs, rpc_addrs, flgs.Args(), &cfg)
 		if err != nil {
@@ -578,7 +586,7 @@ func main() {
 
 wrong_usage:
 	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--client-token=string] [peer-addr:peer-port ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--client-token=string] [--rpx-target-addr=addr:port] [peer-addr:peer-port ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
 

@@ -1922,7 +1922,7 @@ func (cts *ClientConn) proxy_http(crpx *ClientRpx, req *http.Request) (int, erro
 func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup) {
 	var start_time time.Time
 	var time_taken time.Duration
-	var sc *bufio.Scanner
+	var r *bufio.Reader
 	var line string
 	var flds []string
 	var req_meth string
@@ -1940,9 +1940,15 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 
 	start_time = time.Now()
 
-	sc = bufio.NewScanner(bytes.NewReader(data))
-	sc.Scan()
-	line = sc.Text()
+	const rpx_header_line_max = 65535 // TODO: make this configurable
+
+	r = bufio.NewReader(bytes.NewReader(data))
+	line, err = read_line_limited(r, rpx_header_line_max)
+	if err != nil && !errors.Is(err, io.EOF) {
+		cts.C.log.Write(cts.Sid, LOG_ERROR, "failed to parse request for rpx(%d) - %s", crpx.id, err.Error())
+		goto done
+	}
+	line = strings.TrimRight(line, "\r\n")
 
 	flds = strings.Fields(line)
 	if (len(flds) < 3) {
@@ -1965,8 +1971,13 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 		goto done
 	}
 
-	for sc.Scan() {
-		line = sc.Text()
+	for {
+		line, err = read_line_limited(r, rpx_header_line_max)
+		if err != nil && !errors.Is(err, io.EOF) {
+			cts.C.log.Write(cts.Sid, LOG_ERROR, "failed to parse request for rpx(%d) - %s", crpx.id, err.Error())
+			goto done
+		}
+		line = strings.TrimRight(line, "\r\n")
 		if line == "" { break }
 		flds = strings.SplitN(line, ":", 2)
 		if len(flds) == 2 {
@@ -1990,11 +2001,7 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 				}
 			}
 		}
-	}
-	err = sc.Err()
-	if err != nil {
-		cts.C.log.Write(cts.Sid, LOG_ERROR, "failed to parse request for rpx(%d) - %s", crpx.id, err.Error())
-		goto done
+		if errors.Is(err, io.EOF) { break }
 	}
 	raw_req.WriteString("\r\n")
 	if x_forwarded_host == "" {

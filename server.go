@@ -301,9 +301,9 @@ func (rpty *ServerRpty) ReqStop() {
 }
 
 func (rpx *ServerRpx) ReqStop(close_web bool) {
-	rpx.done_chan <- true
-	rpx.pw.Close()
-	if close_web { rpx.br.Close() }
+	rpx.done_chan <- true // inform via the channel
+	rpx.pw.Close() // close pipe writer
+	if close_web { rpx.br.Close() } // websocket side
 }
 // ------------------------------------
 

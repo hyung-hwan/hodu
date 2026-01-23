@@ -11,12 +11,13 @@ On the client-side:
  - Access `http://[::1]:1107/_pty/xterm.html` using a web browser to access a local pty session.
 
 ## port based proxy service
-- ./hodu server --rpc-on=0.0.0.0:9999 --ctl-on=0.0.0.0:8888 --pxy-on=0.0.0.0:9998 --wpx-on=0.0.0.0:9997
-- ./hodu client --rpc-to=127.0.0.1:9999 --ctl-on=127.0.0.1:1107 "127.0.0.2:22,0.0.0.0:12345,ssh,Access SSH Server"
+- ./hodu server --rpc-on=0.0.0.0:9999 --ctl-on=0.0.0.0:8888 --pxy-on=0.0.0.0:9998 --wpx-on=0.0.0.0:9997 --rpx-on=0.0.0.0:9996
+- ./hodu client --rpc-to=127.0.0.1:9999 --ctl-on=127.0.0.1:1107 --client-token=tratra --rpx-target-addr=127.0.0.1:1212 "127.0.0.2:22,0.0.0.0:12345,ssh,Access SSH Server"
 
-## port based proxy service
-- ./hodu server --rpc-on=0.0.0.0:9999 --ctl-on=0.0.0.0:8888 --pxy-on=0.0.0.0:9998 --wpx-on=0.0.0.0:9997
-- ./hodu client --rpc-to=127.0.0.1:9999 --ctl-on=127.0.0.1:1107 "127.0.0.2:22,0.0.0.0:12345,ssh,Access SSH Server"
+- On the client side
+  - python -m http.server 1212
+- On the server side
+  - curl -v -H 'Host: tratra' http://127.0.0.1:9996/hello/world
 
 ## server.json
 ```
