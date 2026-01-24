@@ -429,13 +429,13 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 	pb, b = pem.Decode(rsa_key_text)
 	if pb == nil || len(b) > 0 {
 		// show up to first 8 characters only
-		return nil, fmt.Errorf("invalid token rsa key text %.8s... - no block or too many blocks", string(rsa_key_text))
+		return nil, fmt.Errorf("invalid token rsa key text %.32s... - no block or too many blocks", string(rsa_key_text))
 	}
 
 	rk, err = x509.ParsePKCS1PrivateKey(pb.Bytes)
 	if err != nil {
 		// show up to first 8 characters only
-		return nil, fmt.Errorf("invalid token rsa key text %.8s... - %s", string(rsa_key_text), err.Error())
+		return nil, fmt.Errorf("invalid token rsa key text %.32s... - %s", string(rsa_key_text), err.Error())
 	}
 
 	config.TokenRsaKey = rk
