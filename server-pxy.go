@@ -375,7 +375,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 	}
 */
 	addr = svc_addr_to_dst_addr(pi.SvcAddr)
-	transport, err = pxy.addr_to_transport(s.Ctx, addr)
+	transport, err = pxy.addr_to_transport(req.Context(), addr)
 	if err != nil {
 		status_code = WriteEmptyRespHeader(w, http.StatusBadGateway)
 		goto oops

@@ -1528,6 +1528,7 @@ reconnect_to_server:
 					// this check seem redundant but the go-runtime doesn't seem to guarantee
 					// the order of event selection whtn cts.C.Ctx.Done() and slpctx.Done()
 					// are both completed.
+					slpctx_cancel()
 					goto req_stop_and_wait_for_termination
 				default:
 					// do nothing. go on
