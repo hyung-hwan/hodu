@@ -84,6 +84,9 @@ type ClientConfig struct {
 	CtlPrefix string
 	CtlAuth *HttpAuthConfig
 	CtlCors bool
+	HttpReadHeaderTimeout time.Duration
+	HttpIdleTimeout time.Duration
+	HttpMaxHeaderBytes int
 
 	RpcTls *tls.Config
 	RpcConnMax int
@@ -2305,6 +2308,9 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	var c Client
 	var i int
 	var hs_base_ctx func(net.Listener) context.Context
+	var hs_read_header_timeout time.Duration
+	var hs_idle_timeout time.Duration
+	var hs_max_header_bytes int
 	var hs_log_ctl *log.Logger
 
 	c.name = name
@@ -2420,6 +2426,9 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.ctl = make([]*http.Server, len(cfg.CtlAddrs))
 	copy(c.ctl_addr, cfg.CtlAddrs)
 
+	hs_read_header_timeout = cfg.HttpReadHeaderTimeout
+	hs_idle_timeout = cfg.HttpIdleTimeout
+	hs_max_header_bytes = cfg.HttpMaxHeaderBytes
 	hs_base_ctx = func(_ net.Listener) context.Context { return c.Ctx }
 	hs_log_ctl = log.New(&client_ctl_log_writer{cli: &c, id: "ctl", depth: 0}, "", 0)
 
@@ -2428,6 +2437,9 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 			Addr: cfg.CtlAddrs[i],
 			Handler: c.ctl_mux,
 			TLSConfig: c.ctl_tls.Clone(),
+			ReadHeaderTimeout: hs_read_header_timeout,
+			IdleTimeout: hs_idle_timeout,
+			MaxHeaderBytes: hs_max_header_bytes,
 			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_ctl,
 			// TODO: more settings

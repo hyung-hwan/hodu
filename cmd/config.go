@@ -107,6 +107,9 @@ type ServerAppConfig  struct {
 	MaxPeers        int       `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns     int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
 	MinRpcPingIntvl time.Duration  `yaml:"min-rpc-ping-interval"`
+	HttpReadHeaderTimeout time.Duration `yaml:"http-read-header-timeout"`
+	HttpIdleTimeout       time.Duration `yaml:"http-idle-timeout"`
+	HttpMaxHeaderBytes    int           `yaml:"http-max-header-bytes"`
 	PtyUser         string    `yaml:"pty-user"`
 	PtyShell        string    `yaml:"pty-shell"`
 	XtermHtmlFile   string    `yaml:"xterm-html-file"`
@@ -120,6 +123,9 @@ type ClientAppConfig  struct {
 	MaxPeers      int           `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns   int           `yaml:"max-rpc-conns"` // maximum number of rpc connections
 	PeerConnTmout time.Duration `yaml:"peer-conn-timeout"`
+	HttpReadHeaderTimeout time.Duration `yaml:"http-read-header-timeout"`
+	HttpIdleTimeout       time.Duration `yaml:"http-idle-timeout"`
+	HttpMaxHeaderBytes    int           `yaml:"http-max-header-bytes"`
 	TokenText     string        `yaml:"token-text"`
 	TokenFile     string        `yaml:"token-file"`
 	PtyUser       string        `yaml:"pty-user"`

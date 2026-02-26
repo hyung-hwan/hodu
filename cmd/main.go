@@ -151,6 +151,9 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	config.RpcMaxConns = cfg.APP.MaxRpcConns
 	config.RpcMinPingIntvl = cfg.APP.MinRpcPingIntvl
 	config.MaxPeers = cfg.APP.MaxPeers
+	config.HttpReadHeaderTimeout = cfg.APP.HttpReadHeaderTimeout
+	config.HttpIdleTimeout = cfg.APP.HttpIdleTimeout
+	config.HttpMaxHeaderBytes = cfg.APP.HttpMaxHeaderBytes
 
 	pty_user = cfg.APP.PtyUser
 	pty_shell = cfg.APP.PtyShell
@@ -311,6 +314,9 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	config.RpcPingIntvl = cfg.APP.RpcPingIntvl // app-level default
 	config.RpcPingTmout = cfg.APP.RpcPingTmout // app-level default
 	config.RpcSeedTmout = cfg.APP.RpcSeedTmout // app-level default
+	config.HttpReadHeaderTimeout = cfg.APP.HttpReadHeaderTimeout
+	config.HttpIdleTimeout = cfg.APP.HttpIdleTimeout
+	config.HttpMaxHeaderBytes = cfg.APP.HttpMaxHeaderBytes
 
 	if cfg.APP.TokenText != "" {
 		config.Token = cfg.APP.TokenText

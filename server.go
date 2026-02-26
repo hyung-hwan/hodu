@@ -64,6 +64,9 @@ type ServerConfig struct {
 	RpcMaxConns int
 	RpcMinPingIntvl time.Duration
 	MaxPeers int
+	HttpReadHeaderTimeout time.Duration
+	HttpIdleTimeout time.Duration
+	HttpMaxHeaderBytes int
 
 	CtlAddrs []string
 	CtlTls *tls.Config
@@ -1682,6 +1685,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	var rpcaddr *net.TCPAddr
 	var addr string
 	var i int
+	var hs_read_header_timeout time.Duration
+	var hs_idle_timeout time.Duration
+	var hs_max_header_bytes int
 	var hs_base_ctx func(net.Listener) context.Context
 	var hs_log_ctl *log.Logger
 	var hs_log_rpx *log.Logger
@@ -1748,6 +1754,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	RegisterHoduServer(s.rpc_svr, &s)
 
 	// ---------------------------------------------------------
+
+	hs_read_header_timeout = cfg.HttpReadHeaderTimeout
+	hs_idle_timeout = cfg.HttpIdleTimeout
+	hs_max_header_bytes = cfg.HttpMaxHeaderBytes
 
 	// create the base context for http servers to be created.
 	// if s.Ctx is cancelled, i like all in-flight requests to be cancelled as well
@@ -1856,6 +1866,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Handler: s.ctl_mux,
 			// race condition issues without cloning. the http package modifies some fields in the configuration object
 			TLSConfig: cfg.CtlTls.Clone(),
+			ReadHeaderTimeout: hs_read_header_timeout,
+			IdleTimeout: hs_idle_timeout,
+			MaxHeaderBytes: hs_max_header_bytes,
 			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_ctl,
 			// TODO: more settings
@@ -1873,6 +1886,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.RpxAddrs[i],
 			Handler: s.rpx_mux,
 			TLSConfig: cfg.RpxTls.Clone(),
+			ReadHeaderTimeout: hs_read_header_timeout,
+			IdleTimeout: hs_idle_timeout,
+			MaxHeaderBytes: hs_max_header_bytes,
 			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_rpx,
 			// TODO: more settings
@@ -1931,6 +1947,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.PxyAddrs[i],
 			Handler: s.pxy_mux,
 			TLSConfig: cfg.PxyTls.Clone(),
+			ReadHeaderTimeout: hs_read_header_timeout,
+			IdleTimeout: hs_idle_timeout,
+			MaxHeaderBytes: hs_max_header_bytes,
 			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_pxy,
 			// TODO: more settings
@@ -1986,6 +2005,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.WpxAddrs[i],
 			Handler: s.wpx_mux,
 			TLSConfig: cfg.WpxTls.Clone(),
+			ReadHeaderTimeout: hs_read_header_timeout,
+			IdleTimeout: hs_idle_timeout,
+			MaxHeaderBytes: hs_max_header_bytes,
 			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_wpx,
 		}
