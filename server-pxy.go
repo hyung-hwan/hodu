@@ -135,7 +135,7 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 		_, local_port, err = net.SplitHostPort(conn_addr.String())
 		if err == nil {
 			oldv, ok = newhdr["X-Forwarded-Port"]
-			if !ok { newhdr.Set("X-Fowarded-Port", local_port) }
+			if !ok { newhdr.Set("X-Forwarded-Port", local_port) }
 		}
 	}
 
@@ -147,7 +147,7 @@ func mutate_proxy_req_headers(req *http.Request, newreq *http.Request, path_pref
 		} else {
 			proto = "https"
 		}
-		newhdr.Set("X-Fowarded-Proto", proto)
+		newhdr.Set("X-Forwarded-Proto", proto)
 	}
 
 	_, ok = newhdr["X-Forwarded-Host"]
@@ -384,7 +384,7 @@ func (pxy *server_pxy_http_main) ServeHTTP(w http.ResponseWriter, req *http.Requ
 
 	s.log.Write(pxy.Id, LOG_INFO, "[%s] %s %s -> %+v", req.RemoteAddr, req.Method, req.RequestURI, proxy_url)
 
-	proxy_req, err = http.NewRequestWithContext(s.Ctx, req.Method, proxy_url.String(), req.Body)
+	proxy_req, err = http.NewRequestWithContext(req.Context(), req.Method, proxy_url.String(), req.Body)
 	if err != nil {
 		status_code = WriteEmptyRespHeader(w, http.StatusInternalServerError)
 		goto oops
@@ -559,6 +559,107 @@ oops:
 }
 
 // ------------------------------------
+
+type server_pxy_ssh_ws_conn_state struct {
+	mtx sync.RWMutex
+	connecting bool
+	c *ssh.Client
+	sess *ssh.Session
+	in io.Writer
+	out io.Reader
+
+	ready_chan chan bool
+}
+
+func (st *server_pxy_ssh_ws_conn_state) init() {
+	 // ready_chan is not bound to the mutex
+	 st.ready_chan = make(chan bool, 3)
+}
+
+func (st *server_pxy_ssh_ws_conn_state) prepare_connect() bool {
+	var ok bool
+
+	st.mtx.Lock()
+	if st.connecting || st.sess != nil {
+		ok = false
+	} else {
+		st.connecting = true
+		ok = true
+	}
+	st.mtx.Unlock()
+
+	return ok
+}
+
+
+func (st *server_pxy_ssh_ws_conn_state) set_connected(c *ssh.Client, sess *ssh.Session, in io.Writer, out io.Reader) {
+	st.mtx.Lock()
+	st.c = c
+	st.sess = sess
+	st.in = in
+	st.out = out
+	st.connecting = false
+	st.mtx.Unlock()
+}
+
+func (st *server_pxy_ssh_ws_conn_state) set_connect_failed() {
+	st.mtx.Lock()
+	st.connecting = false
+	st.mtx.Unlock()
+}
+
+func (st *server_pxy_ssh_ws_conn_state) get_sess() *ssh.Session {
+	var sess *ssh.Session
+	st.mtx.RLock()
+	sess = st.sess
+	st.mtx.RUnlock()
+	return sess
+}
+
+func (st *server_pxy_ssh_ws_conn_state) get_in() io.Writer {
+	var in io.Writer
+	st.mtx.RLock()
+	in = st.in
+	st.mtx.RUnlock()
+	return in
+}
+
+func (st *server_pxy_ssh_ws_conn_state) get_out() io.Reader {
+	var out io.Reader
+	st.mtx.RLock()
+	out = st.out
+	st.mtx.RUnlock()
+	return out
+}
+
+func (st *server_pxy_ssh_ws_conn_state) has_sess() bool {
+	var ok bool
+	st.mtx.RLock()
+	ok = st.sess != nil
+	st.mtx.RUnlock()
+	return ok
+}
+
+func (st *server_pxy_ssh_ws_conn_state) end() {
+	var c *ssh.Client
+	var sess *ssh.Session
+
+	st.mtx.Lock()
+	c = st.c
+	sess = st.sess
+	st.c = nil
+	st.sess = nil
+	st.in = nil
+	st.out = nil
+	st.connecting = false
+	st.mtx.Unlock()
+
+	if sess != nil { sess.Close() }
+	if c != nil { c.Close() }
+}
+
+// ------------------------------------
+
 type server_pxy_ssh_ws struct {
 	S *Server
 	ws *websocket.Conn
@@ -637,6 +738,93 @@ oops:
 	return nil, nil, nil, nil, err
 }
 
+func (pxy *server_pxy_ssh_ws) connect_ssh_for_ws(ws *websocket.Conn, ssh_state *server_pxy_ssh_ws_conn_state, ctx context.Context, cancel context.CancelFunc, username string, password string, r* ServerRoute) {
+
+	var s *Server
+	var req *http.Request
+
+	var c *ssh.Client
+	var sess *ssh.Session
+	var in io.Writer
+	var out io.Reader
+
+	var err error
+
+	s = pxy.S;
+	req = ws.Request();
+
+	c, sess, in, out, err = pxy.connect_ssh(ctx, username, password, r)
+	if err != nil {
+		ssh_state.set_connect_failed()
+
+		s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to connect ssh - %s", req.RemoteAddr, err.Error())
+		send_ws_data_for_xterm(ws, "error", err.Error())
+
+		//ws.Close() // dirty way to flag out the error
+		ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
+	} else {
+		ssh_state.set_connected(c, sess, in, out)
+
+		err = send_ws_data_for_xterm(ws, "status", "opened")
+		if err != nil {
+			// ws failuer after ssh success
+			s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
+			ssh_state.end()
+			//ws.Close() // dirty way to flag out the error
+			ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
+		} else {
+			s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Opened SSH session", req.RemoteAddr)
+			ssh_state.ready_chan <- true // notify
+		}
+	}
+}
+
+func (pxy *server_pxy_ssh_ws) read_ssh_for_ws(ws *websocket.Conn, ssh_state *server_pxy_ssh_ws_conn_state, wg *sync.WaitGroup)  {
+	var s *Server
+	var req *http.Request
+	var conn_ready bool
+
+	defer wg.Done()
+
+	s = pxy.S;
+	req = ws.Request();
+
+	conn_ready = <-ssh_state.ready_chan // received notification
+	if conn_ready { // connected
+		var buf [2048]byte
+		var n int
+		var out io.Reader
+		var err error
+
+		out = ssh_state.get_out()
+		if out == nil { goto done } // double-check. something is wrong internally.
+
+		s.stats.ssh_proxy_sessions.Add(1)
+		for {
+			n, err = out.Read(buf[:])
+			if n > 0 {
+				var err2 error
+				err2 = send_ws_data_for_xterm(ws, "iov", base64.StdEncoding.EncodeToString(buf[:n]))
+				if err2 != nil {
+					s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err2.Error())
+					break
+				}
+			}
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to read from SSH stdout - %s", req.RemoteAddr, err.Error())
+				}
+				break
+			}
+		}
+		s.stats.ssh_proxy_sessions.Add(-1)
+	}
+
+done:
+	//ws.Close() // dirty way to break the main loop
+	ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
+}
+
 func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var s *Server
 	var req *http.Request
@@ -644,21 +832,14 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var conn_id string
 	var route_id string
 	var r *ServerRoute
-	var username string
-	var password string
-	var c *ssh.Client
-	var sess *ssh.Session
-	var in io.Writer
-	var out io.Reader
+	var ssh_state server_pxy_ssh_ws_conn_state
 	var wg sync.WaitGroup
-	var conn_ready_chan chan bool
-	var connect_ssh_ctx context.Context
 	var connect_ssh_cancel Atom[context.CancelFunc]
 	var err error
 
 	s = pxy.S
 	req = ws.Request()
-	conn_ready_chan = make(chan bool, 3)
+	ssh_state.init()
 
 	port_id = req.PathValue("port_id")
 	conn_id = req.PathValue("conn_id")
@@ -691,46 +872,13 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	}
 
 	wg.Add(1)
-	go func() {
-		var conn_ready bool
+	go pxy.read_ssh_for_ws(ws, &ssh_state, &wg) // start the ssh read loop
 
-		defer wg.Done()
-		//defer ws.Close() // dirty way to break the main loop
-		defer ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
-
-		conn_ready = <-conn_ready_chan
-		if conn_ready { // connected
-			var buf [2048]byte
-			var n int
-			var err error
-
-			s.stats.ssh_proxy_sessions.Add(1)
-			for {
-				n, err = out.Read(buf[:])
-				if n > 0 {
-					var err2 error
-					err2 = send_ws_data_for_xterm(ws, "iov", base64.StdEncoding.EncodeToString(buf[:n]))
-					if err2 != nil {
-						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err2.Error())
-						break
-					}
-				}
-				if err != nil {
-					if !errors.Is(err, io.EOF) {
-						s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to read from SSH stdout - %s", req.RemoteAddr, err.Error())
-					}
-					break
-				}
-			}
-			s.stats.ssh_proxy_sessions.Add(-1)
-		}
-	}()
-
-ws_recv_loop:
+ws_recv_loop: //read from ws and write to ssh
 	for {
 		var msg []byte
 		err = websocket.Message.Receive(ws, &msg)
-		if err != nil { goto done }
+		if err != nil { goto done } // to skip writing an error back to ws
 
 		if len(msg) > 0 {
 			var ev json_xterm_ws_event
@@ -738,64 +886,64 @@ ws_recv_loop:
 			if err == nil {
 				switch ev.Type {
 					case "open":
-						if sess == nil && len(ev.Data) == 2 {
+						if len(ev.Data) == 2 {
+							var can_connect bool
+							var username string
+							var password string
+							var ctx context.Context
 							var cancel context.CancelFunc
+
+							can_connect = ssh_state.prepare_connect();
+							if !can_connect {
+								s.log.Write(pxy.Id, LOG_WARN, "[%s] SSH session is already opening/opened", req.RemoteAddr)
+								break
+							}
 
 							username = string(ev.Data[0])
 							password = string(ev.Data[1])
 
-							connect_ssh_ctx, cancel = context.WithTimeout(req.Context(), 10 * time.Second) // TODO: configurable timeout
+							ctx, cancel = context.WithTimeout(req.Context(), 10 * time.Second) //TODO: configurable timeout
 							connect_ssh_cancel.Set(cancel)
 
 							wg.Add(1)
 							go func() {
-								var err error
-
 								defer wg.Done()
-								c, sess, in, out, err = pxy.connect_ssh(connect_ssh_ctx, username, password, r)
-								if err != nil {
-									s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to connect ssh - %s", req.RemoteAddr, err.Error())
-									send_ws_data_for_xterm(ws, "error", err.Error())
-									//ws.Close() // dirty way to flag out the error
-									ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
-								} else {
-									err = send_ws_data_for_xterm(ws, "status", "opened")
-									if err != nil {
-										s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
-										//ws.Close() // dirty way to flag out the error
-										ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
-									} else {
-										s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Opened SSH session", req.RemoteAddr)
-										conn_ready_chan <- true
-									}
-								}
-								(connect_ssh_cancel.Get())()
-								connect_ssh_cancel.Set(nil) // @@@ use atomic
+								pxy.connect_ssh_for_ws(ws, &ssh_state, ctx, cancel, username, password, r)
+								cancel()
+								connect_ssh_cancel.Set(nil)
 							}()
-						}
+					      }
 
 					case "close":
 						var cancel context.CancelFunc
 						cancel = connect_ssh_cancel.Get() // is it a good way to avoid mutex against Set() marked with @@@ above?
 						if cancel != nil { cancel() }
+						// don't need to store nil in connect_ssh_cancel
 						break ws_recv_loop
 
 					case "iov":
-						if sess != nil {
+						var in io.Writer
+						in = ssh_state.get_in()
+						if in != nil {
 							var i int
 							for i, _ = range ev.Data {
-								//in.Write([]byte(ev.Data[i]))
 								var bytes []byte
 								bytes, err = base64.StdEncoding.DecodeString(ev.Data[i])
 								if err != nil {
 									s.log.Write(pxy.Id, LOG_WARN, "[%s] Invalid pxy iov data received - %s", req.RemoteAddr, ev.Data[i])
 								} else {
-									in.Write(bytes)
+									_, err = in.Write(bytes)
+									if err != nil {
+										s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write to SSH in - %s", req.RemoteAddr, err.Error())
+										break
+									}
 								}
 							}
 						}
 
 					case "size":
+						var sess *ssh.Session
+						sess = ssh_state.get_sess()
 						if sess != nil && len(ev.Data) == 2 {
 							var rows int
 							var cols int
@@ -810,17 +958,29 @@ ws_recv_loop:
 		}
 	}
 
-	if sess != nil {
+	if ssh_state.has_sess() {
 		err = send_ws_data_for_xterm(ws, "status", "closed")
 		if err != nil { goto done }
 	}
 
 done:
-	conn_ready_chan <- false
+	{
+		// cancel any ongoing ssh connection attempts if
+		// the flow got out of ws_recv_loop and reached here
+		// without proper close or timeout.
+		var cancel context.CancelFunc
+		cancel = connect_ssh_cancel.Get()
+		if cancel != nil { cancel() }
+		connect_ssh_cancel.Set(nil)
+	}
+
+	ssh_state.ready_chan <- false
+
+	ssh_state.end() // immediate close of existing ssh connections
 	ws.Close()
-	if sess != nil { sess.Close() }
-	if c != nil { c.Close() }
 	wg.Wait()
+	ssh_state.end() // just in case...
+
 	s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Ended SSH Session", req.RemoteAddr)
 
 	return http.StatusOK, err

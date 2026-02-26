@@ -13,6 +13,9 @@ service Hodu {
 	rpc PacketStream (stream Packet) returns (stream Packet) {}
 }
 
+// When you add more fields to the Seed message, don't forget to
+// add the fields to the SeedInfo struct in client.go and
+// the copying code from Seed To SeedInfo
 message Seed {
 	uint32 Version = 1;
 	uint64 Flags = 2;

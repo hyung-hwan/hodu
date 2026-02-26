@@ -1682,6 +1682,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	var rpcaddr *net.TCPAddr
 	var addr string
 	var i int
+	var hs_base_ctx func(net.Listener) context.Context
 	var hs_log_ctl *log.Logger
 	var hs_log_rpx *log.Logger
 	var hs_log_pxy *log.Logger
@@ -1747,6 +1748,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	RegisterHoduServer(s.rpc_svr, &s)
 
 	// ---------------------------------------------------------
+
+	// create the base context for http servers to be created.
+	// if s.Ctx is cancelled, i like all in-flight requests to be cancelled as well
+	hs_base_ctx = func(_ net.Listener) context.Context { return s.Ctx }
 
 	hs_log_ctl = log.New(&server_http_log_writer{svr: &s, id: "ctl", depth: +2}, "", 0)
 	hs_log_rpx = log.New(&server_http_log_writer{svr: &s, id: "rpx", depth: +2}, "", 0)
@@ -1851,6 +1856,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Handler: s.ctl_mux,
 			// race condition issues without cloning. the http package modifies some fields in the configuration object
 			TLSConfig: cfg.CtlTls.Clone(),
+			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_ctl,
 			// TODO: more settings
 		}
@@ -1867,6 +1873,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.RpxAddrs[i],
 			Handler: s.rpx_mux,
 			TLSConfig: cfg.RpxTls.Clone(),
+			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_rpx,
 			// TODO: more settings
 		}
@@ -1924,6 +1931,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.PxyAddrs[i],
 			Handler: s.pxy_mux,
 			TLSConfig: cfg.PxyTls.Clone(),
+			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_pxy,
 			// TODO: more settings
 		}
@@ -1978,6 +1986,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 			Addr: cfg.WpxAddrs[i],
 			Handler: s.wpx_mux,
 			TLSConfig: cfg.WpxTls.Clone(),
+			BaseContext: hs_base_ctx,
 			ErrorLog: hs_log_wpx,
 		}
 	}
@@ -2072,7 +2081,7 @@ func (s *Server) RunTask(wg *sync.WaitGroup) {
 		go s.run_grpc_server(idx, &s.rpc_wg)
 	}
 
-	// most work is done in separate goroutines (s.run_grp_server)
+	// most work is done in separate goroutines (s.run_grpc_server)
 	// this read on the stop channel serves as a placeholder to prevent the logic flow from
 	// descening down to s.ReqStop()
 	<-s.stop_chan
