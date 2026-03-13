@@ -122,14 +122,14 @@ func MakeRxcStartPacket(id uint64, kind string, script string) (*Packet, error) 
 	enc = gob.NewEncoder(&buf)
 	err = enc.Encode([]string{ kind, script });
 	if err != nil { return nil, err }
-	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: buf.Bytes()}}}, nil
+	return &Packet{Kind: PACKET_KIND_RXC_START, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: buf.Bytes()}}}, nil
 }
 
 func MakeRxcStopPacket(id uint64, msg string) *Packet {
 	// the rpty stop conveys an error/info message
-	return &Packet{Kind: PACKET_KIND_RPTY_STOP, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: []byte(msg)}}}
+	return &Packet{Kind: PACKET_KIND_RXC_STOP, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: []byte(msg)}}}
 }
 
 func MakeRxcDataPacket(id uint64, data []byte) *Packet {
-	return &Packet{Kind: PACKET_KIND_RPTY_DATA, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: data}}}
+	return &Packet{Kind: PACKET_KIND_RXC_DATA, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: data}}}
 }

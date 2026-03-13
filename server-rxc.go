@@ -105,6 +105,10 @@ ws_recv_loop:
 								// ignore error for now
 							}
 						}
+
+					default:
+						send_ws_data_for_xterm(ws, "error", fmt.Sprintf("invalid rxc event type - %s", ev.Type));
+						s.log.Write(rxc.Id, LOG_WARN, "[%s] Invalid rxc event type received - %s", req.RemoteAddr, ev.Type)
 				}
 			}
 		}

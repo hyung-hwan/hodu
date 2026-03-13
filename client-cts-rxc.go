@@ -5,6 +5,8 @@ import "encoding/gob"
 import "errors"
 import "fmt"
 import "io"
+import "os"
+import "os/exec"
 import "sync"
 
 import "golang.org/x/sys/unix"
@@ -101,6 +103,38 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ended rxc(%d) loop", crp.id)
 }
 
+func connect_cmd(_type string, script string) (*exec.Cmd, *os.File, error) {
+	var cmd *exec.Cmd
+	var out io.ReadCloser
+	var out_f *os.File
+	var ok bool
+	var err error
+
+	if _type == "bash" {
+		// TODO: refactor stop using Context
+		//cmd = exec.CommandContext()
+		cmd = exec.Command("/bin/bash", "-c", script)
+	} else {
+		return nil, nil, fmt.Errorf("unsupport type - %s", _type)
+	}
+
+	out, err = cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("unable to get stdout pipe - %s", err.Error())
+	}
+	out_f, ok = out.(*os.File)
+	if !ok {
+		return nil, nil, fmt.Errorf("unsupported stdout pipe")
+	}
+
+	err = cmd.Start()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return cmd, out_f, nil
+}
+
 func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) error {
 	var crp *ClientRxc
 	var ok bool
@@ -129,7 +163,8 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 		cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
 		return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, cts.C.pty_shell, cts.C.pty_user, err.Error())
 	}
-	crp.cmd, crp.tty, err = connect_pty(cts.C.pty_shell, cts.C.pty_user)
+	//crp.cmd, crp.tty, err = connect_pty(cts.C.pty_shell, cts.C.pty_user)
+	crp.cmd, crp.tty, err = connect_cmd(cts.C.pty_shell, cts.C.pty_user)
 	if err != nil {
 		cts.rxc_mtx.Unlock()
 		cts.psc.Send(MakeRxcStopPacket(id, err.Error()))

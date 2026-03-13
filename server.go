@@ -154,7 +154,7 @@ type Server struct {
 
 	cts_limit        int
 	cts_next_id      ConnId
-	cts_mtx          sync.Mutex
+	cts_mtx          sync.RWMutex
 	cts_map          ServerConnMap
 	cts_map_by_addr  ServerConnMapByAddr
 	cts_map_by_token ServerConnMapByClientToken
@@ -1655,6 +1655,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.ctl_mux.Handle("/_rpty/",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_redir:xterm.html"}))
 
+	s.ctl_mux.Handle("/_rxc/ws",
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_rxc_ws{S: &s, Id: HS_ID_CTL})))
+
 	s.ctl = make([]*http.Server, len(cfg.CtlAddrs))
 	for i = 0; i < len(cfg.CtlAddrs); i++ {
 		s.ctl[i] = &http.Server{
@@ -2182,9 +2185,7 @@ func (s *Server) ReqStop() {
 		}
 
 		// request to stop connections from/to peer held in the cts structure
-		s.cts_mtx.Lock()
-		for _, cts = range s.cts_map { cts.ReqStop() }
-		s.cts_mtx.Unlock()
+		for _, cts = range s.snapshot_server_conns() { cts.ReqStop() }
 
 		s.stop_chan <- true
 	}
@@ -2271,9 +2272,7 @@ func (s *Server) AddNewServerConn(remote_addr *net.Addr, local_addr *net.Addr, p
 
 func (s *Server) ReqStopAllServerConns() {
 	var cts *ServerConn
-	s.cts_mtx.Lock()
-	for _, cts = range s.cts_map { cts.ReqStop() }
-	s.cts_mtx.Unlock()
+	for _, cts = range s.snapshot_server_conns() { cts.ReqStop() }
 }
 
 func (s *Server) RemoveServerConn(cts *ServerConn) error {
@@ -2348,8 +2347,8 @@ func (s *Server) FindServerConnById(id ConnId) *ServerConn {
 	var cts *ServerConn
 	var ok bool
 
-	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
+	s.cts_mtx.RLock()
+	defer s.cts_mtx.RUnlock()
 
 	cts, ok = s.cts_map[id]
 	if !ok { return nil }
@@ -2361,8 +2360,8 @@ func (s *Server) FindServerConnByAddr(addr net.Addr) *ServerConn {
 	var cts *ServerConn
 	var ok bool
 
-	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
+	s.cts_mtx.RLock()
+	defer s.cts_mtx.RUnlock()
 
 	cts, ok = s.cts_map_by_addr[addr]
 	if !ok { return nil }
@@ -2374,8 +2373,8 @@ func (s *Server) FindServerConnByClientToken(token string) *ServerConn {
 	var cts *ServerConn
 	var ok bool
 
-	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
+	s.cts_mtx.RLock()
+	defer s.cts_mtx.RUnlock()
 
 	cts, ok = s.cts_map_by_token[token]
 	if !ok { return nil }
@@ -2387,8 +2386,8 @@ func (s *Server) FindServerRouteById(id ConnId, route_id RouteId) *ServerRoute {
 	var cts *ServerConn
 	var ok bool
 
-	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
+	s.cts_mtx.RLock()
+	defer s.cts_mtx.RUnlock()
 
 	cts, ok = s.cts_map[id]
 	if !ok { return nil }
@@ -2400,8 +2399,8 @@ func (s *Server) FindServerRouteByIdAndPtcName(id ConnId, ptc_name string) *Serv
 	var cts *ServerConn
 	var ok bool
 
-	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
+	s.cts_mtx.RLock()
+	defer s.cts_mtx.RUnlock()
 
 	cts, ok = s.cts_map[id]
 	if !ok { return nil }
@@ -2413,8 +2412,8 @@ func (s *Server) FindServerRouteByClientTokenAndRouteId(token string, route_id R
 	var cts *ServerConn
 	var ok bool
 
-	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
+	s.cts_mtx.RLock()
+	defer s.cts_mtx.RUnlock()
 
 	cts, ok = s.cts_map_by_token[token]
 	if !ok { return nil }
@@ -2426,8 +2425,8 @@ func (s *Server) FindServerRouteByClientTokenAndPtcName(token string, ptc_name s
 	var cts *ServerConn
 	var ok bool
 
-	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
+	s.cts_mtx.RLock()
+	defer s.cts_mtx.RUnlock()
 
 	cts, ok = s.cts_map_by_token[token]
 	if !ok { return nil }
@@ -2439,8 +2438,8 @@ func (s *Server) FindServerPeerConnById(id ConnId, route_id RouteId, peer_id Pee
 	var cts *ServerConn
 	var ok bool
 
-	s.cts_mtx.Lock()
-	defer s.cts_mtx.Unlock()
+	s.cts_mtx.RLock()
+	defer s.cts_mtx.RUnlock()
 
 	cts, ok = s.cts_map[id]
 	if !ok { return nil }
@@ -2686,6 +2685,19 @@ func (s *Server) RemoveCtlMetricsCollector(col prometheus.Collector) bool {
 	return s.promreg.Unregister(col)
 }
 
+func (s *Server) snapshot_server_conns() []*ServerConn {
+	var conns []*ServerConn
+	var cts *ServerConn
+
+	s.cts_mtx.RLock()
+	conns = make([]*ServerConn, 0, len(s.cts_map))
+	for _, cts = range s.cts_map {
+		conns = append(conns, cts)
+	}
+	s.cts_mtx.RUnlock()
+	return conns
+}
+
 func (s *Server) SendNotice(id_str string, text string) error {
 	var cts *ServerConn
 	var err error
@@ -2698,14 +2710,10 @@ func (s *Server) SendNotice(id_str string, text string) error {
 			return fmt.Errorf("failed to send conn_notice text '%s' to %s - %s", text, cts.RemoteAddr, err.Error())
 		}
 	} else {
-		s.cts_mtx.Lock()
-		// TODO: what if this loop takes too long? in that case,
-		//       lock is held for long. think about how to handle this.
-		for _, cts = range s.cts_map {
+		for _, cts = range s.snapshot_server_conns() {
 			cts.pss.Send(MakeConnNoticePacket(text))
 			// let's not care about an error when broacasting a notice to all connections
 		}
-		s.cts_mtx.Unlock()
 	}
 
 	return nil

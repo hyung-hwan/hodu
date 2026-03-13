@@ -220,6 +220,7 @@ type ClientRxc struct {
 	id uint64
 	cmd *exec.Cmd
 	tty *os.File
+	//out *os.File
 	pfd [2]int
 }
 

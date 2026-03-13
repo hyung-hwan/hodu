@@ -35,6 +35,7 @@ SRCS=\
 	server-pty.go \
 	server-pxy.go \
 	server-rpx.go \
+	server-rxc.go \
 	system.go \
 	transform.go \
 

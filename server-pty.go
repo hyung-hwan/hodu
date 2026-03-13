@@ -225,6 +225,10 @@ ws_recv_loop:
 							s.log.Write(pty.Id, LOG_DEBUG, "[%s] Resized terminal to %d,%d", req.RemoteAddr, rows, cols)
 							// ignore error
 						}
+
+					default:
+						send_ws_data_for_xterm(ws, "error", fmt.Sprintf("invalid pty event type - %s", ev.Type));
+						s.log.Write(pty.Id, LOG_WARN, "[%s] Invalid pty event type received - %s", req.RemoteAddr, ev.Type)
 				}
 			}
 		}
@@ -348,6 +352,10 @@ ws_recv_loop:
 							s.log.Write(rpty.Id, LOG_DEBUG, "[%s] Requested to resize rpty terminal to %s,%s", req.RemoteAddr, ev.Data[0], ev.Data[1])
 							// ignore error
 						}
+
+					default:
+						send_ws_data_for_xterm(ws, "error", fmt.Sprintf("invalid rpty event type - %s", ev.Type));
+						s.log.Write(rpty.Id, LOG_WARN, "[%s] Invalid rpty event type received - %s", req.RemoteAddr, ev.Type)
 				}
 			}
 		}

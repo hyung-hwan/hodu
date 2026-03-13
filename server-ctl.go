@@ -241,7 +241,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 			var ci ConnId
 
 			js = make([]json_out_server_conn, 0)
-			s.cts_mtx.Lock()
+			s.cts_mtx.RLock()
 			for _, ci = range s.cts_map.get_sorted_keys() {
 				var cts *ServerConn
 				var jsp []json_out_server_route
@@ -277,7 +277,7 @@ func (ctl *server_ctl_server_conns) ServeHTTP(w http.ResponseWriter, req *http.R
 					Routes: jsp,
 				})
 			}
-			s.cts_mtx.Unlock()
+			s.cts_mtx.RUnlock()
 
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(js); err != nil { goto oops }
