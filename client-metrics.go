@@ -13,6 +13,7 @@ type ClientCollector struct {
 	PtySessions      *prometheus.Desc
 	RptySessions     *prometheus.Desc
 	RpxSessions      *prometheus.Desc
+	RxcSessions      *prometheus.Desc
 }
 
 // NewClientCollector returns a new ClientCollector with all prometheus.Desc initialized
@@ -62,6 +63,11 @@ func NewClientCollector(client *Client) ClientCollector {
 		RpxSessions: prometheus.NewDesc(
 			prefix + "rpx_sessions",
 			"Number of rpx sessions",
+			nil, nil,
+		),
+		RxcSessions: prometheus.NewDesc(
+			prefix + "rxc_sessions",
+			"Number of rxc sessions",
 			nil, nil,
 		),
 	}
@@ -122,5 +128,11 @@ func (c ClientCollector) Collect(ch chan<- prometheus.Metric) {
 		c.RpxSessions,
 		prometheus.GaugeValue,
 		float64(c.client.stats.rpx_sessions.Load()),
+	)
+
+	ch <- prometheus.MustNewConstMetric(
+		c.RxcSessions,
+		prometheus.GaugeValue,
+		float64(c.client.stats.rxc_sessions.Load()),
 	)
 }

@@ -93,6 +93,11 @@ message RpxEvent {
 	bytes  Data = 2;
 };
 
+message RxcEvent {
+	uint64 Id = 1;
+	bytes  Data = 2;
+};
+
 enum PACKET_KIND {
 	RESERVED      = 0; // not used
 	ROUTE_START   = 1;
@@ -117,6 +122,10 @@ enum PACKET_KIND {
 	RPX_STOP      = 19;
 	RPX_DATA      = 20;
 	RPX_EOF       = 21;
+
+	RXC_START     = 22;
+	RXC_STOP      = 23;
+	RXC_DATA      = 24;
 };
 
 message Packet {
@@ -131,5 +140,6 @@ message Packet {
 		ConnNotice ConnNoti = 7;
 		RptyEvent  RptyEvt  = 8;
 		RpxEvent   RpxEvt   = 9;
+		RxcEvent   RxcEvt = 10;
 	};
 }

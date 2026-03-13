@@ -13,6 +13,9 @@ SRCS=\
 	bulletin.go \
 	client.go \
 	client-ctl.go \
+	client-cts-rpty.go \
+	client-cts-rpx.go \
+	client-cts-rxc.go \
 	client-metrics.go \
 	client-peer.go \
 	client-pty.go \
@@ -24,6 +27,9 @@ SRCS=\
 	pty.go \
 	server.go \
 	server-ctl.go \
+	server-cts-rpty.go \
+	server-cts-rpx.go \
+	server-cts-rxc.go \
 	server-metrics.go \
 	server-peer.go \
 	server-pty.go \

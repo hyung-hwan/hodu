@@ -79,6 +79,7 @@ type json_out_server_stats struct {
 	ServerPtySessions int64 `json:"server-pty-sessions"`
 	ServerRptySessions int64 `json:"server-rpty-sessions"`
 	ServerRpxSessions int64 `json:"server-rpx-sessions"`
+	ServerRxcSessions int64 `json:"server-rxc-sessions"`
 }
 
 // this is a more specialized variant of json_in_notice
@@ -925,6 +926,7 @@ func (ctl *server_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.ServerPtySessions = s.stats.pty_sessions.Load()
 			stats.ServerRptySessions = s.stats.rpty_sessions.Load()
 			stats.ServerRpxSessions = s.stats.rpx_sessions.Load()
+			stats.ServerRxcSessions = s.stats.rxc_sessions.Load()
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(stats); err != nil { goto oops }
 

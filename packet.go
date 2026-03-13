@@ -1,5 +1,8 @@
 package hodu
 
+import "bytes"
+import "encoding/gob"
+
 type ConnId      uint64
 type RouteId     uint32 // keep this in sync with the type of RouteId in hodu.proto
 type PeerId      uint32 // keep this in sync with the type of RouteId in hodu.proto
@@ -108,4 +111,25 @@ func MakeRpxDataPacket(id uint64, data_part []byte) *Packet {
 
 func MakeRpxEofPacket(id uint64) *Packet {
 	return &Packet{Kind: PACKET_KIND_RPX_EOF, U: &Packet_RpxEvt{RpxEvt: &RpxEvent{Id: id}}}
+}
+
+
+func MakeRxcStartPacket(id uint64, kind string, script string) (*Packet, error) {
+	var enc *gob.Encoder
+	var buf bytes.Buffer;
+	var err error
+
+	enc = gob.NewEncoder(&buf)
+	err = enc.Encode([]string{ kind, script });
+	if err != nil { return nil, err }
+	return &Packet{Kind: PACKET_KIND_RPTY_START, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: buf.Bytes()}}}, nil
+}
+
+func MakeRxcStopPacket(id uint64, msg string) *Packet {
+	// the rpty stop conveys an error/info message
+	return &Packet{Kind: PACKET_KIND_RPTY_STOP, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: []byte(msg)}}}
+}
+
+func MakeRxcDataPacket(id uint64, data []byte) *Packet {
+	return &Packet{Kind: PACKET_KIND_RPTY_DATA, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: data}}}
 }

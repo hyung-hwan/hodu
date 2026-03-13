@@ -115,6 +115,7 @@ type json_out_client_stats struct {
 	ClientPtySessions int64 `json:"client-pty-sessions"`
 	ClientRptySessions int64 `json:"client-rpty-sessions"`
 	ClientRpxSessions int64 `json:"client-rpx-sessions"`
+	ClientRxcSessions int64 `json:"client-rxc-sessions"`
 }
 // ------------------------------------
 
@@ -1148,6 +1149,7 @@ func (ctl *client_ctl_stats) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			stats.ClientPtySessions = c.stats.pty_sessions.Load()
 			stats.ClientRptySessions = c.stats.rpty_sessions.Load()
 			stats.ClientRpxSessions = c.stats.rpx_sessions.Load()
+			stats.ClientRxcSessions = c.stats.rxc_sessions.Load()
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(stats); err != nil { goto oops }
 
