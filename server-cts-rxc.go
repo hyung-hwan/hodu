@@ -1,14 +1,12 @@
 package hodu
 
+// Rxc - remote exec (server-side triggered, client-side executed)
 
-import "encoding/base64"
 import "fmt"
 
 import "golang.org/x/net/websocket"
 
-
-// Rxc - remote exec (server-side triggered, client-side executed)
-func (cts *ServerConn) StartRxc(ws *websocket.Conn, kind string, script string) (*ServerRxc, error) {
+func (cts *ServerConn) add_new_rxc(sink ServerRxcSink, ws *websocket.Conn, kind string, script string) (*ServerRxc, error) {
 	var ok bool
 	var start_id uint64
 	var assigned_id uint64
@@ -34,24 +32,30 @@ func (cts *ServerConn) StartRxc(ws *websocket.Conn, kind string, script string) 
 		}
 	}
 
-	_, ok = cts.rxc_map_by_ws[ws]
-	if ok {
-		cts.rxc_mtx.Unlock()
-		return nil, fmt.Errorf("connection already associated with rxc. possibly internal error")
+	if ws != nil {
+		_, ok = cts.rxc_map_by_ws[ws]
+		if ok {
+			cts.rxc_mtx.Unlock()
+			return nil, fmt.Errorf("connection already associated with rxc. possibly internal error")
+		}
 	}
 
 	rxc = &ServerRxc{
 		id: assigned_id,
 		ws: ws,
+		sink: sink,
 	}
 
 	cts.rxc_map[assigned_id] = rxc
-	cts.rxc_map_by_ws[ws] = rxc
+	if ws != nil { cts.rxc_map_by_ws[ws] = rxc }
 	cts.rxc_mtx.Unlock()
-
 
 	pkt, err = MakeRxcStartPacket(assigned_id, kind, script)
 	if err != nil {
+		cts.rxc_mtx.Lock()
+		delete(cts.rxc_map, assigned_id)
+		if ws != nil { delete(cts.rxc_map_by_ws, ws) }
+		cts.rxc_mtx.Unlock()
 		return nil, fmt.Errorf("failed to make rxc start packet - %s", err.Error())
 	}
 
@@ -59,127 +63,163 @@ func (cts *ServerConn) StartRxc(ws *websocket.Conn, kind string, script string) 
 	if err != nil {
 		cts.rxc_mtx.Lock()
 		delete(cts.rxc_map, assigned_id)
-		delete(cts.rxc_map_by_ws, ws)
+		if ws != nil { delete(cts.rxc_map_by_ws, ws) }
 		cts.rxc_mtx.Unlock()
-		return nil , err
+		return nil, fmt.Errorf("failed to send rxc start packet - %s", err.Error())
 	}
 
 	cts.S.stats.rxc_sessions.Add(1)
 	return rxc, nil
 }
 
-func (cts *ServerConn) StopRxc(ws *websocket.Conn) error {
-	// called by the websocket handler.
+func (cts *ServerConn) StartRxcForWs(ws *websocket.Conn, kind string, script string) (*ServerRxc, error) {
+	// start a single task over rxc for a websocket
+	return cts.add_new_rxc(&ServerRxcWebsocketSink{ws: ws}, ws, kind, script)
+}
+
+func (cts *ServerConn) StartRxcJob(run *ServerRxcJobRun, kind string, script string) error {
 	var rxc *ServerRxc
-	var id uint64
-	var ok bool
 	var err error
+
+	rxc, err = cts.add_new_rxc(run, nil, kind, script)
+	if err != nil { return err }
+	run.mark_started(rxc.id)
+	return nil
+}
+
+func (cts *ServerConn) find_rxc_by_ws(ws *websocket.Conn) (*ServerRxc, bool) {
+	var rxc *ServerRxc
+	var ok bool
 
 	cts.rxc_mtx.Lock()
 	rxc, ok = cts.rxc_map_by_ws[ws]
+	cts.rxc_mtx.Unlock()
+	return rxc, ok
+}
+
+func (cts *ServerConn) find_rxc_by_id(id uint64) (*ServerRxc, bool) {
+	var rxc *ServerRxc
+	var ok bool
+
+	cts.rxc_mtx.Lock()
+	rxc, ok = cts.rxc_map[id]
+	cts.rxc_mtx.Unlock()
+	return rxc, ok
+}
+
+func (cts *ServerConn) remove_rxc_by_id(id uint64) (*ServerRxc, bool) {
+	var rxc *ServerRxc
+	var ok bool
+
+	cts.rxc_mtx.Lock()
+	rxc, ok = cts.rxc_map[id]
+	if ok {
+		delete(cts.rxc_map, id)
+		if rxc.ws != nil {
+			delete(cts.rxc_map_by_ws, rxc.ws)
+		}
+	}
+	cts.rxc_mtx.Unlock()
+	return rxc, ok
+}
+
+func (cts *ServerConn) StopRxcForWs(ws *websocket.Conn) error {
+	// called by the websocket handler.
+	var rxc *ServerRxc
+	var ok bool
+	var err error
+
+	rxc, ok = cts.find_rxc_by_ws(ws)
 	if !ok {
-		cts.rxc_mtx.Unlock()
 		cts.S.log.Write(cts.Sid, LOG_ERROR, "Unknown websocket connection for rxc - websocket %v", ws.RemoteAddr())
 		return fmt.Errorf("unknown websocket connection for rxc - %v", ws.RemoteAddr())
 	}
 
-	id = rxc.id
-	cts.rxc_mtx.Unlock()
-
-	// send the stop request to the client side
-	err = cts.pss.Send(MakeRxcStopPacket(id, ""))
-	if err !=  nil {
-		cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s(%d) for server %s websocket %v - %s", PACKET_KIND_RXC_STOP.String(), id, cts.RemoteAddr, ws.RemoteAddr(), err.Error())
-		// carry on
+	err = cts.pss.Send(MakeRxcStopPacket(rxc.id, ""))
+	if err != nil {
+		cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s(%d) for server %s websocket %v - %s", PACKET_KIND_RXC_STOP.String(), rxc.id, cts.RemoteAddr, ws.RemoteAddr(), err.Error())
 	}
 
-	// delete the rxc entry from the maps as the websocket
-	// handler is ending
-	cts.rxc_mtx.Lock()
-	delete(cts.rxc_map, id)
-	delete(cts.rxc_map_by_ws, ws)
-	cts.rxc_mtx.Unlock()
-	cts.S.stats.rxc_sessions.Add(-1)
+	_, ok = cts.remove_rxc_by_id(rxc.id)
+	if ok {
+		cts.S.stats.rxc_sessions.Add(-1)
+	}
 
-	cts.S.log.Write(cts.Sid, LOG_INFO, "Stopped rxc(%d) for server %s websocket %vs", id, cts.RemoteAddr, ws.RemoteAddr())
+	rxc.ReqStop()
+	cts.S.log.Write(cts.Sid, LOG_INFO, "Stopped rxc(%d) for server %s websocket %v", rxc.id, cts.RemoteAddr, ws.RemoteAddr())
 	return nil
 }
 
-func (cts *ServerConn) StopRxcWsById(id uint64, msg string) error {
-	// call this when the stop requested comes from the client.
-	// abort the websocket side.
-
-	var rxc *ServerRxc
+func (cts *ServerConn) SendStopRxcById(id uint64) error {
 	var ok bool
+	var err error
 
-	cts.rxc_mtx.Lock()
-	rxc, ok = cts.rxc_map[id]
+	_, ok = cts.find_rxc_by_id(id)
 	if !ok {
-		cts.rxc_mtx.Unlock()
 		return fmt.Errorf("unknown rxc id %d", id)
 	}
-	cts.rxc_mtx.Unlock()
 
-	rxc.ReqStop()
+	err = cts.pss.Send(MakeRxcStopPacket(id, ""))
+	if err != nil {
+		return fmt.Errorf("failed to send %s(%d) to client - %s", PACKET_KIND_RXC_STOP.String(), id, err.Error())
+	}
+
+	return nil
+}
+
+func (cts *ServerConn) StopRxcSinkById(id uint64, msg string) error {
+	var rxc *ServerRxc
+	var ok bool
+	var err error
+
+	rxc, ok = cts.remove_rxc_by_id(id)
+	if !ok {
+		return fmt.Errorf("unknown rxc id %d", id)
+	}
+	cts.S.stats.rxc_sessions.Add(-1)
+
+	if rxc.sink != nil {
+		err = rxc.sink.Stop(msg)
+		if err != nil { return err }
+	}
+
 	cts.S.log.Write(cts.Sid, LOG_INFO, "Stopped rxc(%d) for %s - %s", id, cts.RemoteAddr, msg)
 	return nil
 }
 
-func (cts *ServerConn) WriteRxc(ws *websocket.Conn, data []byte) error {
+func (cts *ServerConn) WriteRxcForWs(ws *websocket.Conn, data []byte) error {
 	var rxc *ServerRxc
-	var id uint64
 	var ok bool
 	var err error
 
-	cts.rxc_mtx.Lock()
-	rxc, ok = cts.rxc_map_by_ws[ws]
-	if !ok {
-		cts.rxc_mtx.Unlock()
-		return fmt.Errorf("unknown ws connection for rxc - %v", ws.RemoteAddr())
-	}
+	rxc, ok = cts.find_rxc_by_ws(ws)
+	if !ok { return fmt.Errorf("unknown ws connection for rxc - %v", ws.RemoteAddr()) }
 
-	id = rxc.id
-	cts.rxc_mtx.Unlock()
-
-	err = cts.pss.Send(MakeRxcDataPacket(id, data))
-	if err != nil {
-		return fmt.Errorf("unable to send rxc data to client - %s", err.Error())
-	}
+	err = cts.pss.Send(MakeRxcDataPacket(rxc.id, data))
+	if err != nil { return fmt.Errorf("unable to send rxc data to client - %s", err.Error()) }
 
 	return nil
 }
 
-func (cts *ServerConn) ReadRxcAndWriteWs(id uint64, data []byte) error {
-	var ok bool
+func (cts *ServerConn) ReadRxcAndWriteSinkById(id uint64, data []byte) error {
 	var rxc *ServerRxc
-	var err error
+	var ok bool
 
-	cts.rxc_mtx.Lock()
-	rxc, ok = cts.rxc_map[id]
-	if !ok {
-		cts.rxc_mtx.Unlock()
-		return fmt.Errorf("unknown rxc id - %d", id)
-	}
-	cts.rxc_mtx.Unlock()
+	rxc, ok = cts.find_rxc_by_id(id)
+	if !ok { return fmt.Errorf("unknown rxc id - %d", id) }
+	if rxc.sink == nil { return fmt.Errorf("missing rxc sink for id %d", id) }
 
-	err = send_ws_data_for_xterm(rxc.ws, "iov", base64.StdEncoding.EncodeToString(data))
-	if err != nil {
-		return fmt.Errorf("failed to write rxc data(%d) to ws - %s", id, err.Error())
-	}
-
-	return nil
+	return rxc.sink.Write(data)
 }
 
 func (cts *ServerConn) HandleRxcEvent(packet_type PACKET_KIND, evt *RxcEvent) error {
 	switch packet_type {
 		case PACKET_KIND_RXC_STOP:
-			// stop requested from the server
-			return cts.StopRxcWsById(evt.Id, string(evt.Data))
+			return cts.StopRxcSinkById(evt.Id, string(evt.Data))
 
 		case PACKET_KIND_RXC_DATA:
-			return cts.ReadRxcAndWriteWs(evt.Id, evt.Data)
+			return cts.ReadRxcAndWriteSinkById(evt.Id, evt.Data)
 	}
 
-	// ignore other packet types
 	return nil
 }

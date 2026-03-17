@@ -5,10 +5,7 @@ import "encoding/base64"
 import "encoding/json"
 import "fmt"
 import "net/http"
-//import "strconv"
-//import "strings"
 import "sync"
-//import "text/template"
 import "time"
 
 import "golang.org/x/net/websocket"
@@ -70,7 +67,7 @@ ws_recv_loop:
 							script = string(ev.Data[1])
 							//options = string(ev.Data[2])
 
-							rp, err = cts.StartRxc(ws, kind, script)
+							rp, err = cts.StartRxcForWs(ws, kind, script)
 							if err != nil {
 								s.log.Write(rxc.Id, LOG_ERROR, "[%s] Failed to connect rxc - %s", req.RemoteAddr, err.Error())
 								send_ws_data_for_xterm(ws, "error", err.Error())
@@ -95,13 +92,12 @@ ws_recv_loop:
 					case "iov":
 						var i int
 						for i, _ = range ev.Data {
-							//cts.WriteRxc(ws, []byte(ev.Data[i]))
 							var bytes []byte
 							bytes, err = base64.StdEncoding.DecodeString(ev.Data[i])
 							if err != nil {
 								s.log.Write(rxc.Id, LOG_WARN, "[%s] Invalid rxc iov data received - %s", req.RemoteAddr, ev.Data[i])
 							} else {
-								cts.WriteRxc(ws, bytes)
+								cts.WriteRxcForWs(ws, bytes)
 								// ignore error for now
 							}
 						}
@@ -115,11 +111,470 @@ ws_recv_loop:
 	}
 
 done:
-	cts.StopRxc(ws)
+	cts.StopRxcForWs(ws)
 	ws.Close() // don't care about multiple closes
 
 	wg.Wait()
 	s.log.Write(rxc.Id, LOG_DEBUG, "[%s] Ended rxc session for %s", req.RemoteAddr, token)
 
 	return http.StatusOK, err
+}
+
+// HTTP control endpoints for RXC jobs:
+//   GET    /_rxc
+//   POST   /_rxc
+//   GET    /_rxc/{job_id}
+//   DELETE /_rxc/{job_id}
+//   POST   /_rxc/{job_id}/stop
+//   GET    /_rxc/{job_id}/runs
+//   GET    /_rxc/{job_id}/runs/{conn_id}
+//   DELETE /_rxc/{job_id}/runs/{conn_id}
+//   POST   /_rxc/{job_id}/runs/{conn_id}/stop
+//
+// The websocket endpoint /_rxc/ws is kept for interactive single-client RXC.
+
+/*
+• Example to run a command on all connected clients:
+
+ curl -X POST http://127.0.0.1:9999/_rxc \
+	-H 'Content-Type: application/json' \
+	-d '{
+		"kind": "bash",
+		"script": "uname -a"
+	}'
+
+ Example to run on specific clients only:
+
+curl -X POST http://127.0.0.1:9999/_rxc \
+	-H 'Content-Type: application/json' \
+	-d '{
+		"clients": ["1", "client-token-abc"],
+		"kind": "bash",
+		"script": "hostname; id"
+	}'
+
+ Then inspect the created job:
+
+ curl http://127.0.0.1:9999/_rxc/1
+ curl http://127.0.0.1:9999/_rxc/1/runs
+ curl http://127.0.0.1:9999/_rxc/1/runs/1
+
+ Stop a job:
+
+ curl -X POST http://127.0.0.1:9999/_rxc/1/stop
+
+ Stop one run only:
+
+ curl -X POST http://127.0.0.1:9999/_rxc/1/runs/1/stop
+
+ Delete a retained job record:
+
+ curl -X DELETE http://127.0.0.1:9999/_rxc/1
+
+ Delete a retained run record:
+
+ curl -X DELETE http://127.0.0.1:9999/_rxc/1/runs/1
+
+ If your control server uses a prefix, prepend it, for example http://127.0.0.1:9999/api/_rxc.
+*/
+
+type json_in_server_rxc struct {
+	Clients []string `json:"clients"`
+	Kind string `json:"kind"`
+	Script string `json:"script"`
+}
+
+type json_out_server_rxc_job struct {
+	JobId uint64 `json:"job-id"`
+	Kind string `json:"kind"`
+	Script string `json:"script"`
+	Status string `json:"status"`
+	CreatedMilli int64 `json:"created-milli"`
+	TargetCount int `json:"target-count"`
+	RunningCount int `json:"running-count"`
+	StoppingCount int `json:"stopping-count"`
+	StoppedCount int `json:"stopped-count"`
+	FailedCount int `json:"failed-count"`
+}
+
+type json_out_server_rxc_run struct {
+	JobId uint64 `json:"job-id"`
+	ConnId ConnId `json:"conn-id"`
+	ClientToken string `json:"client-token"`
+	RxcId uint64 `json:"rxc-id"`
+	Status string `json:"status"`
+	StopMsg string `json:"stop-msg,omitempty"`
+	CreatedMilli int64 `json:"created-milli"`
+	StartedMilli int64 `json:"started-milli,omitempty"`
+	StoppedMilli int64 `json:"stopped-milli,omitempty"`
+	Output []byte `json:"output,omitempty"`
+	OutputTruncated bool `json:"output-truncated,omitempty"`
+}
+
+type server_ctl_rxc struct {
+	ServerCtl
+}
+
+type server_ctl_rxc_id struct {
+	ServerCtl
+}
+
+type server_ctl_rxc_id_stop struct {
+	ServerCtl
+}
+
+type server_ctl_rxc_id_runs struct {
+	ServerCtl
+}
+
+type server_ctl_rxc_id_runs_id struct {
+	ServerCtl
+}
+
+type server_ctl_rxc_id_runs_id_stop struct {
+	ServerCtl
+}
+
+func server_rxc_job_to_json(job *ServerRxcJob) json_out_server_rxc_job {
+	var js json_out_server_rxc_job
+	var run *ServerRxcJobRun
+	var runs []*ServerRxcJobRun
+
+	js.JobId = job.Id
+	js.Kind = job.Kind
+	js.Script = job.Script
+	js.CreatedMilli = job.Created.UnixMilli()
+
+	runs = job.snapshot_runs()
+	js.TargetCount = len(runs)
+	for _, run = range runs {
+		run.mtx.Lock()
+		switch run.Status {
+			case "running":
+				js.RunningCount++
+			case "stopping":
+				js.StoppingCount++
+			case "stopped":
+				js.StoppedCount++
+			case "failed":
+				js.FailedCount++
+		}
+		run.mtx.Unlock()
+	}
+
+	switch {
+		case js.TargetCount <= 0:
+			js.Status = "done"
+		case js.RunningCount > 0 || js.StoppingCount > 0:
+			js.Status = "running"
+		case js.StoppedCount > 0 || js.FailedCount > 0:
+			js.Status = "done"
+		default:
+			js.Status = "starting"
+	}
+
+	return js
+}
+
+func server_rxc_run_to_json(run *ServerRxcJobRun, with_output bool) json_out_server_rxc_run {
+	var js json_out_server_rxc_run
+
+	run.mtx.Lock()
+	js.JobId = run.Job.Id
+	js.ConnId = run.ConnId
+	js.ClientToken = run.ClientToken
+	js.RxcId = run.RxcId
+	js.Status = run.Status
+	js.StopMsg = run.StopMsg
+	js.CreatedMilli = run.Created.UnixMilli()
+	if !run.Started.IsZero() { js.StartedMilli = run.Started.UnixMilli() }
+	if !run.Stopped.IsZero() { js.StoppedMilli = run.Stopped.UnixMilli() }
+	js.OutputTruncated = run.OutputTruncated
+	if with_output {
+		js.Output = append([]byte(nil), run.Output...)
+	}
+	run.mtx.Unlock()
+
+	return js
+}
+
+func (ctl *server_ctl_rxc) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var je *json.Encoder
+	var err error
+
+	s = ctl.S
+	je = json.NewEncoder(w)
+
+	switch req.Method {
+		case http.MethodGet:
+			var jobs []json_out_server_rxc_job
+			var job *ServerRxcJob
+
+			jobs = make([]json_out_server_rxc_job, 0)
+			for _, job = range s.snapshot_server_rxc_jobs() {
+				jobs = append(jobs, server_rxc_job_to_json(job))
+			}
+
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(jobs); err != nil { goto oops }
+
+		case http.MethodPost:
+			var x json_in_server_rxc
+			var job *ServerRxcJob
+
+			err = json.NewDecoder(req.Body).Decode(&x)
+			if err != nil {
+				status_code = WriteEmptyRespHeader(w, http.StatusBadRequest)
+				goto oops
+			}
+
+			job, err = s.StartRxcJob(x.Clients, x.Kind, x.Script)
+			if err != nil {
+				status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+
+			status_code = WriteJsonRespHeader(w, http.StatusAccepted)
+			if err = je.Encode(server_rxc_job_to_json(job)); err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+func (ctl *server_ctl_rxc_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var je *json.Encoder
+	var job_id string
+	var job *ServerRxcJob
+	var err error
+
+	s = ctl.S
+	je = json.NewEncoder(w)
+	job_id = req.PathValue("job_id")
+
+	job, err = s.FindServerRxcJobByIdStr(job_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(server_rxc_job_to_json(job)); err != nil { goto oops }
+
+		case http.MethodDelete:
+			err = s.DeleteRxcJob(job)
+			if err != nil {
+				status_code = WriteJsonRespHeader(w, http.StatusConflict)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+func (ctl *server_ctl_rxc_id_stop) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var je *json.Encoder
+	var job_id string
+	var job *ServerRxcJob
+	var stop_count int
+	var err error
+
+	s = ctl.S
+	je = json.NewEncoder(w)
+	job_id = req.PathValue("job_id")
+
+	job, err = s.FindServerRxcJobByIdStr(job_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodPost:
+			stop_count = s.StopRxcJob(job)
+			if stop_count > 0 {
+				status_code = WriteEmptyRespHeader(w, http.StatusAccepted)
+			} else {
+				status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
+			}
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+func (ctl *server_ctl_rxc_id_runs) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var je *json.Encoder
+	var job_id string
+	var job *ServerRxcJob
+	var run *ServerRxcJobRun
+	var runs []json_out_server_rxc_run
+	var err error
+
+	s = ctl.S
+	je = json.NewEncoder(w)
+	job_id = req.PathValue("job_id")
+
+	job, err = s.FindServerRxcJobByIdStr(job_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			runs = make([]json_out_server_rxc_run, 0)
+			for _, run = range job.snapshot_runs() {
+				runs = append(runs, server_rxc_run_to_json(run, false))
+			}
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(runs); err != nil { goto oops }
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+func (ctl *server_ctl_rxc_id_runs_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var je *json.Encoder
+	var job_id string
+	var conn_id string
+	var job *ServerRxcJob
+	var run *ServerRxcJobRun
+	var err error
+
+	s = ctl.S
+	je = json.NewEncoder(w)
+	job_id = req.PathValue("job_id")
+	conn_id = req.PathValue("conn_id")
+
+	job, err = s.FindServerRxcJobByIdStr(job_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	run, err = job.FindRunByConnIdStr(conn_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodGet:
+			status_code = WriteJsonRespHeader(w, http.StatusOK)
+			if err = je.Encode(server_rxc_run_to_json(run, true)); err != nil { goto oops }
+
+		case http.MethodDelete:
+			err = s.DeleteRxcJobRun(run)
+			if err != nil {
+				status_code = WriteJsonRespHeader(w, http.StatusConflict)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+			status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+	return status_code, nil
+
+oops:
+	return status_code, err
+}
+
+func (ctl *server_ctl_rxc_id_runs_id_stop) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
+	var s *Server
+	var status_code int
+	var je *json.Encoder
+	var job_id string
+	var conn_id string
+	var job *ServerRxcJob
+	var run *ServerRxcJobRun
+	var stopped bool
+	var err error
+
+	s = ctl.S
+	je = json.NewEncoder(w)
+	job_id = req.PathValue("job_id")
+	conn_id = req.PathValue("conn_id")
+
+	job, err = s.FindServerRxcJobByIdStr(job_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	run, err = job.FindRunByConnIdStr(conn_id)
+	if err != nil {
+		status_code = WriteJsonRespHeader(w, http.StatusNotFound)
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	switch req.Method {
+		case http.MethodPost:
+			stopped, err = s.StopRxcJobRun(run)
+			if err != nil {
+				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+			if stopped {
+				status_code = WriteEmptyRespHeader(w, http.StatusAccepted)
+			} else {
+				status_code = WriteEmptyRespHeader(w, http.StatusNoContent)
+			}
+
+		default:
+			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)
+	}
+
+	return status_code, nil
+
+oops:
+	return status_code, err
 }

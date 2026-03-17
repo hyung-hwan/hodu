@@ -36,6 +36,7 @@ SRCS=\
 	server-pxy.go \
 	server-rpx.go \
 	server-rxc.go \
+	server-rxc-job.go \
 	system.go \
 	transform.go \
 
@@ -70,7 +71,7 @@ clean:
 	rm -f $(NAME) $(NAME).debug
 
 check:
-	go test -x
+	go test -x --count=1 ./...
 
 hodu.pb.go: hodu.proto
 	protoc --go_out=. --go_opt=paths=source_relative \

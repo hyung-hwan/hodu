@@ -87,7 +87,10 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	}
 
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ending rxc(%d) loop", crp.id)
-	cts.psc.Send(MakeRxcStopPacket(crp.id, ""))
+	err = cts.psc.Send(MakeRxcStopPacket(crp.id, ""))
+	if err != nil {
+		cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s from rxc(%d) to server - %s", PACKET_KIND_RXC_STOP.String(), crp.id, err.Error())
+	}
 
 	crp.ReqStop()
 	crp.cmd.Wait()
@@ -115,7 +118,7 @@ func connect_cmd(_type string, script string) (*exec.Cmd, *os.File, error) {
 		//cmd = exec.CommandContext()
 		cmd = exec.Command("/bin/bash", "-c", script)
 	} else {
-		return nil, nil, fmt.Errorf("unsupport type - %s", _type)
+		return nil, nil, fmt.Errorf("unsupported type - %s", _type)
 	}
 
 	out, err = cmd.StdoutPipe()
@@ -148,6 +151,9 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 	if err != nil {
 		return fmt.Errorf("unable to decode data for start on rxc(%d) - %s", id, err.Error())
 	}
+	if len(args) != 2 {
+		return fmt.Errorf("invalid data for start on rxc(%d)", id)
+	}
 
 	cts.rxc_mtx.Lock()
 	_, ok = cts.rxc_map[id]
@@ -159,15 +165,26 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 	crp = &ClientRxc{ cts: cts, id: id }
 	err = unix.Pipe(crp.pfd[:])
 	if err != nil {
+		var err2 error
+
 		cts.rxc_mtx.Unlock()
-		cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
-		return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, cts.C.pty_shell, cts.C.pty_user, err.Error())
+		err2 = cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
+		if err2 != nil {
+			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s for rxc(%d) start failure to server - %s", PACKET_KIND_RXC_STOP.String(), id, err2.Error())
+		}
+		//return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, cts.C.pty_shell, cts.C.pty_user, err.Error())
+		return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, args[0], args[1], err.Error())
 	}
 	//crp.cmd, crp.tty, err = connect_pty(cts.C.pty_shell, cts.C.pty_user)
-	crp.cmd, crp.tty, err = connect_cmd(cts.C.pty_shell, cts.C.pty_user)
+	crp.cmd, crp.tty, err = connect_cmd(args[0], args[1])
 	if err != nil {
+		var err2 error
+
 		cts.rxc_mtx.Unlock()
-		cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
+		err2 = cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
+		if err2 != nil {
+			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s for rxc(%d) start failure to server - %s", PACKET_KIND_RXC_STOP.String(), id, err2.Error())
+		}
 		unix.Close(crp.pfd[0])
 		unix.Close(crp.pfd[1])
 		return fmt.Errorf("unable to start rxc(%d) for %s(%s) - %s", id, cts.C.pty_shell, cts.C.pty_user, err.Error())
@@ -231,4 +248,3 @@ func (cts *ClientConn) HandleRxcEvent(packet_type PACKET_KIND, evt *RxcEvent) er
 	// ignore other packet types
 	return nil
 }
-
