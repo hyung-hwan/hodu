@@ -67,6 +67,7 @@ type ServerConfig struct {
 	RpcMaxConns int
 	RpcMinPingIntvl time.Duration
 	MaxPeers int
+	RxcDoneJobRetention time.Duration
 	HttpReadHeaderTimeout time.Duration
 	HttpIdleTimeout time.Duration
 	HttpMaxHeaderBytes int
@@ -161,6 +162,7 @@ type Server struct {
 	rxc_job_next_id  uint64
 	rxc_job_mtx      sync.Mutex
 	rxc_job_map      ServerRxcJobMap
+	rxc_job_purge_chan chan struct{}
 	cts_wg           sync.WaitGroup
 
 	pts_limit        int // global pts limit
@@ -1533,6 +1535,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.cts_map_by_token = make(ServerConnMapByClientToken)
 	s.rxc_job_next_id = 1
 	s.rxc_job_map = make(ServerRxcJobMap)
+	s.rxc_job_purge_chan = make(chan struct{}, 1)
 	s.svc_port_map = make(ServerSvcPortMap)
 	s.stop_chan = make(chan bool, 8)
 	s.stop_req.Store(false)
@@ -2597,6 +2600,10 @@ func (s *Server) StartService(data interface{}) {
 	go s.bulletin.RunTask(&s.wg)
 	s.wg.Add(1)
 	go s.RunTask(&s.wg)
+	if s.Cfg.RxcDoneJobRetention > 0 {
+		s.wg.Add(1)
+		go s.run_rxc_job_purger(&s.wg, s.Cfg.RxcDoneJobRetention)
+	}
 }
 
 func (s *Server) StartExtService(svc Service, data interface{}) {

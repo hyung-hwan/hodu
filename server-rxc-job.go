@@ -20,6 +20,7 @@ type ServerRxcJob struct {
 	Kind string
 	Script string
 	Created time.Time
+	Done time.Time
 
 	run_mtx sync.Mutex
 	run_map map[ConnId]*ServerRxcJobRun
@@ -99,6 +100,13 @@ func (run *ServerRxcJobRun) mark_start_failure(msg string) {
 	run.Status = "failed"
 	run.StopMsg = msg
 	run.mtx.Unlock()
+
+	// scan the owning job for 'done' marking
+	// TODO: improve it based on actual events?
+	if run.Job.maybe_mark_done(time.Now()) {
+		// notify that a job is over
+		run.Cts.S.notify_rxc_job_purge()
+	}
 }
 
 func (run *ServerRxcJobRun) request_stop() (*ServerConn, uint64, bool) {
@@ -191,6 +199,13 @@ func (run *ServerRxcJobRun) stop(msg string) {
 		run.StopMsg = msg
 	}
 	run.mtx.Unlock()
+
+	// scan the owning job for 'done' marking
+	// TODO: improve it based on actual events?
+	if run.Job.maybe_mark_done(time.Now()) {
+		// notify that a job is over
+		run.Cts.S.notify_rxc_job_purge()
+	}
 }
 
 func (run *ServerRxcJobRun) ReqStop() {
@@ -209,7 +224,6 @@ func (run *ServerRxcJobRun) Stop(msg string) error {
 	run.stop(msg)
 	return nil
 }
-
 
 // ServerRxcJob
 
@@ -265,6 +279,38 @@ func (job *ServerRxcJob) is_done() bool {
 	}
 
 	return true
+}
+
+func (job *ServerRxcJob) maybe_mark_done(now time.Time) bool {
+	var run *ServerRxcJobRun
+
+	// this scanning logic is similar to is_done().
+	// but it travers the entire run map while the lock is held
+	// rather than taking a snapshot first.
+	job.run_mtx.Lock()
+	if !job.Done.IsZero() {
+		job.run_mtx.Unlock()
+		return false
+	}
+	for _, run = range job.run_map {
+		if !run.is_done() {
+			job.run_mtx.Unlock()
+			return false
+		}
+	}
+	job.Done = now
+	job.run_mtx.Unlock()
+	return true
+}
+
+func (job *ServerRxcJob) get_done() time.Time {
+	var done time.Time
+
+	job.run_mtx.Lock()
+	done = job.Done
+	job.run_mtx.Unlock()
+
+	return done
 }
 
 func (job *ServerRxcJob) delete_run(run *ServerRxcJobRun) bool {
@@ -476,11 +522,20 @@ func (s *Server) StopRxcJob(job *ServerRxcJob) int {
 }
 
 func (s *Server) DeleteRxcJob(job *ServerRxcJob) error {
+	var done time.Time
+
 	if !job.is_done() {
 		return fmt.Errorf("active rxc job id %d", job.Id)
 	}
 	if !s.delete_server_rxc_job(job) {
 		return fmt.Errorf("non-existent rxc job id %d", job.Id)
+	}
+
+	done = job.get_done()
+	if !done.IsZero() {
+		// a job is already over and is actually deleted by request.
+		// the purge task needs to do some recalculation excluding this job.
+		s.notify_rxc_job_purge()
 	}
 
 	return nil
@@ -495,4 +550,108 @@ func (s *Server) DeleteRxcJobRun(run *ServerRxcJobRun) error {
 	}
 
 	return nil
+}
+
+func (s *Server) purge_stale_rxc_jobs(now time.Time, expiry time.Duration) int {
+	var job *ServerRxcJob
+	var done time.Time
+	var purge_count int
+
+	if (expiry <= 0) { return 0 }
+
+	for _, job = range s.snapshot_server_rxc_jobs() {
+		done = job.get_done()
+		if done.IsZero() { continue }
+		if now.Before(done.Add(expiry)) { continue }
+		if s.delete_server_rxc_job(job) { purge_count++ }
+	}
+
+	return purge_count
+}
+
+func (s *Server) notify_rxc_job_purge() {
+	select {
+		case s.rxc_job_purge_chan <- struct{}{}:
+			// attempt to write to the channel
+		default:
+			// if not writable, do nothing and return immediately
+	}
+}
+
+func (s *Server) recalc_next_rxc_job_purge_time(expiry time.Duration) (time.Time, bool) {
+	var job *ServerRxcJob
+	var done time.Time
+	var next time.Time
+	var ok bool
+
+	if expiry <= 0 {
+		return time.Time{}, false
+	}
+
+	for _, job = range s.snapshot_server_rxc_jobs() {
+		done = job.get_done()
+		if done.IsZero() { continue }
+		done = done.Add(expiry)
+		if !ok || done.Before(next) {
+			next = done
+			ok = true
+		}
+	}
+
+	return next, ok
+}
+
+func stop_and_drain_timer(timer *time.Timer) {
+	if timer == nil { return }
+	if !timer.Stop() {
+		select {
+			case <-timer.C:
+			default:
+		}
+	}
+}
+
+func (s *Server) run_rxc_job_purger(wg *sync.WaitGroup, expiry time.Duration) {
+	var timer *time.Timer
+	var timer_chan <-chan time.Time
+	var next time.Time
+	var now time.Time
+	var delay time.Duration
+	var ok bool
+
+	defer wg.Done()
+
+	// it's best if the caller ensures expiry > 0
+	if expiry <= 0 { return }
+
+	for {
+		next, ok = s.recalc_next_rxc_job_purge_time(expiry)
+		if ok {
+			delay = time.Until(next)
+			if delay < 0 { delay = 0 }
+			if timer == nil {
+				timer = time.NewTimer(delay)
+			} else {
+				stop_and_drain_timer(timer)
+				timer.Reset(delay)
+			}
+			timer_chan = timer.C
+		} else {
+			stop_and_drain_timer(timer)
+			timer_chan = nil
+		}
+
+		select {
+			case <-s.rxc_job_purge_chan:
+				// a job was done and/or deleted.
+				// go to the top of the loop to re-calculate when to
+				// run the automatic purge next time.
+				continue
+			case now = <-timer_chan:
+				s.purge_stale_rxc_jobs(now, expiry)
+			case <-s.Ctx.Done():
+				stop_and_drain_timer(timer)
+				return
+		}
+	}
 }

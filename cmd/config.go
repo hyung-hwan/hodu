@@ -107,6 +107,7 @@ type ServerAppConfig  struct {
 	MaxPeers        int       `yaml:"max-peer-conns"` // maximum number of connections from peers
 	MaxRpcConns     int       `yaml:"max-rpc-conns"` // maximum number of rpc connections
 	MinRpcPingIntvl time.Duration  `yaml:"min-rpc-ping-interval"`
+	RxcDoneJobRetention time.Duration  `yaml:"rxc-done-job-retention"`
 	HttpReadHeaderTimeout time.Duration `yaml:"http-read-header-timeout"`
 	HttpIdleTimeout       time.Duration `yaml:"http-idle-timeout"`
 	HttpMaxHeaderBytes    int           `yaml:"http-max-header-bytes"`
