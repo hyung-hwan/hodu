@@ -1,5 +1,6 @@
 package hodu
 
+import "container/list"
 import "encoding/base64"
 import "fmt"
 import "sort"
@@ -16,11 +17,14 @@ const SERVER_RXC_RUN_OUTPUT_MAX int = 65536
 type ServerRxcJobMap map[uint64]*ServerRxcJob
 
 type ServerRxcJob struct {
+	S *Server
 	Id uint64
 	Kind string
 	Script string
 	Created time.Time
 	Done time.Time
+
+	done_node *list.Element
 
 	run_mtx sync.Mutex
 	run_map map[ConnId]*ServerRxcJobRun
@@ -103,7 +107,7 @@ func (run *ServerRxcJobRun) mark_start_failure(msg string) {
 
 	// scan the owning job for 'done' marking
 	// TODO: improve it based on actual events?
-	if run.Job.maybe_mark_done(time.Now()) {
+	if run.Cts.S.maybe_mark_rxc_job_done(run.Job) {
 		// notify that a job is over
 		run.Cts.S.notify_rxc_job_purge()
 	}
@@ -202,7 +206,7 @@ func (run *ServerRxcJobRun) stop(msg string) {
 
 	// scan the owning job for 'done' marking
 	// TODO: improve it based on actual events?
-	if run.Job.maybe_mark_done(time.Now()) {
+	if run.Cts.S.maybe_mark_rxc_job_done(run.Job) {
 		// notify that a job is over
 		run.Cts.S.notify_rxc_job_purge()
 	}
@@ -281,34 +285,46 @@ func (job *ServerRxcJob) is_done() bool {
 	return true
 }
 
-func (job *ServerRxcJob) maybe_mark_done(now time.Time) bool {
+func (s *Server) maybe_mark_rxc_job_done(job *ServerRxcJob) bool {
+	var existing *ServerRxcJob
 	var run *ServerRxcJobRun
+	var ok bool
 
 	// this scanning logic is similar to is_done().
 	// but it travers the entire run map while the lock is held
 	// rather than taking a snapshot first.
 	job.run_mtx.Lock()
-	if !job.Done.IsZero() {
-		job.run_mtx.Unlock()
-		return false
-	}
 	for _, run = range job.run_map {
 		if !run.is_done() {
 			job.run_mtx.Unlock()
 			return false
 		}
 	}
-	job.Done = now
 	job.run_mtx.Unlock()
+
+	s.rxc_job_mtx.Lock()
+	existing, ok = s.rxc_job_map[job.Id]
+	if !ok || existing != job {
+		s.rxc_job_mtx.Unlock()
+		return false
+	}
+	if !job.Done.IsZero() {
+		s.rxc_job_mtx.Unlock()
+		return false
+	}
+	job.Done = time.Now()
+	job.done_node = s.rxc_job_done_list.PushBack(job)
+	s.rxc_job_mtx.Unlock()
+
 	return true
 }
 
 func (job *ServerRxcJob) get_done() time.Time {
 	var done time.Time
 
-	job.run_mtx.Lock()
+	job.S.rxc_job_mtx.Lock()
 	done = job.Done
-	job.run_mtx.Unlock()
+	job.S.rxc_job_mtx.Unlock()
 
 	return done
 }
@@ -372,18 +388,30 @@ func (s *Server) FindServerRxcJobByIdStr(job_id string) (*ServerRxcJob, error) {
 	return job, nil
 }
 
-func (s *Server) delete_server_rxc_job(job *ServerRxcJob) bool {
+func (s *Server) delete_server_rxc_job_no_lock(job *ServerRxcJob) bool {
 	var existing *ServerRxcJob
 	var ok bool
 
-	s.rxc_job_mtx.Lock()
 	existing, ok = s.rxc_job_map[job.Id]
 	if ok && existing == job {
 		delete(s.rxc_job_map, job.Id)
+		if job.done_node != nil {
+			s.rxc_job_done_list.Remove(job.done_node)
+			job.done_node = nil
+		}
 	}
-	s.rxc_job_mtx.Unlock()
 
 	return ok && existing == job
+}
+
+func (s *Server) delete_server_rxc_job(job *ServerRxcJob) bool {
+	var deleted bool
+
+	s.rxc_job_mtx.Lock()
+	deleted = s.delete_server_rxc_job_no_lock(job)
+	s.rxc_job_mtx.Unlock()
+
+	return deleted
 }
 
 func (s *Server) resolve_server_rxc_targets(clients []string) ([]*ServerConn, error) {
@@ -441,6 +469,7 @@ func (s *Server) StartRxcJob(clients []string, kind string, script string) (*Ser
 	if err != nil { return nil, err }
 
 	job = &ServerRxcJob{
+		S: s,
 		Kind: kind,
 		Script: script,
 		Created: time.Now(),
@@ -553,18 +582,27 @@ func (s *Server) DeleteRxcJobRun(run *ServerRxcJobRun) error {
 }
 
 func (s *Server) purge_stale_rxc_jobs(now time.Time, expiry time.Duration) int {
+	var node *list.Element
 	var job *ServerRxcJob
-	var done time.Time
 	var purge_count int
 
 	if (expiry <= 0) { return 0 }
 
-	for _, job = range s.snapshot_server_rxc_jobs() {
-		done = job.get_done()
-		if done.IsZero() { continue }
-		if now.Before(done.Add(expiry)) { continue }
-		if s.delete_server_rxc_job(job) { purge_count++ }
+	s.rxc_job_mtx.Lock()
+	for {
+		node = s.rxc_job_done_list.Front()
+		if node == nil { break }
+
+		job = node.Value.(*ServerRxcJob)
+		if now.Before(job.Done.Add(expiry)) { break }
+		if s.delete_server_rxc_job_no_lock(job) {
+			purge_count++
+		} else {
+			s.rxc_job_done_list.Remove(node)
+			job.done_node = nil
+		}
 	}
+	s.rxc_job_mtx.Unlock()
 
 	return purge_count
 }
@@ -578,27 +616,24 @@ func (s *Server) notify_rxc_job_purge() {
 	}
 }
 
-func (s *Server) recalc_next_rxc_job_purge_time(expiry time.Duration) (time.Time, bool) {
+func (s *Server) get_next_rxc_job_purge_time(expiry time.Duration) (time.Time, bool) {
 	var job *ServerRxcJob
-	var done time.Time
+	var node *list.Element
 	var next time.Time
-	var ok bool
 
-	if expiry <= 0 {
-		return time.Time{}, false
+	if expiry <= 0 { return time.Time{}, false }
+
+	s.rxc_job_mtx.Lock()
+	node = s.rxc_job_done_list.Front()
+	if node == nil {
+		s.rxc_job_mtx.Unlock()
+		return time.Time{}, false // no done job
 	}
+	job = node.Value.(*ServerRxcJob)
+	next = job.Done.Add(expiry)
+	s.rxc_job_mtx.Unlock()
 
-	for _, job = range s.snapshot_server_rxc_jobs() {
-		done = job.get_done()
-		if done.IsZero() { continue }
-		done = done.Add(expiry)
-		if !ok || done.Before(next) {
-			next = done
-			ok = true
-		}
-	}
-
-	return next, ok
+	return next, true
 }
 
 func stop_and_drain_timer(timer *time.Timer) {
@@ -625,7 +660,7 @@ func (s *Server) run_rxc_job_purger(wg *sync.WaitGroup, expiry time.Duration) {
 	if expiry <= 0 { return }
 
 	for {
-		next, ok = s.recalc_next_rxc_job_purge_time(expiry)
+		next, ok = s.get_next_rxc_job_purge_time(expiry)
 		if ok {
 			delay = time.Until(next)
 			if delay < 0 { delay = 0 }
@@ -647,8 +682,10 @@ func (s *Server) run_rxc_job_purger(wg *sync.WaitGroup, expiry time.Duration) {
 				// go to the top of the loop to re-calculate when to
 				// run the automatic purge next time.
 				continue
+
 			case now = <-timer_chan:
 				s.purge_stale_rxc_jobs(now, expiry)
+
 			case <-s.Ctx.Done():
 				stop_and_drain_timer(timer)
 				return
