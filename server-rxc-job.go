@@ -15,6 +15,12 @@ import "golang.org/x/net/websocket"
 const SERVER_RXC_RUN_OUTPUT_MAX int = 1024
 const SERVER_RXC_DONE_JOB_RETENTION time.Duration = 60 * time.Second
 
+const SERVER_RXC_RUN_STATUS_STARTING string = "starting"
+const SERVER_RXC_RUN_STATUS_RUNNING string = "running"
+const SERVER_RXC_RUN_STATUS_STOPPING string = "stopping"
+const SERVER_RXC_RUN_STATUS_STOPPED string = "stopped"
+const SERVER_RXC_RUN_STATUS_FAILED string = "failed"
+
 type ServerRxcJob struct {
 	S *Server
 	Id uint64
@@ -28,6 +34,7 @@ type ServerRxcJob struct {
 
 	run_mtx sync.Mutex
 	run_map map[ConnId]*ServerRxcJobRun
+	active_run_count int
 }
 
 type ServerRxcJobRun struct {
@@ -131,7 +138,7 @@ func new_server_rxc_job_run(job *ServerRxcJob, cts *ServerConn) *ServerRxcJobRun
 		ConnId: cts.Id,
 		ClientToken: cts.ClientToken.Get(),
 		Created: time.Now(),
-		Status: "starting",
+		Status: SERVER_RXC_RUN_STATUS_STARTING,
 	}
 }
 
@@ -141,24 +148,28 @@ func (run *ServerRxcJobRun) mark_started(rxc_id uint64) {
 	if run.Started.IsZero() {
 		run.Started = time.Now()
 	}
-	if run.Status == "starting" {
-		run.Status = "running"
+	if run.Status == SERVER_RXC_RUN_STATUS_STARTING {
+		run.Status = SERVER_RXC_RUN_STATUS_RUNNING
 	}
 	run.mtx.Unlock()
 }
 
 func (run *ServerRxcJobRun) mark_start_failure(msg string) {
+	var transitioned bool
+
 	run.mtx.Lock()
-	run.Stopped = time.Now()
-	run.Status = "failed"
-	run.StopMsg = msg
+	if run.Status != SERVER_RXC_RUN_STATUS_STOPPED && run.Status != SERVER_RXC_RUN_STATUS_FAILED {
+		run.Stopped = time.Now()
+		run.Status = SERVER_RXC_RUN_STATUS_FAILED
+		run.StopMsg = msg
+		transitioned = true
+	}
 	run.mtx.Unlock()
 
-	// scan the owning job for 'done' marking
-	// TODO: improve it based on actual events?
-	if run.Cts.S.maybe_mark_rxc_job_done(run.Job) {
-		// notify that a job is over
-		run.Cts.S.notify_rxc_job_purge()
+	if transitioned {
+		if run.Cts.S.maybe_mark_rxc_job_done(run.Job) {
+			run.Cts.S.notify_rxc_job_purge()
+		}
 	}
 }
 
@@ -167,8 +178,8 @@ func (run *ServerRxcJobRun) request_stop() (*ServerConn, uint64, bool) {
 	var rxc_id uint64
 
 	run.mtx.Lock()
-	if run.Status == "running" {
-		run.Status = "stopping"
+	if run.Status == SERVER_RXC_RUN_STATUS_RUNNING {
+		run.Status = SERVER_RXC_RUN_STATUS_STOPPING
 		cts = run.Cts
 		rxc_id = run.RxcId
 	}
@@ -189,7 +200,7 @@ func (run *ServerRxcJobRun) is_done() bool {
 	status = run.Status
 	run.mtx.Unlock()
 
-	return status == "stopped" || status == "failed"
+	return status == SERVER_RXC_RUN_STATUS_STOPPED || status == SERVER_RXC_RUN_STATUS_FAILED
 }
 
 func (run *ServerRxcJobRun) append_output(data []byte, capture_tail bool) {
@@ -249,19 +260,21 @@ func (run *ServerRxcJobRun) append_output(data []byte, capture_tail bool) {
 }
 
 func (run *ServerRxcJobRun) stop(msg string) {
+	var transitioned bool
+
 	run.mtx.Lock()
-	if run.Status != "stopped" && run.Status != "failed" {
-		run.Status = "stopped"
+	if run.Status != SERVER_RXC_RUN_STATUS_STOPPED && run.Status != SERVER_RXC_RUN_STATUS_FAILED {
+		run.Status = SERVER_RXC_RUN_STATUS_STOPPED
 		run.Stopped = time.Now()
 		run.StopMsg = msg
+		transitioned = true
 	}
 	run.mtx.Unlock()
 
-	// scan the owning job for 'done' marking
-	// TODO: improve it based on actual events?
-	if run.Cts.S.maybe_mark_rxc_job_done(run.Job) {
-		// notify that a job is over
-		run.Cts.S.notify_rxc_job_purge()
+	if transitioned {
+		if run.Cts.S.maybe_mark_rxc_job_done(run.Job) {
+			run.Cts.S.notify_rxc_job_purge()
+		}
 	}
 }
 
@@ -325,30 +338,22 @@ func (job *ServerRxcJob) FindRunByConnIdStr(conn_id string) (*ServerRxcJobRun, e
 }
 
 func (job *ServerRxcJob) is_done() bool {
-	var runs []*ServerRxcJobRun
-	var run *ServerRxcJobRun
+	var done bool
 
-	runs = job.snapshot_runs()
-	for _, run = range runs {
-		if !run.is_done() {
-			return false
-		}
-	}
-
-	return true
+	job.run_mtx.Lock()
+	done = (job.active_run_count <= 0)
+	job.run_mtx.Unlock()
+	return done
 }
 
 func (s *Server) maybe_mark_rxc_job_done(job *ServerRxcJob) bool {
 	var existing *ServerRxcJob
-	var run *ServerRxcJobRun
 	var ok bool
 
-	// this scanning logic is similar to is_done().
-	// but it travers the entire run map while the lock is held
-	// rather than taking a snapshot first.
 	job.run_mtx.Lock()
-	for _, run = range job.run_map {
-		if !run.is_done() {
+	if job.active_run_count > 0 {
+		job.active_run_count--
+		if job.active_run_count > 0 {
 			job.run_mtx.Unlock()
 			return false
 		}
@@ -526,6 +531,7 @@ func (s *Server) StartRxcJob(clients []string, kind string, script string) (*Ser
 		Created: time.Now(),
 		heap_index: -1,
 		run_map: make(map[ConnId]*ServerRxcJobRun),
+		active_run_count: len(conns),
 	}
 
 	s.rxc_job_mtx.Lock()
