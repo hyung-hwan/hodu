@@ -66,6 +66,8 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 			var poll_fds []unix.PollFd
 			var buf [2048]byte
 			var n int
+			var out_revents int16
+			var sig_revents int16
 			var err error
 
 			poll_fds = []unix.PollFd{
@@ -85,16 +87,10 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					continue
 				}
 
-				if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-					c.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty stdout", req.RemoteAddr)
-					break
-				}
-				if (poll_fds[1].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-					c.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty event pipe", req.RemoteAddr)
-					break
-				}
+				out_revents = poll_fds[0].Revents
+				sig_revents = poll_fds[1].Revents
 
-				if (poll_fds[0].Revents & unix.POLLIN) != 0 {
+				if (out_revents & unix.POLLIN) != 0 {
 					n, err = out.Read(buf[:])
 					if n > 0 {
 						var err2 error
@@ -111,8 +107,22 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 						break
 					}
 				}
-				if (poll_fds[1].Revents & unix.POLLIN) != 0 {
-					c.log.Write(pty.Id, LOG_DEBUG, "[%s] Stop request noticed on pty event pipe", req.RemoteAddr)
+				if (sig_revents & unix.POLLIN) != 0 {
+					c.log.Write(pty.Id, LOG_DEBUG, "[%s] Stop request noticed on pty signal pipe", req.RemoteAddr)
+					break
+				}
+
+				if (out_revents & (unix.POLLERR | unix.POLLNVAL)) != 0 {
+					c.log.Write(pty.Id, LOG_DEBUG, "[%s] Error detected on pty stdout", req.RemoteAddr)
+					break
+				}
+				if (sig_revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
+					c.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty signal pipe", req.RemoteAddr)
+					break
+				}
+
+				if (out_revents & unix.POLLHUP) != 0 && (out_revents & unix.POLLIN) == 0 {
+					c.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty stdout", req.RemoteAddr)
 					break
 				}
 			}
@@ -148,7 +158,7 @@ ws_recv_loop:
 
 								err = unix.Pipe(pfd[:])
 								if err != nil {
-									c.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to create event pipe for pty - %s", req.RemoteAddr, err.Error())
+									c.log.Write(pty.Id, LOG_ERROR, "[%s] Failed to create signal pipe for pty - %s", req.RemoteAddr, err.Error())
 									send_ws_data_for_xterm(ws, "error", err.Error())
 									//ws.Close() // dirty way to flag out the error
 									ws.SetReadDeadline(time.Now())  // slightly cleaner way to break the main loop
@@ -240,7 +250,7 @@ done:
 	if cmd != nil { cmd.Wait() }
 	wg.Wait()
 
-	// close the event pipe after all goroutines are over
+	// close the signal pipe after all goroutines are over
 	if pfd[0] >= 0 { unix.Close(pfd[0]) }
 	if pfd[1] >= 0 { unix.Close(pfd[1]) }
 

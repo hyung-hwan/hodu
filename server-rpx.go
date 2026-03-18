@@ -60,7 +60,7 @@ func (rpx* server_rpx) handle_header_data(rpx_id uint64, data []byte, w http.Res
 	line = strings.TrimRight(line, "\r\n")
 
 	flds = strings.Fields(line)
-	if (len(flds) < 2) { // i care about the status code..
+	if len(flds) < 2 { // i care about the status code..
 		return http.StatusBadGateway, fmt.Errorf("invalid response status for rpx(%d) - %s", rpx_id, line)
 	}
 	status_code, err = strconv.Atoi(flds[1])

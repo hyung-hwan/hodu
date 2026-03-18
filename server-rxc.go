@@ -60,14 +60,14 @@ ws_recv_loop:
 				switch ev.Type {
 					case "open":
 						if rp == nil && len(ev.Data) == 2 {
-							var kind string
+							var type_ string
 							var script string
 
-							kind = string(ev.Data[0])
+							type_ = string(ev.Data[0])
 							script = string(ev.Data[1])
 							//options = string(ev.Data[2])
 
-							rp, err = cts.StartRxcForWs(ws, kind, script)
+							rp, err = cts.StartRxcForWs(ws, type_, script)
 							if err != nil {
 								s.log.Write(rxc.Id, LOG_ERROR, "[%s] Failed to connect rxc - %s", req.RemoteAddr, err.Error())
 								send_ws_data_for_xterm(ws, "error", err.Error())
@@ -139,7 +139,7 @@ done:
  curl -X POST http://127.0.0.1:9999/_rxc \
 	-H 'Content-Type: application/json' \
 	-d '{
-		"kind": "bash",
+		"type": "bash",
 		"script": "uname -a"
 	}'
 
@@ -149,7 +149,7 @@ curl -X POST http://127.0.0.1:9999/_rxc \
 	-H 'Content-Type: application/json' \
 	-d '{
 		"clients": ["1", "client-token-abc"],
-		"kind": "bash",
+		"type": "bash",
 		"script": "hostname; id"
 	}'
 
@@ -180,13 +180,13 @@ curl -X POST http://127.0.0.1:9999/_rxc \
 
 type json_in_server_rxc struct {
 	Clients []string `json:"clients"`
-	Kind string `json:"kind"`
+	Type string `json:"type"`
 	Script string `json:"script"`
 }
 
 type json_out_server_rxc_job struct {
 	JobId uint64 `json:"job-id"`
-	Kind string `json:"kind"`
+	Type string `json:"type"`
 	Script string `json:"script"`
 	Status string `json:"status"`
 	CreatedMilli int64 `json:"created-milli"`
@@ -241,7 +241,7 @@ func server_rxc_job_to_json(job *ServerRxcJob) json_out_server_rxc_job {
 	var runs []*ServerRxcJobRun
 
 	js.JobId = job.Id
-	js.Kind = job.Kind
+	js.Type = job.Type
 	js.Script = job.Script
 	js.CreatedMilli = job.Created.UnixMilli()
 
@@ -330,7 +330,7 @@ func (ctl *server_ctl_rxc) ServeHTTP(w http.ResponseWriter, req *http.Request) (
 				goto oops
 			}
 
-			job, err = s.StartRxcJob(x.Clients, x.Kind, x.Script)
+			job, err = s.StartRxcJob(x.Clients, x.Type, x.Script)
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
 				je.Encode(JsonErrmsg{Text: err.Error()})

@@ -7,7 +7,10 @@ import "fmt"
 import "io"
 import "os"
 import "os/exec"
+import "os/user"
+import "strconv"
 import "sync"
+import "syscall"
 
 import "golang.org/x/sys/unix"
 
@@ -28,6 +31,8 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	var poll_fds []unix.PollFd
 	var buf [2048]byte
 	var n int
+	var out_revents int16
+	var sig_revents int16
 	var err error
 
 	defer wg.Done()
@@ -37,7 +42,7 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	cts.C.stats.rxc_sessions.Add(1)
 
 	poll_fds = []unix.PollFd{
-		unix.PollFd{Fd: int32(crp.tty.Fd()), Events: unix.POLLIN},
+		unix.PollFd{Fd: int32(crp.out.Fd()), Events: unix.POLLIN},
 		unix.PollFd{Fd: int32(crp.pfd[0]), Events: unix.POLLIN},
 	}
 
@@ -52,24 +57,20 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 			continue
 		}
 
-		if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) stdout", crp.id)
-			break
-		}
-		if (poll_fds[1].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) event pipe", crp.id)
-			break
-		}
+		out_revents = poll_fds[0].Revents
+		sig_revents = poll_fds[1].Revents
 
-		if (poll_fds[0].Revents & unix.POLLIN) != 0 {
-			n, err = crp.tty.Read(buf[:])
+		if (out_revents & unix.POLLIN) != 0 {
+			n, err = crp.out.Read(buf[:])
 			if n > 0 {
 				var err2 error
 				err2 = cts.psc.Send(MakeRxcDataPacket(crp.id, buf[:n]))
 				if err2 != nil {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s from rxc(%d) stdout to server - %s", PACKET_KIND_RXC_DATA.String(), crp.id, err2.Error())
 					break
-				}
+				} //else {
+				//	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sent %s from rxc(%d) stdout to server - %v", PACKET_KIND_RXC_DATA.String(), crp.id, buf[:n])
+				//}
 			}
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
@@ -78,10 +79,22 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 				break
 			}
 		}
-		if (poll_fds[1].Revents & unix.POLLIN) != 0 {
+		if (sig_revents & unix.POLLIN) != 0 {
 			// don't care to read the pipe as it is closed after the loop
 			//unix.Read(crp.pfd[0], )
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Stop request noticed on rxc(%d) event pipe", crp.id)
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Stop request noticed on rxc(%d) signal pipe", crp.id)
+			break
+		}
+		if (out_revents & (unix.POLLERR | unix.POLLNVAL)) != 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Error detected on rxc(%d) stdout", crp.id)
+			break
+		}
+		if (sig_revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) signal pipe", crp.id)
+			break
+		}
+		if (out_revents & unix.POLLHUP) != 0 && (out_revents & unix.POLLIN) == 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) stdout", crp.id)
 			break
 		}
 	}
@@ -93,8 +106,9 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	}
 
 	crp.ReqStop()
+	crp.in.Close() // close the input before waiting for program termination
 	crp.cmd.Wait()
-	crp.tty.Close()
+	crp.out.Close()
 	unix.Close(crp.pfd[0])
 	unix.Close(crp.pfd[1])
 
@@ -106,9 +120,11 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ended rxc(%d) loop", crp.id)
 }
 
-func connect_cmd(_type string, script string) (*exec.Cmd, *os.File, error) {
+func connect_cmd(rxc_user string, _type string, script string) (*exec.Cmd, *os.File, *os.File, error) {
 	var cmd *exec.Cmd
+	var in io.WriteCloser
 	var out io.ReadCloser
+	var in_f *os.File
 	var out_f *os.File
 	var ok bool
 	var err error
@@ -117,25 +133,70 @@ func connect_cmd(_type string, script string) (*exec.Cmd, *os.File, error) {
 		// TODO: refactor stop using Context
 		//cmd = exec.CommandContext()
 		cmd = exec.Command("/bin/bash", "-c", script)
+
+		if rxc_user != "" {
+			var uid int
+			var gid int
+			var u *user.User
+
+			u, err = user.Lookup(rxc_user)
+			if err != nil { return nil, nil, nil, err }
+
+			uid, _ = strconv.Atoi(u.Uid)
+			gid, _ = strconv.Atoi(u.Gid)
+			//if u.Uid != os.Geteuid() {
+				cmd.SysProcAttr = &syscall.SysProcAttr{
+					Credential: &syscall.Credential{
+						Uid: uint32(uid),
+						Gid: uint32(gid),
+					},
+					Setsid: true,
+				}
+				cmd.Dir = u.HomeDir
+				cmd.Env = append(cmd.Env,
+					"HOME=" + u.HomeDir,
+					"LOGNAME=" + u.Username,
+					"PATH=" + os.Getenv("PATH"),
+					//"SHELL=" + pty_shell,
+					//"TERM=xterm",
+					"USER=" + u.Username,
+				)
+			//}
+		}
 	} else {
-		return nil, nil, fmt.Errorf("unsupported type - %s", _type)
+		return nil, nil, nil, fmt.Errorf("unsupported type - %s", _type)
 	}
 
 	out, err = cmd.StdoutPipe()
 	if err != nil {
-		return nil, nil, fmt.Errorf("unable to get stdout pipe - %s", err.Error())
+		return nil, nil, nil, fmt.Errorf("unable to get stdout pipe - %s", err.Error())
 	}
 	out_f, ok = out.(*os.File)
 	if !ok {
-		return nil, nil, fmt.Errorf("unsupported stdout pipe")
+		out.Close()
+		return nil, nil, nil, fmt.Errorf("unsupported stdout pipe")
+	}
+
+	in, err = cmd.StdinPipe()
+	if err != nil {
+		out.Close()
+		return nil, nil, nil, fmt.Errorf("unable to get stdin pipe - %s", err.Error())
+	}
+	in_f, ok = in.(*os.File)
+	if !ok {
+		in.Close()
+		out.Close()
+		return nil, nil, nil, fmt.Errorf("unsupported stdin pipe")
 	}
 
 	err = cmd.Start()
 	if err != nil {
-		return nil, nil, err
+		in.Close()
+		out.Close()
+		return nil, nil, nil, err
 	}
 
-	return cmd, out_f, nil
+	return cmd, in_f, out_f, nil
 }
 
 func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) error {
@@ -175,7 +236,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 		return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, args[0], args[1], err.Error())
 	}
 
-	crp.cmd, crp.tty, err = connect_cmd(args[0], args[1])
+	crp.cmd, crp.in, crp.out, err = connect_cmd(cts.C.rxc_user, args[0], args[1])
 	if err != nil {
 		var err2 error
 
@@ -227,7 +288,7 @@ func (cts *ClientConn) WriteRxc(id uint64, data []byte) error {
 		return fmt.Errorf("unknown rxc id %d", id)
 	}
 
-	crp.tty.Write(data)
+	crp.in.Write(data)
 	return nil
 }
 

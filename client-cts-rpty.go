@@ -28,6 +28,8 @@ func (cts *ClientConn) RptyLoop(crp *ClientRpty, wg *sync.WaitGroup) {
 	var poll_fds []unix.PollFd
 	var buf [2048]byte
 	var n int
+	var out_revents int16
+	var sig_revents int16
 	var err error
 
 	defer wg.Done()
@@ -52,16 +54,10 @@ func (cts *ClientConn) RptyLoop(crp *ClientRpty, wg *sync.WaitGroup) {
 			continue
 		}
 
-		if (poll_fds[0].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rpty(%d) stdout", crp.id)
-			break
-		}
-		if (poll_fds[1].Revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rpty(%d) event pipe", crp.id)
-			break
-		}
+		out_revents = poll_fds[0].Revents
+		sig_revents = poll_fds[1].Revents
 
-		if (poll_fds[0].Revents & unix.POLLIN) != 0 {
+		if (out_revents & unix.POLLIN) != 0 {
 			n, err = crp.tty.Read(buf[:])
 			if n > 0 {
 				var err2 error
@@ -78,10 +74,22 @@ func (cts *ClientConn) RptyLoop(crp *ClientRpty, wg *sync.WaitGroup) {
 				break
 			}
 		}
-		if (poll_fds[1].Revents & unix.POLLIN) != 0 {
+		if (sig_revents & unix.POLLIN) != 0 {
 			// don't care to read the pipe as it is closed after the loop
 			//unix.Read(crp.pfd[0], )
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Stop request noticed on rpty(%d) event pipe", crp.id)
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Stop request noticed on rpty(%d) signal pipe", crp.id)
+			break
+		}
+		if (out_revents & (unix.POLLERR | unix.POLLNVAL)) != 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Error detected on rpty(%d) stdout", crp.id)
+			break
+		}
+		if (sig_revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rpty(%d) signal pipe", crp.id)
+			break
+		}
+		if (out_revents & unix.POLLHUP) != 0 && (out_revents & unix.POLLIN) == 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rpty(%d) stdout", crp.id)
 			break
 		}
 	}

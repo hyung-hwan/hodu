@@ -24,7 +24,7 @@ const SERVER_RXC_RUN_STATUS_FAILED string = "failed"
 type ServerRxcJob struct {
 	S *Server
 	Id uint64
-	Kind string
+	Type string
 	Script string
 	Created time.Time
 	Done time.Time
@@ -506,7 +506,7 @@ func (s *Server) resolve_server_rxc_targets(clients []string) ([]*ServerConn, er
 	return conns, nil
 }
 
-func (s *Server) StartRxcJob(clients []string, kind string, script string) (*ServerRxcJob, error) {
+func (s *Server) StartRxcJob(clients []string, type_ string, script string) (*ServerRxcJob, error) {
 	var conns []*ServerConn
 	var cts *ServerConn
 	var job *ServerRxcJob
@@ -514,11 +514,11 @@ func (s *Server) StartRxcJob(clients []string, kind string, script string) (*Ser
 	var err error
 	var ok bool
 
-	if strings.TrimSpace(kind) == "" {
-		return nil, fmt.Errorf("blank exec kind")
+	if strings.TrimSpace(type_) == "" {
+		return nil, fmt.Errorf("blank rxc type")
 	}
 	if strings.TrimSpace(script) == "" {
-		return nil, fmt.Errorf("blank exec script")
+		return nil, fmt.Errorf("blank rxc script")
 	}
 
 	conns, err = s.resolve_server_rxc_targets(clients)
@@ -526,7 +526,7 @@ func (s *Server) StartRxcJob(clients []string, kind string, script string) (*Ser
 
 	job = &ServerRxcJob{
 		S: s,
-		Kind: kind,
+		Type: type_,
 		Script: script,
 		Created: time.Now(),
 		heap_index: -1,
@@ -553,7 +553,7 @@ func (s *Server) StartRxcJob(clients []string, kind string, script string) (*Ser
 		job.run_mtx.Unlock()
 		if !ok { continue }
 
-		err = cts.RunRxcJob(run, kind, script)
+		err = cts.RunRxcJob(run, type_, script)
 		if err != nil {
 			run.mark_start_failure(err.Error())
 			s.log.Write(cts.Sid, LOG_DEBUG, "Failed to run rxc job(%d) on client(%s) from %s(%s)", job.Id, cts.ClientToken.Get(), cts.RemoteAddr)
@@ -562,7 +562,7 @@ func (s *Server) StartRxcJob(clients []string, kind string, script string) (*Ser
 		}
 	}
 
-	s.log.Write("", LOG_DEBUG, "Started rxc job(%d) %s(%s)", job.Id, kind, script)
+	s.log.Write("", LOG_DEBUG, "Started rxc job(%d) %s(%s)", job.Id, type_, script)
 	return job, nil
 }
 
@@ -645,7 +645,7 @@ func (s *Server) purge_stale_rxc_jobs(now time.Time, expiry time.Duration) int {
 	var job *ServerRxcJob
 	var purge_count int
 
-	if (expiry <= 0) { return 0 }
+	if expiry <= 0 { return 0 }
 
 	s.rxc_job_mtx.Lock()
 	for {

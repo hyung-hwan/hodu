@@ -46,7 +46,7 @@ type ClientRxcMap map[uint64]*ClientRxc
 
 // --------------------------------------------------------------------
 type ClientRouteConfig struct {
-	Id          RouteId // requested id to be assigned. 0 for automatic assignment
+	Id            RouteId // requested id to be assigned. 0 for automatic assignment
 	PeerAddr      string
 	PeerName      string
 	ServiceAddr   string // server-peer-svc-addr
@@ -184,9 +184,12 @@ type Client struct {
 
 	pty_user string
 	pty_shell string
+	rxc_user string
+
 	rpc_ping_intvl time.Duration
 	rpc_ping_tmout time.Duration
 	rpc_seed_tmout time.Duration
+
 	xterm_html string
 }
 
@@ -219,8 +222,9 @@ type ClientRxc struct {
 	cts *ClientConn
 	id uint64
 	cmd *exec.Cmd
-	tty *os.File
-	//out *os.File
+	in *os.File
+	out *os.File
+	// TODO: err
 	pfd [2]int
 }
 
@@ -1138,7 +1142,7 @@ func (cts *ClientConn) disconnect_from_server(logmsg bool) {
 
 		cts.discon_mtx.Lock()
 
-		if (logmsg) {
+		if logmsg {
 			cts.C.log.Write(cts.Sid, LOG_INFO, "Preparing to disconnect from server[%d] %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
 		}
 
@@ -1190,7 +1194,7 @@ func (cts *ClientConn) disconnect_from_server(logmsg bool) {
 		cts.remote_addr.Set("")
 		// don't reset cts.local_addr_p and cts.remote_addr_p
 
-		if (logmsg) {
+		if logmsg {
 			cts.C.log.Write(cts.Sid, LOG_INFO, "Prepared to disconnect from server[%d] %s", cts.cfg.Index, cts.cfg.ServerAddrs[cts.cfg.Index])
 		}
 		cts.discon_mtx.Unlock()
@@ -2243,6 +2247,14 @@ func (c *Client) SetPtyShell(user string) {
 
 func (c *Client) GetPtyShell() string {
 	return c.pty_shell
+}
+
+func (c *Client) SetRxcUser(user string) {
+	c.rxc_user = user
+}
+
+func (c *Client) GetRxcUser() string {
+	return c.rxc_user
 }
 
 func (c *Client) run_single_ctl_server(i int, cs *http.Server, wg *sync.WaitGroup) {

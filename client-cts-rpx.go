@@ -218,7 +218,7 @@ func (cts *ClientConn) RpxLoop(crpx *ClientRpx, data []byte, wg *sync.WaitGroup)
 	line = strings.TrimRight(line, "\r\n")
 
 	flds = strings.Fields(line)
-	if (len(flds) < 3) {
+	if len(flds) < 3 {
 		cts.C.log.Write(cts.Sid, LOG_ERROR, "Invalid request line for rpx(%d) - %s", crpx.id, line)
 		goto done
 	}

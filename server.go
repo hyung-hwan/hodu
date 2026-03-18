@@ -569,7 +569,7 @@ func (cts *ServerConn) make_route_listener(id RouteId, option RouteOption, svc_r
 			return nil, nil, fmt.Errorf("invalid service address %s - %s", svc_requested_addr, err.Error())
 		}
 
-		if (ap.Addr().Is4()) { is4 = true }
+		if ap.Addr().Is4() { is4 = true }
 		svcaddr = &net.TCPAddr{IP: ap.Addr().AsSlice(), Port: int(ap.Port())}
 	}
 
@@ -578,7 +578,7 @@ func (cts *ServerConn) make_route_listener(id RouteId, option RouteOption, svc_r
 		// i don't want the behavior.. I force tcp4 if the ip address given
 		// is ipv4 address
 		nw = "tcp"
-		if (is4) { nw = "tcp4" }
+		if is4 { nw = "tcp4" }
 		if svcaddr == nil {
 			// port 0 for automatic assignment.
 			svcaddr = &net.TCPAddr{Port: 0}

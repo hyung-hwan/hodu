@@ -285,6 +285,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var logger *AppLogger
 	var pty_user string
 	var pty_shell string
+	var rxc_user string
 	var xterm_html_file string
 	var xterm_html string
 	var i int
@@ -317,6 +318,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	cc.ServerAuthority = cfg.RPC.Endpoint.Authority
 	pty_user = cfg.APP.PtyUser
 	pty_shell = cfg.APP.PtyShell
+	rxc_user = cfg.APP.RxcUser
 	xterm_html_file = cfg.APP.XtermHtmlFile
 	config.RpcConnMax = cfg.APP.MaxRpcConns
 	config.PeerConnMax = cfg.APP.MaxPeers
@@ -374,6 +376,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 
 	if pty_user != "" { c.SetPtyUser(pty_user) }
 	if pty_shell != "" { c.SetPtyShell(pty_shell) }
+	if rxc_user != "" { c.SetRxcUser(rxc_user) }
 	if xterm_html != "" { c.SetXtermHtml(xterm_html) }
 
 	c.StartService(&cc)

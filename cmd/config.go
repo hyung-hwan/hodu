@@ -132,6 +132,7 @@ type ClientAppConfig  struct {
 	TokenFile     string        `yaml:"token-file"`
 	PtyUser       string        `yaml:"pty-user"`
 	PtyShell      string        `yaml:"pty-shell"`
+	RxcUser       string        `yaml:"rxc-user"`
 	RpcPingIntvl  time.Duration `yaml:"rpc-ping-interval"`
 	RpcPingTmout  time.Duration `yaml:"rpc-ping-timeout"`
 	RpcSeedTmout  time.Duration `yaml:"rpc-seed-timeout"`
