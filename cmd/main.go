@@ -15,6 +15,7 @@ import "strings"
 import "sync"
 import "sync/atomic"
 import "syscall"
+import "time"
 
 // Don't change these items to 'const' as they can be overridden externally with a linker option
 var HODU_NAME string = "hodu"
@@ -151,7 +152,12 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	config.RpcMaxConns = cfg.APP.MaxRpcConns
 	config.RpcMinPingIntvl = cfg.APP.MinRpcPingIntvl
 	config.MaxPeers = cfg.APP.MaxPeers
-	config.RxcDoneJobRetention = cfg.APP.RxcDoneJobRetention
+	if cfg.APP.RxcDoneJobRetention == nil {
+		// default to 60 seconds
+		config.RxcDoneJobRetention = 60 * time.Second
+	} else {
+		config.RxcDoneJobRetention = *cfg.APP.RxcDoneJobRetention
+	}
 	config.HttpReadHeaderTimeout = cfg.APP.HttpReadHeaderTimeout
 	config.HttpIdleTimeout = cfg.APP.HttpIdleTimeout
 	config.HttpMaxHeaderBytes = cfg.APP.HttpMaxHeaderBytes

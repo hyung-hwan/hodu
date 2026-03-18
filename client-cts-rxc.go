@@ -32,7 +32,7 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
-	cts.C.log.Write(cts.Sid, LOG_INFO, "Started rxc(%d) for %s(%s)", crp.id, cts.C.pty_shell, cts.C.pty_user)
+	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Started rxc(%d) loop for %s", crp.id, crp.cmd.String())
 
 	cts.C.stats.rxc_sessions.Add(1)
 
@@ -172,7 +172,6 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 		if err2 != nil {
 			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s for rxc(%d) start failure to server - %s", PACKET_KIND_RXC_STOP.String(), id, err2.Error())
 		}
-		//return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, cts.C.pty_shell, cts.C.pty_user, err.Error())
 		return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, args[0], args[1], err.Error())
 	}
 	//crp.cmd, crp.tty, err = connect_pty(cts.C.pty_shell, cts.C.pty_user)
@@ -187,7 +186,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 		}
 		unix.Close(crp.pfd[0])
 		unix.Close(crp.pfd[1])
-		return fmt.Errorf("unable to start rxc(%d) for %s(%s) - %s", id, cts.C.pty_shell, cts.C.pty_user, err.Error())
+		return fmt.Errorf("unable to start rxc(%d) for %s(%s) - %s", id, args[0], args[1], err.Error())
 	}
 
 	for i = 0; i < 2; i++ {

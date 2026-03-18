@@ -1149,7 +1149,7 @@ func (cts *ClientConn) disconnect_from_server(logmsg bool) {
 		cts.rxc_mtx.Lock()
 		for _, rxc = range cts.rxc_map {
 			rxc.ReqStop()
-			// the loop in RptyLoop() is supposed to be broken.
+			// the loop in RxcLoop() is supposed to be broken.
 			// let's not inform the server of this connection.
 			// the server should clean up itself upon connection error
 		}

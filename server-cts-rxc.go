@@ -77,7 +77,7 @@ func (cts *ServerConn) StartRxcForWs(ws *websocket.Conn, kind string, script str
 	return cts.add_new_rxc(&ServerRxcWebsocketSink{ws: ws}, ws, kind, script)
 }
 
-func (cts *ServerConn) StartRxcJob(run *ServerRxcJobRun, kind string, script string) error {
+func (cts *ServerConn) RunRxcJob(run *ServerRxcJobRun, kind string, script string) error {
 	var rxc *ServerRxc
 	var err error
 
@@ -183,7 +183,7 @@ func (cts *ServerConn) StopRxcSinkById(id uint64, msg string) error {
 		if err != nil { return err }
 	}
 
-	cts.S.log.Write(cts.Sid, LOG_INFO, "Stopped rxc(%d) for %s - %s", id, cts.RemoteAddr, msg)
+	cts.S.log.Write(cts.Sid, LOG_INFO, "Stopped rxc job(%d) run for client(%s) from %s", id, cts.ClientToken.Get(), cts.RemoteAddr)
 	return nil
 }
 

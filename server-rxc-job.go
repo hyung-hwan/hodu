@@ -1,6 +1,6 @@
 package hodu
 
-import "container/list"
+import "container/heap"
 import "encoding/base64"
 import "fmt"
 import "sort"
@@ -14,8 +14,6 @@ import "golang.org/x/net/websocket"
 
 const SERVER_RXC_RUN_OUTPUT_MAX int = 65536
 
-type ServerRxcJobMap map[uint64]*ServerRxcJob
-
 type ServerRxcJob struct {
 	S *Server
 	Id uint64
@@ -24,7 +22,8 @@ type ServerRxcJob struct {
 	Created time.Time
 	Done time.Time
 
-	done_node *list.Element
+	expire_at time.Time
+	heap_index int
 
 	run_mtx sync.Mutex
 	run_map map[ConnId]*ServerRxcJobRun
@@ -46,6 +45,10 @@ type ServerRxcJobRun struct {
 
 	mtx sync.Mutex
 }
+
+type ServerRxcJobMap map[uint64]*ServerRxcJob
+
+type ServerRxcJobExpiryHeap []*ServerRxcJob
 
 type ServerRxcSink interface {
 	ReqStop()
@@ -71,6 +74,51 @@ func (sink *ServerRxcWebsocketSink) Write(data []byte) error {
 func (sink *ServerRxcWebsocketSink) Stop(msg string) error {
 	sink.ReqStop()
 	return nil
+}
+
+/* implement heap.Interface for ServerRxcJobExpiryMap */
+func (heap ServerRxcJobExpiryHeap) Len() int {
+	return len(heap)
+}
+
+func (heap ServerRxcJobExpiryHeap) Less(i int, j int) bool {
+	if heap[i].expire_at.Before(heap[j].expire_at) { return true }
+	if heap[j].expire_at.Before(heap[i].expire_at) { return false }
+	return heap[i].Id < heap[j].Id
+}
+
+func (heap ServerRxcJobExpiryHeap) Swap(i int, j int) {
+	var x *ServerRxcJob
+	var y *ServerRxcJob
+
+	x = heap[i]
+	y = heap[j]
+	heap[i] = y
+	heap[j] = x
+	if heap[i] != nil { heap[i].heap_index = i }
+	if heap[j] != nil { heap[j].heap_index = j }
+}
+
+func (heap *ServerRxcJobExpiryHeap) Push(x interface{}) {
+	var job *ServerRxcJob
+
+	job = x.(*ServerRxcJob)
+	job.heap_index = len(*heap)
+	*heap = append(*heap, job)
+}
+
+func (heap *ServerRxcJobExpiryHeap) Pop() interface{} {
+	var old ServerRxcJobExpiryHeap
+	var n int
+	var job *ServerRxcJob
+
+	old = *heap
+	n = len(old)
+	job = old[n - 1]
+	old[n - 1] = nil
+	job.heap_index = -1
+	*heap = old[:n - 1]
+	return job
 }
 
 // ServerRxcJobRun
@@ -313,20 +361,13 @@ func (s *Server) maybe_mark_rxc_job_done(job *ServerRxcJob) bool {
 		return false
 	}
 	job.Done = time.Now()
-	job.done_node = s.rxc_job_done_list.PushBack(job)
+	if s.Cfg.RxcDoneJobRetention > 0 {
+		job.expire_at = job.Done.Add(s.Cfg.RxcDoneJobRetention)
+		heap.Push(&s.rxc_job_heap, job)
+	}
 	s.rxc_job_mtx.Unlock()
 
 	return true
-}
-
-func (job *ServerRxcJob) get_done() time.Time {
-	var done time.Time
-
-	job.S.rxc_job_mtx.Lock()
-	done = job.Done
-	job.S.rxc_job_mtx.Unlock()
-
-	return done
 }
 
 func (job *ServerRxcJob) delete_run(run *ServerRxcJobRun) bool {
@@ -388,6 +429,14 @@ func (s *Server) FindServerRxcJobByIdStr(job_id string) (*ServerRxcJob, error) {
 	return job, nil
 }
 
+func (s *Server) delete_server_rxc_job_from_heap_no_lock(job *ServerRxcJob) {
+	if job.heap_index >= 0 {
+		heap.Remove(&s.rxc_job_heap, job.heap_index)
+		job.expire_at = time.Time{}
+		//job.heap_index = -1 // skip this as it's set in s.rxc_job_heap.Pop() called by heap.Remove()
+	}
+}
+
 func (s *Server) delete_server_rxc_job_no_lock(job *ServerRxcJob) bool {
 	var existing *ServerRxcJob
 	var ok bool
@@ -395,10 +444,7 @@ func (s *Server) delete_server_rxc_job_no_lock(job *ServerRxcJob) bool {
 	existing, ok = s.rxc_job_map[job.Id]
 	if ok && existing == job {
 		delete(s.rxc_job_map, job.Id)
-		if job.done_node != nil {
-			s.rxc_job_done_list.Remove(job.done_node)
-			job.done_node = nil
-		}
+		s.delete_server_rxc_job_from_heap_no_lock(job)
 	}
 
 	return ok && existing == job
@@ -473,6 +519,7 @@ func (s *Server) StartRxcJob(clients []string, kind string, script string) (*Ser
 		Kind: kind,
 		Script: script,
 		Created: time.Now(),
+		heap_index: -1,
 		run_map: make(map[ConnId]*ServerRxcJobRun),
 	}
 
@@ -495,12 +542,16 @@ func (s *Server) StartRxcJob(clients []string, kind string, script string) (*Ser
 		job.run_mtx.Unlock()
 		if !ok { continue }
 
-		err = cts.StartRxcJob(run, kind, script)
+		err = cts.RunRxcJob(run, kind, script)
 		if err != nil {
 			run.mark_start_failure(err.Error())
+			s.log.Write(cts.Sid, LOG_DEBUG, "Failed to run rxc job(%d) on client(%s) from %s(%s)", job.Id, cts.ClientToken.Get(), cts.RemoteAddr)
+		} else {
+			s.log.Write(cts.Sid, LOG_DEBUG, "Ran rxc job(%d) on client(%s) from %s(%s)", job.Id, cts.ClientToken.Get(), cts.RemoteAddr)
 		}
 	}
 
+	s.log.Write("", LOG_DEBUG, "Started rxc job(%d) %s(%s)", job.Id, kind, script)
 	return job, nil
 }
 
@@ -547,26 +598,24 @@ func (s *Server) StopRxcJob(job *ServerRxcJob) int {
 		if err != nil { continue }
 	}
 
+	s.log.Write("", LOG_DEBUG, "Stopped rxc job(%d) after stopping %d runs", job.Id, stop_count)
 	return stop_count
 }
 
 func (s *Server) DeleteRxcJob(job *ServerRxcJob) error {
-	var done time.Time
-
 	if !job.is_done() {
 		return fmt.Errorf("active rxc job id %d", job.Id)
 	}
 	if !s.delete_server_rxc_job(job) {
 		return fmt.Errorf("non-existent rxc job id %d", job.Id)
 	}
-
-	done = job.get_done()
-	if !done.IsZero() {
+	if s.Cfg.RxcDoneJobRetention > 0 {
 		// a job is already over and is actually deleted by request.
-		// the purge task needs to do some recalculation excluding this job.
+		// the purge goroutine needs to re-schedule the next automatic purge.
 		s.notify_rxc_job_purge()
 	}
 
+	s.log.Write("", LOG_DEBUG, "Deleted rxc job(%d)", job.Id)
 	return nil
 }
 
@@ -582,7 +631,6 @@ func (s *Server) DeleteRxcJobRun(run *ServerRxcJobRun) error {
 }
 
 func (s *Server) purge_stale_rxc_jobs(now time.Time, expiry time.Duration) int {
-	var node *list.Element
 	var job *ServerRxcJob
 	var purge_count int
 
@@ -590,16 +638,18 @@ func (s *Server) purge_stale_rxc_jobs(now time.Time, expiry time.Duration) int {
 
 	s.rxc_job_mtx.Lock()
 	for {
-		node = s.rxc_job_done_list.Front()
-		if node == nil { break }
-
-		job = node.Value.(*ServerRxcJob)
-		if now.Before(job.Done.Add(expiry)) { break }
+		if len(s.rxc_job_heap) <= 0 { break }
+		job = s.rxc_job_heap[0]
+		if now.Before(job.expire_at) { break }
 		if s.delete_server_rxc_job_no_lock(job) {
+			s.log.Write("", LOG_INFO, "Purged stale rxc job(%d)", job.Id)
 			purge_count++
 		} else {
-			s.rxc_job_done_list.Remove(node)
-			job.done_node = nil
+			// this must not happen. but if it happens, it is an internal error and
+			// the job expiry heap and the job map are already out of sync
+			s.log.Write("", LOG_WARN, "Failed to purge stale rxc job(%d): heap/map mismatch", job.Id)
+			// but still attempt to delete it from the heap to prevent future purge blockage
+			s.delete_server_rxc_job_from_heap_no_lock(job)
 		}
 	}
 	s.rxc_job_mtx.Unlock()
@@ -617,20 +667,16 @@ func (s *Server) notify_rxc_job_purge() {
 }
 
 func (s *Server) get_next_rxc_job_purge_time(expiry time.Duration) (time.Time, bool) {
-	var job *ServerRxcJob
-	var node *list.Element
 	var next time.Time
 
 	if expiry <= 0 { return time.Time{}, false }
 
 	s.rxc_job_mtx.Lock()
-	node = s.rxc_job_done_list.Front()
-	if node == nil {
+	if len(s.rxc_job_heap) <= 0 {
 		s.rxc_job_mtx.Unlock()
-		return time.Time{}, false // no done job
+		return time.Time{}, false
 	}
-	job = node.Value.(*ServerRxcJob)
-	next = job.Done.Add(expiry)
+	next = s.rxc_job_heap[0].expire_at
 	s.rxc_job_mtx.Unlock()
 
 	return next, true

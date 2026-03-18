@@ -162,7 +162,7 @@ type Server struct {
 	rxc_job_next_id  uint64
 	rxc_job_mtx      sync.Mutex
 	rxc_job_map      ServerRxcJobMap
-	rxc_job_done_list *list.List
+	rxc_job_heap     ServerRxcJobExpiryHeap
 	rxc_job_purge_chan chan struct{}
 	cts_wg           sync.WaitGroup
 
@@ -1536,7 +1536,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.cts_map_by_token = make(ServerConnMapByClientToken)
 	s.rxc_job_next_id = 1
 	s.rxc_job_map = make(ServerRxcJobMap)
-	s.rxc_job_done_list = list.New()
+	s.rxc_job_heap = make(ServerRxcJobExpiryHeap, 0)
 	s.rxc_job_purge_chan = make(chan struct{}, 1)
 	s.svc_port_map = make(ServerSvcPortMap)
 	s.stop_chan = make(chan bool, 8)
