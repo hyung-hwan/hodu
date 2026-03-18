@@ -68,6 +68,7 @@ type ServerConfig struct {
 	RpcMinPingIntvl time.Duration
 	MaxPeers int
 	RxcDoneJobRetention time.Duration
+	RxcRunOutputMax int
 	HttpReadHeaderTimeout time.Duration
 	HttpIdleTimeout time.Duration
 	HttpMaxHeaderBytes int

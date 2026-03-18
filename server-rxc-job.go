@@ -12,7 +12,8 @@ import "unsafe"
 
 import "golang.org/x/net/websocket"
 
-const SERVER_RXC_RUN_OUTPUT_MAX int = 65536
+const SERVER_RXC_RUN_OUTPUT_MAX int = 1024
+const SERVER_RXC_DONE_JOB_RETENTION time.Duration = 60 * time.Second
 
 type ServerRxcJob struct {
 	S *Server
@@ -195,21 +196,25 @@ func (run *ServerRxcJobRun) append_output(data []byte, capture_tail bool) {
 	var fit_len int
 	var keep_len int
 	var old_off int
+	var output_max int
+
+	output_max = run.Job.S.Cfg.RxcRunOutputMax
+	if output_max <= 0 { return } // don't capture
 
 	run.mtx.Lock()
 	if capture_tail {
-		if len(data) >= SERVER_RXC_RUN_OUTPUT_MAX {
-			if len(data) > SERVER_RXC_RUN_OUTPUT_MAX || len(run.Output) > 0 {
+		if len(data) >= output_max {
+			if len(data) > output_max || len(run.Output) > 0 {
 				run.OutputTruncated = true
 			}
-			run.Output = append(run.Output[:0], data[len(data) - SERVER_RXC_RUN_OUTPUT_MAX:]...)
+			run.Output = append(run.Output[:0], data[len(data) - output_max:]...)
 		} else {
-			if len(run.Output) > SERVER_RXC_RUN_OUTPUT_MAX {
-				run.Output = append([]byte(nil), run.Output[len(run.Output) - SERVER_RXC_RUN_OUTPUT_MAX:]...)
+			if len(run.Output) > output_max {
+				run.Output = append([]byte(nil), run.Output[len(run.Output) - output_max:]...)
 				run.OutputTruncated = true
 			}
 
-			fit_len = SERVER_RXC_RUN_OUTPUT_MAX - len(data)
+			fit_len = output_max - len(data)
 			if fit_len < 0 { fit_len = 0 }
 			if len(run.Output) > fit_len {
 				keep_len = fit_len
@@ -222,13 +227,13 @@ func (run *ServerRxcJobRun) append_output(data []byte, capture_tail bool) {
 			run.Output = append(run.Output, data...)
 		}
 	} else {
-		//if len(run.Output) > SERVER_RXC_RUN_OUTPUT_MAX {
-		//	run.Output = append([]byte(nil), run.Output[:SERVER_RXC_RUN_OUTPUT_MAX]...)
+		//if len(run.Output) > output_max {
+		//	run.Output = append([]byte(nil), run.Output[:output_max]...)
 		//	run.OutputTruncated = true
 		//}
 
 		if !run.OutputTruncated {
-			fit_len = SERVER_RXC_RUN_OUTPUT_MAX - len(run.Output)
+			fit_len = output_max - len(run.Output)
 			if fit_len <= 0 {
 				run.OutputTruncated = true
 			} else {

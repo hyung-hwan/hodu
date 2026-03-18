@@ -174,7 +174,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 		}
 		return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, args[0], args[1], err.Error())
 	}
-	//crp.cmd, crp.tty, err = connect_pty(cts.C.pty_shell, cts.C.pty_user)
+
 	crp.cmd, crp.tty, err = connect_cmd(args[0], args[1])
 	if err != nil {
 		var err2 error

@@ -364,9 +364,11 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 // --------------------------------------------------------------------
 
 func (rpty *ClientRpty) ReqStop() {
-	// i don't care about multiple kills
-	rpty.cts.C.log.Write("", LOG_INFO, "Terminating process(%d) for rpty(%d) - %s", rpty.cmd.Process.Pid, rpty.id, rpty.cmd.String());
-	rpty.cmd.Process.Kill()
+	if rpty.cmd != nil {
+		// i don't care about multiple kills
+		rpty.cts.C.log.Write("", LOG_DEBUG, "Terminating process(%d) for rpty(%d) - %s", rpty.cmd.Process.Pid, rpty.id, rpty.cmd.String());
+		rpty.cmd.Process.Kill()
+	}
 
 	// don't check for a write error. the os pipe's buffer must be large enough
 	unix.Write(rpty.pfd[1], []byte{0})
@@ -383,8 +385,10 @@ func (rpx *ClientRpx) ReqStop() {
 
 func (rxc *ClientRxc) ReqStop() {
 	// i don't care about multiple kills
-	rxc.cts.C.log.Write("", LOG_INFO, "Terminating process(%d) for rxc(%d) - %s", rxc.cmd.Process.Pid, rxc.id, rxc.cmd.String());
-	rxc.cmd.Process.Kill()
+	if rxc.cmd != nil {
+		rxc.cts.C.log.Write("", LOG_DEBUG, "Terminating process(%d) for rxc(%d) - %s", rxc.cmd.Process.Pid, rxc.id, rxc.cmd.String());
+		rxc.cmd.Process.Kill()
+	}
 
 	// don't check for a write error. the os pipe's buffer must be large enough
 	unix.Write(rxc.pfd[1], []byte{0})
