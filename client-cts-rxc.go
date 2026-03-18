@@ -120,12 +120,116 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ended rxc(%d) loop", crp.id)
 }
 
+func split_simple_command(script string) ([]string, error) {
+	var args []string
+	var buf bytes.Buffer
+	var ch byte
+	var quote byte
+	var i int
+	var token_started bool
+	var escaped bool
+
+	args = make([]string, 0)
+
+	for i = 0; i < len(script); i++ {
+		ch = script[i]
+
+		if escaped {
+			buf.WriteByte(ch)
+			token_started = true
+			escaped = false
+			continue
+		}
+
+		if ch == '\\' {
+			escaped = true
+			token_started = true
+			continue
+		}
+
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			} else {
+				buf.WriteByte(ch)
+				token_started = true
+			}
+			continue
+		}
+
+		switch ch {
+			case '\'', '"':
+				quote = ch
+				token_started = true
+
+			case ' ', '\t', '\r', '\n':
+				if token_started {
+					args = append(args, buf.String())
+					buf.Reset()
+					token_started = false
+				}
+
+			default:
+				buf.WriteByte(ch)
+				token_started = true
+		}
+	}
+
+	if escaped {
+		return nil, fmt.Errorf("dangling escape in simple command")
+	}
+
+	if quote != 0 {
+		return nil, fmt.Errorf("unterminated quote in simple command")
+	}
+
+	if token_started {
+		args = append(args, buf.String())
+	}
+
+	if len(args) <= 0 {
+		return nil, fmt.Errorf("blank simple command")
+	}
+
+	return args, nil
+}
+
+func apply_rxc_user(cmd *exec.Cmd, rxc_user string) error {
+	var uid int
+	var gid int
+	var u *user.User
+	var err error
+
+	u, err = user.Lookup(rxc_user)
+	if err != nil { return err }
+
+	uid, _ = strconv.Atoi(u.Uid)
+	gid, _ = strconv.Atoi(u.Gid)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{
+			Uid: uint32(uid),
+			Gid: uint32(gid),
+		},
+		Setsid: true,
+	}
+	cmd.Dir = u.HomeDir
+	cmd.Env = append(cmd.Env,
+		"HOME=" + u.HomeDir,
+		"LOGNAME=" + u.Username,
+		"PATH=" + os.Getenv("PATH"),
+		"USER=" + u.Username,
+	)
+
+	return nil
+}
+
 func connect_cmd(rxc_user string, _type string, script string) (*exec.Cmd, *os.File, *os.File, error) {
 	var cmd *exec.Cmd
 	var in io.WriteCloser
 	var out io.ReadCloser
 	var in_f *os.File
 	var out_f *os.File
+	var argv []string
 	var ok bool
 	var err error
 
@@ -133,38 +237,24 @@ func connect_cmd(rxc_user string, _type string, script string) (*exec.Cmd, *os.F
 		// TODO: refactor stop using Context
 		//cmd = exec.CommandContext()
 		cmd = exec.Command("/bin/bash", "-c", script)
-
-		if rxc_user != "" {
-			var uid int
-			var gid int
-			var u *user.User
-
-			u, err = user.Lookup(rxc_user)
-			if err != nil { return nil, nil, nil, err }
-
-			uid, _ = strconv.Atoi(u.Uid)
-			gid, _ = strconv.Atoi(u.Gid)
-			//if u.Uid != os.Geteuid() {
-				cmd.SysProcAttr = &syscall.SysProcAttr{
-					Credential: &syscall.Credential{
-						Uid: uint32(uid),
-						Gid: uint32(gid),
-					},
-					Setsid: true,
-				}
-				cmd.Dir = u.HomeDir
-				cmd.Env = append(cmd.Env,
-					"HOME=" + u.HomeDir,
-					"LOGNAME=" + u.Username,
-					"PATH=" + os.Getenv("PATH"),
-					//"SHELL=" + pty_shell,
-					//"TERM=xterm",
-					"USER=" + u.Username,
-				)
-			//}
+	} else if _type == "simple" {
+		argv, err = split_simple_command(script)
+		if err != nil {
+			return nil, nil, nil, err
 		}
+		if argv[0] == "" {
+			return nil, nil, nil, fmt.Errorf("blank simple command")
+		}
+		cmd = exec.Command(argv[0], argv[1:]...)
 	} else {
 		return nil, nil, nil, fmt.Errorf("unsupported type - %s", _type)
+	}
+
+	if rxc_user != "" {
+		err = apply_rxc_user(cmd, rxc_user)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 
 	out, err = cmd.StdoutPipe()
