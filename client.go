@@ -347,6 +347,12 @@ func (g *GuardedPacketStreamClient) Send(data *Packet) error {
 	return g.Hodu_PacketStreamClient.Send(data)
 }
 
+func (g *GuardedPacketStreamClient) CloseSend() error {
+	g.mtx.Lock()
+	defer g.mtx.Unlock()
+	return g.Hodu_PacketStreamClient.CloseSend()
+}
+
 /*func (g *GuardedPacketStreamClient) Recv() (*Packet, error) {
 	return g.psc.Recv()
 }
@@ -358,7 +364,10 @@ func (g *GuardedPacketStreamClient) Context() context.Context {
 // --------------------------------------------------------------------
 
 func (rpty *ClientRpty) ReqStop() {
+	// i don't care about multiple kills
+	rpty.cts.C.log.Write("", LOG_INFO, "Terminating process(%d) for rpty(%d) - %s", rpty.cmd.Process.Pid, rpty.id, rpty.cmd.String());
 	rpty.cmd.Process.Kill()
+
 	// don't check for a write error. the os pipe's buffer must be large enough
 	unix.Write(rpty.pfd[1], []byte{0})
 }
@@ -373,7 +382,10 @@ func (rpx *ClientRpx) ReqStop() {
 }
 
 func (rxc *ClientRxc) ReqStop() {
+	// i don't care about multiple kills
+	rxc.cts.C.log.Write("", LOG_INFO, "Terminating process(%d) for rxc(%d) - %s", rxc.cmd.Process.Pid, rxc.id, rxc.cmd.String());
 	rxc.cmd.Process.Kill()
+
 	// don't check for a write error. the os pipe's buffer must be large enough
 	unix.Write(rxc.pfd[1], []byte{0})
 }
@@ -1155,7 +1167,11 @@ func (cts *ClientConn) disconnect_from_server(logmsg bool) {
 		}
 		cts.rxc_mtx.Unlock()
 
-		// don't care about double closes when this function is called from both RunTask() and ReqStop()
+		// don't care about double closes when this function is called
+		// from both RunTask() and ReqStop(). Send() may be called after
+		// this CloseSend() in some unwaited goroutines like RxcLoop(),
+		// which is ugly.you may see a message like
+		//   "rpc error: code = Internal desc = SendMsg called after CloseSend" in logs.
 		if cts.psc != nil { cts.psc.CloseSend() }
 		cts.conn.Close()
 

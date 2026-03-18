@@ -89,7 +89,7 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ending rxc(%d) loop", crp.id)
 	err = cts.psc.Send(MakeRxcStopPacket(crp.id, ""))
 	if err != nil {
-		cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s from rxc(%d) to server - %s", PACKET_KIND_RXC_STOP.String(), crp.id, err.Error())
+		cts.C.log.Write(cts.Sid, LOG_WARN, "Failed to send %s from rxc(%d) to server - %s", PACKET_KIND_RXC_STOP.String(), crp.id, err.Error())
 	}
 
 	crp.ReqStop()

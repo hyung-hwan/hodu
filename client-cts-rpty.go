@@ -87,7 +87,10 @@ func (cts *ClientConn) RptyLoop(crp *ClientRpty, wg *sync.WaitGroup) {
 	}
 
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ending rpty(%d) loop", crp.id)
-	cts.psc.Send(MakeRptyStopPacket(crp.id, ""))
+	err = cts.psc.Send(MakeRptyStopPacket(crp.id, ""))
+	if err != nil {
+		cts.C.log.Write(cts.Sid, LOG_WARN, "Failed to send %s from rpty(%d) to server - %s", PACKET_KIND_RPTY_STOP.String(), crp.id, err.Error())
+	}
 
 	crp.ReqStop()
 	crp.cmd.Wait()
