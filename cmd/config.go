@@ -134,6 +134,7 @@ type ClientAppConfig  struct {
 	PtyShell        string        `yaml:"pty-shell"`
 	RxcUser         string        `yaml:"rxc-user"`
 	RxcProfileFiles []string      `yaml:"rxc-profile-files"`
+	RxcProfileReloadMinInterval *time.Duration `yaml:"rxc-profile-reload-min-interval"`
 	RpcPingIntvl    time.Duration `yaml:"rpc-ping-interval"`
 	RpcPingTmout    time.Duration `yaml:"rpc-ping-timeout"`
 	RpcSeedTmout    time.Duration `yaml:"rpc-seed-timeout"`

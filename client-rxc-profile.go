@@ -86,20 +86,19 @@ func append_client_rxc_profiles(dst ClientRxcProfileMap, src []ClientRxcProfile,
 
 func (c *Client) reload_rxc_profiles_if_needed() error {
 	var now time.Time
+	var min_interval time.Duration
 	var patterns []string
 	var matched_file_map map[string]struct{}
 	var matched_files []string
 	var pattern string
-	var expanded []string
 	var file_path string
-	var file_info os.FileInfo
+	var file *os.File
 	var file_states map[string]client_rxc_profile_file_state
 	var profiles ClientRxcProfileMap
 	var changed bool
 	var current_state client_rxc_profile_file_state
-	var ok bool
-	var data []byte
 	var doc client_rxc_profile_file_doc
+	var dec *yaml.Decoder
 	var err error
 
 	now = time.Now()
@@ -107,7 +106,9 @@ func (c *Client) reload_rxc_profiles_if_needed() error {
 	c.rxc_profile_mtx.Lock()
 	defer c.rxc_profile_mtx.Unlock()
 
-	if !c.rxc_profile_last_check.IsZero() && now.Before(c.rxc_profile_last_check.Add(CLIENT_RXC_PROFILE_RELOAD_MIN_INTERVAL)) {
+	min_interval = c.rxc_profile_reload_min_interval
+
+	if min_interval > 0 && !c.rxc_profile_last_check.IsZero() && now.Before(c.rxc_profile_last_check.Add(min_interval)) {
 		return nil
 	}
 	c.rxc_profile_last_check = now
@@ -117,14 +118,12 @@ func (c *Client) reload_rxc_profiles_if_needed() error {
 
 	matched_file_map = make(map[string]struct{})
 	for _, pattern = range patterns {
-		if strings.TrimSpace(pattern) == "" {
-			continue
-		}
+		var expanded []string
+
+		if strings.TrimSpace(pattern) == "" { continue }
 
 		expanded, err = filepath.Glob(pattern)
-		if err != nil {
-			return fmt.Errorf("invalid rxc profile file pattern %s - %s", pattern, err.Error())
-		}
+		if err != nil { return fmt.Errorf("invalid rxc profile file pattern %s - %s", pattern, err.Error()) }
 
 		for _, file_path = range expanded {
 			matched_file_map[file_path] = struct{}{}
@@ -139,6 +138,8 @@ func (c *Client) reload_rxc_profiles_if_needed() error {
 
 	file_states = make(map[string]client_rxc_profile_file_state)
 	for _, file_path = range matched_files {
+		var file_info os.FileInfo
+
 		file_info, err = os.Stat(file_path)
 		if err != nil {
 			return fmt.Errorf("failed to stat rxc profile file %s - %s", file_path, err.Error())
@@ -153,6 +154,7 @@ func (c *Client) reload_rxc_profiles_if_needed() error {
 	if len(file_states) != len(c.rxc_profile_file_states) {
 		changed = true
 	} else {
+		var ok bool
 		for file_path, current_state = range file_states {
 			_, ok = c.rxc_profile_file_states[file_path]
 			if !ok {
@@ -166,27 +168,21 @@ func (c *Client) reload_rxc_profiles_if_needed() error {
 		}
 	}
 
-	if !changed && c.rxc_profile_loaded {
-		return nil
-	}
+	if !changed && c.rxc_profile_loaded { return nil }
 
 	profiles = make(ClientRxcProfileMap)
 	for _, file_path = range matched_files {
-		data, err = os.ReadFile(file_path)
-		if err != nil {
-			return fmt.Errorf("failed to read rxc profile file %s - %s", file_path, err.Error())
-		}
+		file, err = os.Open(file_path)
+		if err != nil { return fmt.Errorf("failed to open rxc profile file %s - %s", file_path, err.Error()) }
 
 		doc = client_rxc_profile_file_doc{}
-		err = yaml.Unmarshal(data, &doc)
-		if err != nil {
-			return fmt.Errorf("failed to parse rxc profile file %s - %s", file_path, err.Error())
-		}
+		dec = yaml.NewDecoder(file)
+		err = dec.Decode(&doc)
+		file.Close()
+		if err != nil { return fmt.Errorf("failed to parse rxc profile file %s - %s", file_path, err.Error()) }
 
 		err = append_client_rxc_profiles(profiles, doc.Profiles, file_path)
-		if err != nil {
-			return err
-		}
+		if err != nil { return err }
 	}
 
 	c.rxc_profile_map = profiles
@@ -204,26 +200,16 @@ func (c *Client) ResolveRxcProfile(name string) (*ClientRxcProfile, error) {
 	var err error
 
 	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, fmt.Errorf("blank rxc profile name")
-	}
+	if name == "" { return nil, fmt.Errorf("blank rxc profile name") }
 
 	err = c.reload_rxc_profiles_if_needed()
 
 	c.rxc_profile_mtx.Lock()
 	profile, ok = c.rxc_profile_map[name]
-	if ok && profile != nil {
-		copied = *profile
-	}
+	if ok && profile != nil { copied = *profile }
 	c.rxc_profile_mtx.Unlock()
 
-	if ok && profile != nil {
-		return &copied, nil
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
+	if ok && profile != nil { return &copied, nil }
+	if err != nil { return nil, err } // reloading fails and there is no existing profile
 	return nil, nil
 }

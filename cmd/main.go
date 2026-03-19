@@ -15,6 +15,7 @@ import "strings"
 import "sync"
 import "sync/atomic"
 import "syscall"
+import "time"
 
 // Don't change these items to 'const' as they can be overridden externally with a linker option
 var HODU_NAME string = "hodu"
@@ -287,6 +288,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var pty_shell string
 	var rxc_user string
 	var rxc_profile_files []string
+	var rxc_profile_reload_min_interval time.Duration
 	var xterm_html_file string
 	var xterm_html string
 	var i int
@@ -321,6 +323,11 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	pty_shell = cfg.APP.PtyShell
 	rxc_user = cfg.APP.RxcUser
 	rxc_profile_files = cfg.APP.RxcProfileFiles
+	if cfg.APP.RxcProfileReloadMinInterval == nil {
+		rxc_profile_reload_min_interval = hodu.CLIENT_RXC_PROFILE_RELOAD_MIN_INTERVAL
+	} else {
+		rxc_profile_reload_min_interval = *cfg.APP.RxcProfileReloadMinInterval
+	}
 	xterm_html_file = cfg.APP.XtermHtmlFile
 	config.RpcConnMax = cfg.APP.MaxRpcConns
 	config.PeerConnMax = cfg.APP.MaxPeers
@@ -380,6 +387,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	if pty_shell != "" { c.SetPtyShell(pty_shell) }
 	if rxc_user != "" { c.SetRxcUser(rxc_user) }
 	if len(rxc_profile_files) > 0 { c.SetRxcProfileFiles(rxc_profile_files) }
+	c.SetRxcProfileReloadMinInterval(rxc_profile_reload_min_interval)
 	if xterm_html != "" { c.SetXtermHtml(xterm_html) }
 
 	c.StartService(&cc)

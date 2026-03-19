@@ -187,6 +187,7 @@ type Client struct {
 	rxc_user string
 	rxc_profile_mtx sync.Mutex
 	rxc_profile_files []string
+	rxc_profile_reload_min_interval time.Duration
 	rxc_profile_map ClientRxcProfileMap
 	rxc_profile_file_states map[string]client_rxc_profile_file_state
 	rxc_profile_last_check time.Time
@@ -1823,6 +1824,7 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.rpc_ping_tmout = cfg.RpcPingTmout
 	c.rpc_seed_tmout = cfg.RpcSeedTmout
 	c.rxc_profile_files = make([]string, 0)
+	c.rxc_profile_reload_min_interval = CLIENT_RXC_PROFILE_RELOAD_MIN_INTERVAL
 	c.rxc_profile_map = make(ClientRxcProfileMap)
 	c.rxc_profile_file_states = make(map[string]client_rxc_profile_file_state)
 
@@ -2264,6 +2266,23 @@ func (c *Client) SetRxcUser(user string) {
 
 func (c *Client) GetRxcUser() string {
 	return c.rxc_user
+}
+
+func (c *Client) SetRxcProfileReloadMinInterval(interval time.Duration) {
+	c.rxc_profile_mtx.Lock()
+	c.rxc_profile_reload_min_interval = interval
+	c.rxc_profile_last_check = time.Time{}
+	c.rxc_profile_mtx.Unlock()
+}
+
+func (c *Client) GetRxcProfileReloadMinInterval() time.Duration {
+	var interval time.Duration
+
+	c.rxc_profile_mtx.Lock()
+	interval = c.rxc_profile_reload_min_interval
+	c.rxc_profile_mtx.Unlock()
+
+	return interval
 }
 
 func (c *Client) run_single_ctl_server(i int, cs *http.Server, wg *sync.WaitGroup) {

@@ -309,6 +309,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 	var dec *gob.Decoder
 	var args []string
 	var err error
+	var err2 error
 
 	dec = gob.NewDecoder(bytes.NewBuffer(data));
 	err = dec.Decode(&args);
@@ -329,9 +330,8 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 	crp = &ClientRxc{ cts: cts, id: id }
 	err = unix.Pipe(crp.pfd[:])
 	if err != nil {
-		var err2 error
-
 		cts.rxc_mtx.Unlock()
+
 		err2 = cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
 		if err2 != nil {
 			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s for rxc(%d) start failure to server - %s", PACKET_KIND_RXC_STOP.String(), id, err2.Error())
@@ -341,9 +341,8 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 
 	crp.cmd, crp.in, crp.out, err = connect_cmd(cts.C, args[0], args[1])
 	if err != nil {
-		var err2 error
-
 		cts.rxc_mtx.Unlock()
+
 		err2 = cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
 		if err2 != nil {
 			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s for rxc(%d) start failure to server - %s", PACKET_KIND_RXC_STOP.String(), id, err2.Error())

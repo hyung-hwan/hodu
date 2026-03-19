@@ -5,6 +5,7 @@ import "encoding/base64"
 import "encoding/json"
 import "fmt"
 import "net/http"
+import "strconv"
 import "sync"
 import "time"
 
@@ -455,9 +456,21 @@ func (ctl *server_ctl_rxc_id_runs) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	switch req.Method {
 		case http.MethodGet:
+			var output string
+			var with_output bool
+
+			output = req.URL.Query().Get("output")
+			if output != "" {
+				with_output, err = strconv.ParseBool(output)
+				if err != nil {
+					status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
+					je.Encode(JsonErrmsg{Text: fmt.Sprintf("invalid output parameter - %s", output)})
+					goto oops
+				}
+			}
 			runs = make([]json_out_server_rxc_run, 0)
 			for _, run = range job.snapshot_runs() {
-				runs = append(runs, server_rxc_run_to_json(run, true))
+				runs = append(runs, server_rxc_run_to_json(run, with_output))
 			}
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(runs); err != nil { goto oops }
