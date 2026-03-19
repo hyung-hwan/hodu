@@ -286,6 +286,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	var pty_user string
 	var pty_shell string
 	var rxc_user string
+	var rxc_profile_files []string
 	var xterm_html_file string
 	var xterm_html string
 	var i int
@@ -319,6 +320,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	pty_user = cfg.APP.PtyUser
 	pty_shell = cfg.APP.PtyShell
 	rxc_user = cfg.APP.RxcUser
+	rxc_profile_files = cfg.APP.RxcProfileFiles
 	xterm_html_file = cfg.APP.XtermHtmlFile
 	config.RpcConnMax = cfg.APP.MaxRpcConns
 	config.PeerConnMax = cfg.APP.MaxPeers
@@ -377,6 +379,7 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	if pty_user != "" { c.SetPtyUser(pty_user) }
 	if pty_shell != "" { c.SetPtyShell(pty_shell) }
 	if rxc_user != "" { c.SetRxcUser(rxc_user) }
+	if len(rxc_profile_files) > 0 { c.SetRxcProfileFiles(rxc_profile_files) }
 	if xterm_html != "" { c.SetXtermHtml(xterm_html) }
 
 	c.StartService(&cc)
@@ -504,11 +507,13 @@ func main() {
 		var logfile string
 		var client_token string
 		var pty_shell string
+		var rxc_profile_files []string
 		var rpx_target_addr string
 		var cfg ClientConfig
 
 		ctl_addrs = make([]string, 0)
 		rpc_addrs = make([]string, 0)
+		rxc_profile_files = make([]string, 0)
 
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
 		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
@@ -533,6 +538,10 @@ func main() {
 		})
 		flgs.Func("pty-shell", "specify the program to execute for pty access", func(v string) error {
 			pty_shell = v
+			return nil
+		})
+		flgs.Func("rxc-profile-files", "specify a file pattern for rxc profiles", func(v string) error {
+			rxc_profile_files = append(rxc_profile_files, v)
 			return nil
 		})
 		flgs.Func("client-token", "specify a client token", func(v string) error {
@@ -586,6 +595,9 @@ func main() {
 		if pty_shell != "" {
 			cfg.APP.PtyShell = pty_shell
 		}
+		if len(rxc_profile_files) > 0 {
+			cfg.APP.RxcProfileFiles = rxc_profile_files
+		}
 		if rpx_target_addr != "" {
 			cfg.RPX.Target.Addr = rpx_target_addr
 		}
@@ -606,7 +618,7 @@ func main() {
 
 wrong_usage:
 	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--client-token=string] [--rpx-target-addr=addr:port] [peer-addr:peer-port ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--rxc-profile-files=pattern] [--client-token=string] [--rpx-target-addr=addr:port] [peer-addr:peer-port ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
 

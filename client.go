@@ -185,6 +185,12 @@ type Client struct {
 	pty_user string
 	pty_shell string
 	rxc_user string
+	rxc_profile_mtx sync.Mutex
+	rxc_profile_files []string
+	rxc_profile_map ClientRxcProfileMap
+	rxc_profile_file_states map[string]client_rxc_profile_file_state
+	rxc_profile_last_check time.Time
+	rxc_profile_loaded bool
 
 	rpc_ping_intvl time.Duration
 	rpc_ping_tmout time.Duration
@@ -1816,6 +1822,9 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 	c.rpc_ping_intvl = cfg.RpcPingIntvl
 	c.rpc_ping_tmout = cfg.RpcPingTmout
 	c.rpc_seed_tmout = cfg.RpcSeedTmout
+	c.rxc_profile_files = make([]string, 0)
+	c.rxc_profile_map = make(ClientRxcProfileMap)
+	c.rxc_profile_file_states = make(map[string]client_rxc_profile_file_state)
 
 	c.rpc_tls = cfg.RpcTls
 	c.rpx_target_addr = cfg.RpxTargetAddr

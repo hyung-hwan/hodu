@@ -223,21 +223,25 @@ func apply_rxc_user(cmd *exec.Cmd, rxc_user string) error {
 	return nil
 }
 
-func connect_cmd(rxc_user string, _type string, script string) (*exec.Cmd, *os.File, *os.File, error) {
+func connect_cmd(c *Client, type_ string, script string) (*exec.Cmd, *os.File, *os.File, error) {
 	var cmd *exec.Cmd
 	var in io.WriteCloser
 	var out io.ReadCloser
 	var in_f *os.File
 	var out_f *os.File
 	var argv []string
+	var profile *ClientRxcProfile
+	var effective_user string
 	var ok bool
 	var err error
 
-	if _type == "bash" {
+	effective_user = c.rxc_user
+
+/*	if type_ == "bash" {
 		// TODO: refactor stop using Context
 		//cmd = exec.CommandContext()
 		cmd = exec.Command("/bin/bash", "-c", script)
-	} else if _type == "simple" {
+	} else */if type_ == "simple" {
 		argv, err = split_simple_command(script)
 		if err != nil {
 			return nil, nil, nil, err
@@ -245,13 +249,22 @@ func connect_cmd(rxc_user string, _type string, script string) (*exec.Cmd, *os.F
 		if argv[0] == "" {
 			return nil, nil, nil, fmt.Errorf("blank simple command")
 		}
+		profile, err = c.ResolveRxcProfile(argv[0])
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if profile == nil {
+			return nil, nil, nil, fmt.Errorf("unknown rxc profile %s", argv[0])
+		}
+		argv[0] = profile.Script
+		if profile.User != "" { effective_user = profile.User }
 		cmd = exec.Command(argv[0], argv[1:]...)
 	} else {
-		return nil, nil, nil, fmt.Errorf("unsupported type - %s", _type)
+		return nil, nil, nil, fmt.Errorf("unsupported type - %s", type_)
 	}
 
-	if rxc_user != "" {
-		err = apply_rxc_user(cmd, rxc_user)
+	if effective_user != "" {
+		err = apply_rxc_user(cmd, effective_user)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -326,7 +339,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 		return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, args[0], args[1], err.Error())
 	}
 
-	crp.cmd, crp.in, crp.out, err = connect_cmd(cts.C.rxc_user, args[0], args[1])
+	crp.cmd, crp.in, crp.out, err = connect_cmd(cts.C, args[0], args[1])
 	if err != nil {
 		var err2 error
 

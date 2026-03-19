@@ -457,7 +457,7 @@ func (ctl *server_ctl_rxc_id_runs) ServeHTTP(w http.ResponseWriter, req *http.Re
 		case http.MethodGet:
 			runs = make([]json_out_server_rxc_run, 0)
 			for _, run = range job.snapshot_runs() {
-				runs = append(runs, server_rxc_run_to_json(run, false))
+				runs = append(runs, server_rxc_run_to_json(run, true))
 			}
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
 			if err = je.Encode(runs); err != nil { goto oops }

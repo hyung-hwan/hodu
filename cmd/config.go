@@ -128,16 +128,16 @@ type ClientAppConfig  struct {
 	HttpReadHeaderTimeout time.Duration `yaml:"http-read-header-timeout"`
 	HttpIdleTimeout       time.Duration `yaml:"http-idle-timeout"`
 	HttpMaxHeaderBytes    int           `yaml:"http-max-header-bytes"`
-	TokenText     string        `yaml:"token-text"`
-	TokenFile     string        `yaml:"token-file"`
-	PtyUser       string        `yaml:"pty-user"`
-	PtyShell      string        `yaml:"pty-shell"`
-	RxcUser       string        `yaml:"rxc-user"`
-	RxcHandler    string        `yaml:"rxc-handlers"`
-	RpcPingIntvl  time.Duration `yaml:"rpc-ping-interval"`
-	RpcPingTmout  time.Duration `yaml:"rpc-ping-timeout"`
-	RpcSeedTmout  time.Duration `yaml:"rpc-seed-timeout"`
-	XtermHtmlFile string        `yaml:"xterm-html-file"`
+	TokenText       string        `yaml:"token-text"`
+	TokenFile       string        `yaml:"token-file"`
+	PtyUser         string        `yaml:"pty-user"`
+	PtyShell        string        `yaml:"pty-shell"`
+	RxcUser         string        `yaml:"rxc-user"`
+	RxcProfileFiles []string      `yaml:"rxc-profile-files"`
+	RpcPingIntvl    time.Duration `yaml:"rpc-ping-interval"`
+	RpcPingTmout    time.Duration `yaml:"rpc-ping-timeout"`
+	RpcSeedTmout    time.Duration `yaml:"rpc-seed-timeout"`
+	XtermHtmlFile   string        `yaml:"xterm-html-file"`
 }
 
 type ServerConfig struct {
