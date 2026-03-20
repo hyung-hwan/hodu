@@ -195,7 +195,7 @@ func (cts *ServerConn) WriteRxcForWs(ws *websocket.Conn, data []byte) error {
 	rxc, ok = cts.find_rxc_by_ws(ws)
 	if !ok { return fmt.Errorf("unknown ws connection for rxc - %v", ws.RemoteAddr()) }
 
-	err = cts.pss.Send(MakeRxcDataPacket(rxc.id, 0, data))
+	err = cts.pss.Send(MakeRxcDataPacket(rxc.id, RXC_DATA_FLAG_NONE, data))
 	if err != nil { return fmt.Errorf("unable to send rxc data to client - %s", err.Error()) }
 
 	return nil

@@ -71,7 +71,7 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 			n, err = crp.stdout.Read(buf[:])
 			if n > 0 {
 				var err2 error
-				err2 = cts.psc.Send(MakeRxcDataPacket(crp.id, 0, buf[:n]))
+				err2 = cts.psc.Send(MakeRxcDataPacket(crp.id, RXC_DATA_FLAG_NONE, buf[:n]))
 				if err2 != nil {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s from rxc(%d) stdout to server - %s", PACKET_KIND_RXC_DATA.String(), crp.id, err2.Error())
 					break
@@ -91,7 +91,7 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 			n, err = crp.stderr.Read(buf[:])
 			if n > 0 {
 				var err2 error
-				err2 = cts.psc.Send(MakeRxcDataPacket(crp.id, 1, buf[:n])) // TODO: define the flag bit
+				err2 = cts.psc.Send(MakeRxcDataPacket(crp.id, RXC_DATA_FLAG_STDERR, buf[:n]))
 				if err2 != nil {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s from rxc(%d) stderr to server - %s", PACKET_KIND_RXC_DATA.String(), crp.id, err2.Error())
 					break

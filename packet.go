@@ -8,6 +8,9 @@ type RouteId     uint32 // keep this in sync with the type of RouteId in hodu.pr
 type PeerId      uint32 // keep this in sync with the type of RouteId in hodu.proto
 type RouteOption uint32
 
+const RXC_DATA_FLAG_NONE uint32 = 0
+const RXC_DATA_FLAG_STDERR uint32 = 1 << 0
+
 type ConnRouteId struct {
 	conn_id ConnId
 	route_id RouteId
