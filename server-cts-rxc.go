@@ -150,7 +150,7 @@ func (cts *ServerConn) StopRxcForWs(ws *websocket.Conn) error {
 	return nil
 }
 
-func (cts *ServerConn) SendStopRxcById(id uint64) error {
+func (cts *ServerConn) SendStopRxcById(id uint64, flags uint32) error {
 	var ok bool
 	var err error
 
@@ -167,7 +167,7 @@ func (cts *ServerConn) SendStopRxcById(id uint64) error {
 	return nil
 }
 
-func (cts *ServerConn) StopRxcSinkById(id uint64, msg string) error {
+func (cts *ServerConn) StopRxcSinkById(id uint64, flags uint32, msg string) error {
 	var rxc *ServerRxc
 	var ok bool
 	var err error
@@ -195,13 +195,13 @@ func (cts *ServerConn) WriteRxcForWs(ws *websocket.Conn, data []byte) error {
 	rxc, ok = cts.find_rxc_by_ws(ws)
 	if !ok { return fmt.Errorf("unknown ws connection for rxc - %v", ws.RemoteAddr()) }
 
-	err = cts.pss.Send(MakeRxcDataPacket(rxc.id, data))
+	err = cts.pss.Send(MakeRxcDataPacket(rxc.id, 0, data))
 	if err != nil { return fmt.Errorf("unable to send rxc data to client - %s", err.Error()) }
 
 	return nil
 }
 
-func (cts *ServerConn) ReadRxcAndWriteSinkById(id uint64, data []byte) error {
+func (cts *ServerConn) ReadRxcAndWriteSinkById(id uint64, flags uint32, data []byte) error {
 	var rxc *ServerRxc
 	var ok bool
 
@@ -209,16 +209,16 @@ func (cts *ServerConn) ReadRxcAndWriteSinkById(id uint64, data []byte) error {
 	if !ok { return fmt.Errorf("unknown rxc id - %d", id) }
 	if rxc.sink == nil { return fmt.Errorf("missing rxc sink for id %d", id) }
 
-	return rxc.sink.Write(data)
+	return rxc.sink.Write(flags, data)
 }
 
 func (cts *ServerConn) HandleRxcEvent(packet_type PACKET_KIND, evt *RxcEvent) error {
 	switch packet_type {
 		case PACKET_KIND_RXC_STOP:
-			return cts.StopRxcSinkById(evt.Id, string(evt.Data))
+			return cts.StopRxcSinkById(evt.Id, evt.Flags, string(evt.Data))
 
 		case PACKET_KIND_RXC_DATA:
-			return cts.ReadRxcAndWriteSinkById(evt.Id, evt.Data)
+			return cts.ReadRxcAndWriteSinkById(evt.Id, evt.Flags, evt.Data)
 	}
 
 	return nil

@@ -48,8 +48,9 @@ type ServerRxcJobRun struct {
 	RxcId uint64
 	Status string
 	StopMsg string
-	Output []byte
-	OutputTruncated bool
+
+	Output [2][]byte
+	OutputTruncated [2]bool
 
 	mtx sync.Mutex
 }
@@ -60,7 +61,7 @@ type ServerRxcJobExpiryHeap []*ServerRxcJob
 
 type ServerRxcSink interface {
 	ReqStop()
-	Write(data []byte) error
+	Write(flags uint32, data []byte) error
 	Stop(msg string) error
 }
 
@@ -75,7 +76,7 @@ func (sink *ServerRxcWebsocketSink) ReqStop() {
 	}
 }
 
-func (sink *ServerRxcWebsocketSink) Write(data []byte) error {
+func (sink *ServerRxcWebsocketSink) Write(flags uint32, data []byte) error {
 	return send_ws_data_for_xterm(sink.ws, "iov", base64.StdEncoding.EncodeToString(data))
 }
 
@@ -203,7 +204,7 @@ func (run *ServerRxcJobRun) is_done() bool {
 	return status == SERVER_RXC_RUN_STATUS_STOPPED || status == SERVER_RXC_RUN_STATUS_FAILED
 }
 
-func (run *ServerRxcJobRun) append_output(data []byte, capture_tail bool) {
+func (run *ServerRxcJobRun) append_output(data []byte, outidx int, capture_tail bool) {
 	var fit_len int
 	var keep_len int
 	var old_off int
@@ -215,44 +216,44 @@ func (run *ServerRxcJobRun) append_output(data []byte, capture_tail bool) {
 	run.mtx.Lock()
 	if capture_tail {
 		if len(data) >= output_max {
-			if len(data) > output_max || len(run.Output) > 0 {
-				run.OutputTruncated = true
+			if len(data) > output_max || len(run.Output[outidx]) > 0 {
+				run.OutputTruncated[outidx] = true
 			}
-			run.Output = append(run.Output[:0], data[len(data) - output_max:]...)
+			run.Output[outidx] = append(run.Output[outidx][:0], data[len(data) - output_max:]...)
 		} else {
-			if len(run.Output) > output_max {
-				run.Output = append([]byte(nil), run.Output[len(run.Output) - output_max:]...)
-				run.OutputTruncated = true
+			if len(run.Output[outidx]) > output_max {
+				run.Output[outidx] = append([]byte(nil), run.Output[outidx][len(run.Output[outidx]) - output_max:]...)
+				run.OutputTruncated[outidx] = true
 			}
 
 			fit_len = output_max - len(data)
 			if fit_len < 0 { fit_len = 0 }
-			if len(run.Output) > fit_len {
+			if len(run.Output[outidx]) > fit_len {
 				keep_len = fit_len
-				old_off = len(run.Output) - keep_len
-				copy(run.Output, run.Output[old_off:])
-				run.Output = run.Output[:keep_len]
-				run.OutputTruncated = true
+				old_off = len(run.Output[outidx]) - keep_len
+				copy(run.Output[outidx], run.Output[outidx][old_off:])
+				run.Output[outidx] = run.Output[outidx][:keep_len]
+				run.OutputTruncated[outidx]= true
 			}
 
-			run.Output = append(run.Output, data...)
+			run.Output[outidx] = append(run.Output[outidx], data...)
 		}
 	} else {
-		//if len(run.Output) > output_max {
-		//	run.Output = append([]byte(nil), run.Output[:output_max]...)
-		//	run.OutputTruncated = true
+		//if len(run.Output[outidx]) > output_max {
+		//	run.Output[outidx] = append([]byte(nil), run.Output[outidx][:output_max]...)
+		//	run.OutputTruncate[outidx]d = true
 		//}
 
-		if !run.OutputTruncated {
-			fit_len = output_max - len(run.Output)
+		if !run.OutputTruncated[outidx] {
+			fit_len = output_max - len(run.Output[outidx])
 			if fit_len <= 0 {
-				run.OutputTruncated = true
+				run.OutputTruncated[outidx] = true
 			} else {
 				if len(data) > fit_len {
 					data = data[:fit_len]
-					run.OutputTruncated = true
+					run.OutputTruncated[outidx] = true
 				}
-				run.Output = append(run.Output, data...)
+				run.Output[outidx] = append(run.Output[outidx], data...)
 			}
 		}
 	}
@@ -285,8 +286,8 @@ func (run *ServerRxcJobRun) ReqStop() {
 	run.stop("connection closed")
 }
 
-func (run *ServerRxcJobRun) Write(data []byte) error {
-	run.append_output(data, false)
+func (run *ServerRxcJobRun) Write(flags uint32, data []byte) error {
+	run.append_output(data, int(flags & 0x1), false) // TODO: use a defined flag bit
 	return nil
 }
 
@@ -577,7 +578,7 @@ func (s *Server) StopRxcJobRun(run *ServerRxcJobRun) (bool, error) {
 		return false, nil
 	}
 
-	err = cts.SendStopRxcById(rxc_id)
+	err = cts.SendStopRxcById(rxc_id, 0) // TODO: set flags properly...
 	if err != nil {
 		run.stop(err.Error())
 		return false, err

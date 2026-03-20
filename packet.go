@@ -130,6 +130,6 @@ func MakeRxcStopPacket(id uint64, msg string) *Packet {
 	return &Packet{Kind: PACKET_KIND_RXC_STOP, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: []byte(msg)}}}
 }
 
-func MakeRxcDataPacket(id uint64, data []byte) *Packet {
-	return &Packet{Kind: PACKET_KIND_RXC_DATA, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: data}}}
+func MakeRxcDataPacket(id uint64, flags uint32, data []byte) *Packet {
+	return &Packet{Kind: PACKET_KIND_RXC_DATA, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Flags: flags, Data: data}}}
 }

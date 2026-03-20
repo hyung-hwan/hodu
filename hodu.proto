@@ -95,7 +95,8 @@ message RpxEvent {
 
 message RxcEvent {
 	uint64 Id = 1;
-	bytes  Data = 2;
+	uint32 Flags = 2;
+	bytes  Data = 3;
 };
 
 enum PACKET_KIND {

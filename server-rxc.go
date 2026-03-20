@@ -204,12 +204,14 @@ type json_out_server_rxc_run struct {
 	ClientToken string `json:"client-token"`
 	RxcId uint64 `json:"rxc-id"`
 	Status string `json:"status"`
-	StopMsg string `json:"stop-msg,omitempty"`
+	StopMsg string `json:"stop-msg"`
 	CreatedMilli int64 `json:"created-milli"`
-	StartedMilli int64 `json:"started-milli,omitempty"`
-	StoppedMilli int64 `json:"stopped-milli,omitempty"`
-	Output []byte `json:"output,omitempty"`
-	OutputTruncated bool `json:"output-truncated,omitempty"`
+	StartedMilli int64 `json:"started-milli"`
+	StoppedMilli int64 `json:"stopped-milli"`
+	Stdout []byte `json:"stdout"`
+	StdoutTruncated bool `json:"stdout-truncated"`
+	Stderr []byte `json:"stderr"`
+	StderrTruncated bool `json:"stderr-truncated"`
 }
 
 type server_ctl_rxc struct {
@@ -290,10 +292,10 @@ func server_rxc_run_to_json(run *ServerRxcJobRun, with_output bool) json_out_ser
 	js.CreatedMilli = run.Created.UnixMilli()
 	if !run.Started.IsZero() { js.StartedMilli = run.Started.UnixMilli() }
 	if !run.Stopped.IsZero() { js.StoppedMilli = run.Stopped.UnixMilli() }
-	js.OutputTruncated = run.OutputTruncated
-	if with_output {
-		js.Output = append([]byte(nil), run.Output...)
-	}
+	js.StdoutTruncated = run.OutputTruncated[0]
+	if with_output { js.Stdout = append([]byte(nil), run.Output[0]...) }
+	js.StderrTruncated = run.OutputTruncated[1]
+	if with_output { js.Stderr = append([]byte(nil), run.Output[1]...) }
 	run.mtx.Unlock()
 
 	return js

@@ -231,9 +231,9 @@ type ClientRxc struct {
 	req_type string // orignal requested type
 	req_script string // original requested script
 	cmd *exec.Cmd // actual command
-	in *os.File
-	out *os.File
-	// TODO: err
+	stdin *os.File
+	stdout *os.File
+	stderr *os.File
 	pfd [2]int
 }
 

@@ -12,6 +12,7 @@ import "strconv"
 import "sync"
 import "syscall"
 import "unicode"
+import "unicode/utf8"
 
 import "golang.org/x/sys/unix"
 
@@ -33,6 +34,7 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	var buf [2048]byte
 	var n int
 	var out_revents int16
+	var err_revents int16
 	var sig_revents int16
 	var err error
 
@@ -43,7 +45,8 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	cts.C.stats.rxc_sessions.Add(1)
 
 	poll_fds = []unix.PollFd{
-		unix.PollFd{Fd: int32(crp.out.Fd()), Events: unix.POLLIN},
+		unix.PollFd{Fd: int32(crp.stdout.Fd()), Events: unix.POLLIN},
+		unix.PollFd{Fd: int32(crp.stderr.Fd()), Events: unix.POLLIN},
 		unix.PollFd{Fd: int32(crp.pfd[0]), Events: unix.POLLIN},
 	}
 
@@ -59,23 +62,39 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 		}
 
 		out_revents = poll_fds[0].Revents
-		sig_revents = poll_fds[1].Revents
+		err_revents = poll_fds[1].Revents
+		sig_revents = poll_fds[2].Revents
 
 		if (out_revents & unix.POLLIN) != 0 {
-			n, err = crp.out.Read(buf[:])
+			n, err = crp.stdout.Read(buf[:])
 			if n > 0 {
 				var err2 error
-				err2 = cts.psc.Send(MakeRxcDataPacket(crp.id, buf[:n]))
+				err2 = cts.psc.Send(MakeRxcDataPacket(crp.id, 0, buf[:n]))
 				if err2 != nil {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s from rxc(%d) stdout to server - %s", PACKET_KIND_RXC_DATA.String(), crp.id, err2.Error())
 					break
-				} //else {
-				//	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Sent %s from rxc(%d) stdout to server - %v", PACKET_KIND_RXC_DATA.String(), crp.id, buf[:n])
-				//}
+				}
 			}
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to read rxc(%d) stdout - %s", crp.id, err.Error())
+				}
+				break
+			}
+		}
+		if (err_revents & unix.POLLIN) != 0 {
+			n, err = crp.stderr.Read(buf[:])
+			if n > 0 {
+				var err2 error
+				err2 = cts.psc.Send(MakeRxcDataPacket(crp.id, 1, buf[:n])) // TODO: define the flag bit
+				if err2 != nil {
+					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s from rxc(%d) stderr to server - %s", PACKET_KIND_RXC_DATA.String(), crp.id, err2.Error())
+					break
+				}
+			}
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to read rxc(%d) stderr - %s", crp.id, err.Error())
 				}
 				break
 			}
@@ -90,12 +109,17 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Error detected on rxc(%d) stdout", crp.id)
 			break
 		}
+		if (err_revents & (unix.POLLERR | unix.POLLNVAL)) != 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Error detected on rxc(%d) stderr", crp.id)
+			break
+		}
 		if (sig_revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
 			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) signal pipe", crp.id)
 			break
 		}
-		if (out_revents & unix.POLLHUP) != 0 && (out_revents & unix.POLLIN) == 0 {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) stdout", crp.id)
+		if (out_revents & unix.POLLHUP) != 0 && (out_revents & unix.POLLIN) == 0 &&
+		   (err_revents & unix.POLLHUP) != 0 && (err_revents & unix.POLLIN) == 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) stdout and stderr", crp.id)
 			break
 		}
 	}
@@ -107,9 +131,10 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	}
 
 	crp.ReqStop()
-	crp.in.Close() // close the input before waiting for program termination
+	crp.stdin.Close() // close the input before waiting for program termination
 	crp.cmd.Wait()
-	crp.out.Close()
+	crp.stderr.Close()
+	crp.stdout.Close()
 	unix.Close(crp.pfd[0])
 	unix.Close(crp.pfd[1])
 
@@ -121,19 +146,142 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ended rxc(%d) loop", crp.id)
 }
 
-func split_simple_command(script string) ([]string, error) {
+func simple_command_escape_digit_value(ch rune, base int) int {
+	switch base {
+		case 8:
+			if ch >= '0' && ch <= '7' {
+				return int(ch - '0')
+			}
+
+		case 16:
+			switch {
+				case ch >= '0' && ch <= '9':
+					return int(ch - '0')
+				case ch >= 'a' && ch <= 'f':
+					return int(ch - 'a') + 10
+				case ch >= 'A' && ch <= 'F':
+					return int(ch - 'A') + 10
+			}
+	}
+
+	return -1
+}
+
+func parse_simple_command_escape_value(runes []rune, start int, base int, digit_count int, tag string) (rune, int, error) {
+	var ch rune
+	var i int
+	var value rune
+	var digit int
+
+	if start + digit_count > len(runes) {
+		return 0, 0, fmt.Errorf("truncated %s escape in simple command", tag)
+	}
+
+	value = 0
+	for i = 0; i < digit_count; i++ {
+		ch = runes[start + i]
+		digit = simple_command_escape_digit_value(ch, base)
+		if digit < 0 {
+			return 0, 0, fmt.Errorf("invalid %s escape in simple command", tag)
+		}
+		value = value * rune(base) + rune(digit)
+	}
+
+	if !utf8.ValidRune(value) {
+		return 0, 0, fmt.Errorf("invalid %s escape value in simple command", tag)
+	}
+
+	return value, digit_count, nil
+}
+
+func parse_simple_command_escape(runes []rune, start int, escape_level int) (rune, int, error) {
+	var ch rune
+
+	if start >= len(runes) {
+		return 0, 0, fmt.Errorf("missing escaped character in simple command")
+	}
+
+	ch = runes[start]
+	if escape_level <= 0 {
+		return ch, 0, nil
+	}
+
+	switch ch {
+		case 'a':
+			return '\a', 0, nil
+		case 'b':
+			return '\b', 0, nil
+		case 'f':
+			return '\f', 0, nil
+		case 'n':
+			return '\n', 0, nil
+		case 'r':
+			return '\r', 0, nil
+		case 't':
+			return '\t', 0, nil
+		case 'v':
+			return '\v', 0, nil
+		case '\\':
+			return '\\', 0, nil
+		case '"':
+			return '"', 0, nil
+		case '\'':
+			return '\'', 0, nil
+	}
+
+	if escape_level < 2 {
+		return ch, 0, nil
+	}
+
+	switch ch {
+		case 'x':
+			return parse_simple_command_escape_value(runes, start + 1, 16, 2, "\\x")
+		case 'o':
+			return parse_simple_command_escape_value(runes, start + 1, 8, 2, "\\o")
+		case 'u':
+			return parse_simple_command_escape_value(runes, start + 1, 16, 4, "\\u")
+		case 'U':
+			return parse_simple_command_escape_value(runes, start + 1, 16, 8, "\\U")
+		default:
+			return ch, 0, nil
+	}
+}
+
+func split_simple_command(script string, escape_level int) ([]string, error) {
 	var args []string
+	var runes []rune
 	var buf bytes.Buffer
 	var ch rune
 	var quote rune
+	var decoded rune
+	var i int
+	var skip_until int
+	var consumed int
 	var token_started bool
 	var escaped bool
+	var err error
 
 	args = make([]string, 0)
+	runes = []rune(script)
+	skip_until = -1
 
-	for _, ch = range script {
+	for i, ch = range runes {
+		if i < skip_until {
+			continue
+		}
+
 		if escaped {
-			buf.WriteRune(ch)
+			if quote == '"' && escape_level > 0 {
+				decoded, consumed, err = parse_simple_command_escape(runes, i, escape_level)
+				if err != nil {
+					return nil, err
+				}
+				buf.WriteRune(decoded)
+				skip_until = i + consumed + 1
+			} else {
+				buf.WriteRune(ch)
+				skip_until = i + 1
+			}
 			token_started = true
 			escaped = false
 			continue
@@ -304,12 +452,14 @@ func apply_rxc_user(cmd *exec.Cmd, rxc_user string) error {
 	return nil
 }
 
-func connect_cmd(c *Client, type_ string, script string) (*exec.Cmd, *os.File, *os.File, error) {
+func connect_cmd(c *Client, type_ string, script string) (*exec.Cmd, *os.File, *os.File, *os.File, error) {
 	var cmd *exec.Cmd
-	var in io.WriteCloser
-	var out io.ReadCloser
-	var in_f *os.File
-	var out_f *os.File
+	var stdin io.WriteCloser
+	var stdout io.ReadCloser
+	var stderr io.ReadCloser
+	var stdin_f *os.File
+	var stdout_f *os.File
+	var stderr_f *os.File
 	var argv []string
 	var cmd_argv []string
 	var profile *ClientRxcProfile
@@ -324,71 +474,86 @@ func connect_cmd(c *Client, type_ string, script string) (*exec.Cmd, *os.File, *
 		//cmd = exec.CommandContext()
 		cmd = exec.Command("/bin/bash", "-c", script)
 	} else */if type_ == "simple" {
-		argv, err = split_simple_command(script)
+		argv, err = split_simple_command(script, 0)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		if argv[0] == "" {
-			return nil, nil, nil, fmt.Errorf("blank simple command")
+			return nil, nil, nil, nil, fmt.Errorf("blank simple command")
 		}
 		profile, err = c.ResolveRxcProfile(argv[0])
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		if profile == nil {
-			return nil, nil, nil, fmt.Errorf("unknown rxc profile %s", argv[0])
+			return nil, nil, nil, nil, fmt.Errorf("unknown rxc profile %s", argv[0])
 		}
 		if profile.User != "" { effective_user = profile.User }
 		if profile.Args != nil {
 			cmd_argv, err = expand_rxc_profile_args(profile.Args, argv[1:])
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 		} else {
 			cmd_argv = argv[1:]
 		}
 		cmd = exec.Command(profile.Script, cmd_argv...)
 	} else {
-		return nil, nil, nil, fmt.Errorf("unsupported type - %s", type_)
+		return nil, nil, nil, nil, fmt.Errorf("unsupported type - %s", type_)
 	}
 
 	if effective_user != "" {
 		err = apply_rxc_user(cmd, effective_user)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 
-	out, err = cmd.StdoutPipe()
+	stdout, err = cmd.StdoutPipe()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("unable to get stdout pipe - %s", err.Error())
+		return nil, nil, nil, nil, fmt.Errorf("unable to get stdout pipe - %s", err.Error())
 	}
-	out_f, ok = out.(*os.File)
+	stdout_f, ok = stdout.(*os.File)
 	if !ok {
-		out.Close()
-		return nil, nil, nil, fmt.Errorf("unsupported stdout pipe")
+		stdout.Close()
+		return nil, nil, nil, nil, fmt.Errorf("unsupported stdout pipe")
 	}
 
-	in, err = cmd.StdinPipe()
+	stderr, err = cmd.StderrPipe()
 	if err != nil {
-		out.Close()
-		return nil, nil, nil, fmt.Errorf("unable to get stdin pipe - %s", err.Error())
+		stdout.Close()
+		return nil, nil, nil, nil, fmt.Errorf("unable to get stderr pipe - %s", err.Error())
 	}
-	in_f, ok = in.(*os.File)
+	stderr_f, ok = stderr.(*os.File)
 	if !ok {
-		in.Close()
-		out.Close()
-		return nil, nil, nil, fmt.Errorf("unsupported stdin pipe")
+		stderr.Close()
+		stdout.Close()
+		return nil, nil, nil, nil, fmt.Errorf("unsupported stderr pipe")
+	}
+
+	stdin, err = cmd.StdinPipe()
+	if err != nil {
+		stderr.Close()
+		stdout.Close()
+		return nil, nil, nil, nil, fmt.Errorf("unable to get stdin pipe - %s", err.Error())
+	}
+	stdin_f, ok = stdin.(*os.File)
+	if !ok {
+		stdin.Close()
+		stderr.Close()
+		stdout.Close()
+		return nil, nil, nil, nil, fmt.Errorf("unsupported stdin pipe")
 	}
 
 	err = cmd.Start()
 	if err != nil {
-		in.Close()
-		out.Close()
-		return nil, nil, nil, err
+		stdin.Close()
+		stderr.Close()
+		stdout.Close()
+		return nil, nil, nil, nil, err
 	}
 
-	return cmd, in_f, out_f, nil
+	return cmd, stdin_f, stdout_f, stderr_f, nil
 }
 
 func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) error {
@@ -428,7 +593,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 		return fmt.Errorf("unable to create rxc(%d) event fd for %s(%s) - %s", id, args[0], args[1], err.Error())
 	}
 
-	crp.cmd, crp.in, crp.out, err = connect_cmd(cts.C, args[0], args[1])
+	crp.cmd, crp.stdin, crp.stdout, crp.stderr, err = connect_cmd(cts.C, args[0], args[1])
 	if err != nil {
 		cts.rxc_mtx.Unlock()
 
@@ -479,7 +644,8 @@ func (cts *ClientConn) WriteRxc(id uint64, data []byte) error {
 		return fmt.Errorf("unknown rxc id %d", id)
 	}
 
-	crp.in.Write(data)
+	// TODO:  what if stdin can't be written fast enough and gets blocked?
+	crp.stdin.Write(data)
 	return nil
 }
 

@@ -722,7 +722,8 @@ func (x *RpxEvent) GetData() []byte {
 type RxcEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint64                 `protobuf:"varint,1,opt,name=Id,proto3" json:"Id,omitempty"`
-	Data          []byte                 `protobuf:"bytes,2,opt,name=Data,proto3" json:"Data,omitempty"`
+	Flags         uint32                 `protobuf:"varint,2,opt,name=Flags,proto3" json:"Flags,omitempty"`
+	Data          []byte                 `protobuf:"bytes,3,opt,name=Data,proto3" json:"Data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -760,6 +761,13 @@ func (*RxcEvent) Descriptor() ([]byte, []int) {
 func (x *RxcEvent) GetId() uint64 {
 	if x != nil {
 		return x.Id
+	}
+	return 0
+}
+
+func (x *RxcEvent) GetFlags() uint32 {
+	if x != nil {
+		return x.Flags
 	}
 	return 0
 }
@@ -1013,10 +1021,11 @@ const file_hodu_proto_rawDesc = "" +
 	"\x04Data\x18\x02 \x01(\fR\x04Data\".\n" +
 	"\bRpxEvent\x12\x0e\n" +
 	"\x02Id\x18\x01 \x01(\x04R\x02Id\x12\x12\n" +
-	"\x04Data\x18\x02 \x01(\fR\x04Data\".\n" +
+	"\x04Data\x18\x02 \x01(\fR\x04Data\"D\n" +
 	"\bRxcEvent\x12\x0e\n" +
-	"\x02Id\x18\x01 \x01(\x04R\x02Id\x12\x12\n" +
-	"\x04Data\x18\x02 \x01(\fR\x04Data\"\xfb\x02\n" +
+	"\x02Id\x18\x01 \x01(\x04R\x02Id\x12\x14\n" +
+	"\x05Flags\x18\x02 \x01(\rR\x05Flags\x12\x12\n" +
+	"\x04Data\x18\x03 \x01(\fR\x04Data\"\xfb\x02\n" +
 	"\x06Packet\x12 \n" +
 	"\x04Kind\x18\x01 \x01(\x0e2\f.PACKET_KINDR\x04Kind\x12\"\n" +
 	"\x05Route\x18\x02 \x01(\v2\n" +
