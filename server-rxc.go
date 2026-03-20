@@ -292,10 +292,12 @@ func server_rxc_run_to_json(run *ServerRxcJobRun, with_output bool) json_out_ser
 	js.CreatedMilli = run.Created.UnixMilli()
 	if !run.Started.IsZero() { js.StartedMilli = run.Started.UnixMilli() }
 	if !run.Stopped.IsZero() { js.StoppedMilli = run.Stopped.UnixMilli() }
+	js.Stdout = make([]byte, 0) // i don't want to show nil when empty
+	js.Stderr = make([]byte, 0) // i don't want to show nil when empty
 	js.StdoutTruncated = run.OutputTruncated[0]
-	if with_output { js.Stdout = append([]byte(nil), run.Output[0]...) }
+	if with_output { js.Stdout = append(js.Stdout, run.Output[0]...) }
 	js.StderrTruncated = run.OutputTruncated[1]
-	if with_output { js.Stderr = append([]byte(nil), run.Output[1]...) }
+	if with_output { js.Stderr = append(js.Stderr, run.Output[1]...) }
 	run.mtx.Unlock()
 
 	return js

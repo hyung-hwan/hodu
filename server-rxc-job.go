@@ -77,6 +77,7 @@ func (sink *ServerRxcWebsocketSink) ReqStop() {
 }
 
 func (sink *ServerRxcWebsocketSink) Write(flags uint32, data []byte) error {
+	// TODO: how to distinguish stdout and stderr? when sending iov, encode the info?
 	return send_ws_data_for_xterm(sink.ws, "iov", base64.StdEncoding.EncodeToString(data))
 }
 

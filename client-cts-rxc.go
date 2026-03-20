@@ -36,6 +36,8 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	var out_revents int16
 	var err_revents int16
 	var sig_revents int16
+	var stdout_open bool
+	var stderr_open bool
 	var err error
 
 	defer wg.Done()
@@ -44,6 +46,8 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 
 	cts.C.stats.rxc_sessions.Add(1)
 
+	stdout_open = true
+	stderr_open = true
 	poll_fds = []unix.PollFd{
 		unix.PollFd{Fd: int32(crp.stdout.Fd()), Events: unix.POLLIN},
 		unix.PollFd{Fd: int32(crp.stderr.Fd()), Events: unix.POLLIN},
@@ -57,15 +61,13 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to poll rxc(%d) stdout - %s", crp.id, err.Error())
 			break
 		}
-		if n == 0 { // timed out
-			continue
-		}
+		if n == 0 { continue } // timed out
 
 		out_revents = poll_fds[0].Revents
 		err_revents = poll_fds[1].Revents
 		sig_revents = poll_fds[2].Revents
 
-		if (out_revents & unix.POLLIN) != 0 {
+		if stdout_open && (out_revents & unix.POLLIN) != 0 {
 			n, err = crp.stdout.Read(buf[:])
 			if n > 0 {
 				var err2 error
@@ -78,11 +80,14 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to read rxc(%d) stdout - %s", crp.id, err.Error())
+					break
 				}
-				break
+				poll_fds[0].Fd = -1
+				poll_fds[0].Events = 0
+				stdout_open = false
 			}
 		}
-		if (err_revents & unix.POLLIN) != 0 {
+		if stderr_open && (err_revents & unix.POLLIN) != 0 {
 			n, err = crp.stderr.Read(buf[:])
 			if n > 0 {
 				var err2 error
@@ -95,8 +100,11 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
 					cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to read rxc(%d) stderr - %s", crp.id, err.Error())
+					break
 				}
-				break
+				poll_fds[1].Fd = -1
+				poll_fds[1].Events = 0
+				stderr_open = false
 			}
 		}
 		if (sig_revents & unix.POLLIN) != 0 {
@@ -105,23 +113,32 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Stop request noticed on rxc(%d) signal pipe", crp.id)
 			break
 		}
-		if (out_revents & (unix.POLLERR | unix.POLLNVAL)) != 0 {
+		if stdout_open && (out_revents & (unix.POLLERR | unix.POLLNVAL)) != 0 {
 			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Error detected on rxc(%d) stdout", crp.id)
 			break
 		}
-		if (err_revents & (unix.POLLERR | unix.POLLNVAL)) != 0 {
+		if stderr_open && (err_revents & (unix.POLLERR | unix.POLLNVAL)) != 0 {
 			cts.C.log.Write(cts.Sid, LOG_DEBUG, "Error detected on rxc(%d) stderr", crp.id)
 			break
 		}
-		if (sig_revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
+		if sig_revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL) != 0 {
 			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) signal pipe", crp.id)
 			break
 		}
-		if (out_revents & unix.POLLHUP) != 0 && (out_revents & unix.POLLIN) == 0 &&
-		   (err_revents & unix.POLLHUP) != 0 && (err_revents & unix.POLLIN) == 0 {
-			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) stdout and stderr", crp.id)
-			break
+		if stdout_open && (out_revents & unix.POLLHUP) != 0 && (out_revents & unix.POLLIN) == 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) stdout", crp.id)
+			poll_fds[0].Fd = -1
+			poll_fds[0].Events = 0
+			stdout_open = false
 		}
+		if stderr_open && (err_revents & unix.POLLHUP) != 0 && (err_revents & unix.POLLIN) == 0 {
+			cts.C.log.Write(cts.Sid, LOG_DEBUG, "EOF detected on rxc(%d) stderr", crp.id)
+			poll_fds[1].Fd = -1
+			poll_fds[1].Events = 0
+			stderr_open = false
+		}
+
+		if !stdout_open && !stderr_open { break }
 	}
 
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ending rxc(%d) loop", crp.id)
