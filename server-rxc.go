@@ -191,6 +191,7 @@ type json_out_server_rxc_job struct {
 	Script string `json:"script"`
 	Status string `json:"status"`
 	CreatedMilli int64 `json:"created-milli"`
+	DoneMilli int64 `json:"done-milli"`
 	TargetCount int `json:"target-count"`
 	RunningCount int `json:"running-count"`
 	StoppingCount int `json:"stopping-count"`
@@ -243,11 +244,14 @@ func server_rxc_job_to_json(job *ServerRxcJob) json_out_server_rxc_job {
 	var js json_out_server_rxc_job
 	var run *ServerRxcJobRun
 	var runs []*ServerRxcJobRun
+	var done time.Time
 
 	js.JobId = job.Id
 	js.Type = job.Type
 	js.Script = job.Script
 	js.CreatedMilli = job.Created.UnixMilli()
+	done = job.get_done_time()
+	if !done.IsZero() { js.DoneMilli = done.UnixMilli() }
 
 	runs = job.snapshot_runs()
 	js.TargetCount = len(runs)

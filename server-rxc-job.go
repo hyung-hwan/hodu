@@ -176,6 +176,7 @@ func (run *ServerRxcJobRun) mark_start_failure(msg string) {
 	run.mtx.Unlock()
 
 	if transitioned {
+		run.Cts.S.FireRxcJobRunEvent(SERVER_EVENT_RXC_JOB_RUN_DONE, run)
 		if run.Cts.S.maybe_mark_rxc_job_done(run.Job) {
 			run.Cts.S.notify_rxc_job_purge()
 		}
@@ -282,6 +283,7 @@ func (run *ServerRxcJobRun) stop(flags uint64, msg string) {
 	run.mtx.Unlock()
 
 	if transitioned {
+		run.Cts.S.FireRxcJobRunEvent(SERVER_EVENT_RXC_JOB_RUN_DONE, run)
 		if run.Cts.S.maybe_mark_rxc_job_done(run.Job) {
 			run.Cts.S.notify_rxc_job_purge()
 		}
@@ -361,6 +363,15 @@ func (job *ServerRxcJob) is_done() bool {
 	return done
 }
 
+func (job *ServerRxcJob) get_done_time() time.Time {
+	var done time.Time
+
+	job.S.rxc_job_mtx.Lock()
+	done = job.Done
+	job.S.rxc_job_mtx.Unlock()
+	return done
+}
+
 func (s *Server) maybe_mark_rxc_job_done(job *ServerRxcJob) bool {
 	var existing *ServerRxcJob
 	var ok bool
@@ -391,6 +402,7 @@ func (s *Server) maybe_mark_rxc_job_done(job *ServerRxcJob) bool {
 		heap.Push(&s.rxc_job_heap, job)
 	}
 	s.rxc_job_mtx.Unlock()
+	s.FireRxcJobEvent(SERVER_EVENT_RXC_JOB_DONE, job)
 
 	return true
 }

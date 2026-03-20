@@ -104,6 +104,8 @@ const (
 	SERVER_EVENT_PEER_STARTED
 	SERVER_EVENT_PEER_UPDATED
 	SERVER_EVENT_PEER_STOPPED
+	SERVER_EVENT_RXC_JOB_RUN_DONE
+	SERVER_EVENT_RXC_JOB_DONE
 )
 
 type ServerEvent struct {
@@ -2836,4 +2838,28 @@ func (s *Server) FirePeerEvent(event_kind ServerEventKind, pts *ServerPeerConn) 
 			},
 		)
 	}
+}
+
+func (s *Server) FireRxcJobEvent(event_kind ServerEventKind, job *ServerRxcJob) {
+	var js json_out_server_rxc_job
+
+	js = server_rxc_job_to_json(job)
+	s.bulletin.Enqueue(
+		&ServerEvent{
+			Kind: event_kind,
+			Data: &js,
+		},
+	)
+}
+
+func (s *Server) FireRxcJobRunEvent(event_kind ServerEventKind, run *ServerRxcJobRun) {
+	var js json_out_server_rxc_run
+
+	js = server_rxc_run_to_json(run, false)
+	s.bulletin.Enqueue(
+		&ServerEvent{
+			Kind: event_kind,
+			Data: &js,
+		},
+	)
 }
