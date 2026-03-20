@@ -35,6 +35,11 @@ type ServerRxcJob struct {
 	run_mtx sync.Mutex
 	run_map map[ConnId]*ServerRxcJobRun
 	active_run_count int
+	starting_run_count int
+	running_run_count int
+	stopping_run_count int
+	stopped_run_count int
+	failed_run_count int
 }
 
 type ServerRxcJobRun struct {
@@ -151,6 +156,44 @@ func new_server_rxc_job_run(job *ServerRxcJob, cts *ServerConn) *ServerRxcJobRun
 	}
 }
 
+func (job *ServerRxcJob) increment_run_status_count_no_lock(status string) {
+	switch status {
+		case SERVER_RXC_RUN_STATUS_STARTING:
+			job.starting_run_count++
+
+		case SERVER_RXC_RUN_STATUS_RUNNING:
+			job.running_run_count++
+
+		case SERVER_RXC_RUN_STATUS_STOPPING:
+			job.stopping_run_count++
+
+		case SERVER_RXC_RUN_STATUS_STOPPED:
+			job.stopped_run_count++
+
+		case SERVER_RXC_RUN_STATUS_FAILED:
+			job.failed_run_count++
+	}
+}
+
+func (job *ServerRxcJob) decrement_run_status_count_no_lock(status string) {
+	switch status {
+		case SERVER_RXC_RUN_STATUS_STARTING:
+			if job.starting_run_count > 0 { job.starting_run_count-- }
+
+		case SERVER_RXC_RUN_STATUS_RUNNING:
+			if job.running_run_count > 0 { job.running_run_count-- }
+
+		case SERVER_RXC_RUN_STATUS_STOPPING:
+			if job.stopping_run_count > 0 { job.stopping_run_count-- }
+
+		case SERVER_RXC_RUN_STATUS_STOPPED:
+			if job.stopped_run_count > 0 { job.stopped_run_count-- }
+
+		case SERVER_RXC_RUN_STATUS_FAILED:
+			if job.failed_run_count > 0 { job.failed_run_count-- }
+	}
+}
+
 func (run *ServerRxcJobRun) mark_started(rxc_id uint64) {
 	run.mtx.Lock()
 	run.RxcId = rxc_id
@@ -158,6 +201,10 @@ func (run *ServerRxcJobRun) mark_started(rxc_id uint64) {
 		run.Started = time.Now()
 	}
 	if run.Status == SERVER_RXC_RUN_STATUS_STARTING {
+		run.Job.run_mtx.Lock()
+		run.Job.decrement_run_status_count_no_lock(run.Status)
+		run.Job.increment_run_status_count_no_lock(SERVER_RXC_RUN_STATUS_RUNNING)
+		run.Job.run_mtx.Unlock()
 		run.Status = SERVER_RXC_RUN_STATUS_RUNNING
 	}
 	run.mtx.Unlock()
@@ -168,6 +215,10 @@ func (run *ServerRxcJobRun) mark_start_failure(msg string) {
 
 	run.mtx.Lock()
 	if run.Status != SERVER_RXC_RUN_STATUS_STOPPED && run.Status != SERVER_RXC_RUN_STATUS_FAILED {
+		run.Job.run_mtx.Lock()
+		run.Job.decrement_run_status_count_no_lock(run.Status)
+		run.Job.increment_run_status_count_no_lock(SERVER_RXC_RUN_STATUS_FAILED)
+		run.Job.run_mtx.Unlock()
 		run.Stopped = time.Now()
 		run.Status = SERVER_RXC_RUN_STATUS_FAILED
 		run.StopMsg = msg
@@ -189,6 +240,10 @@ func (run *ServerRxcJobRun) request_stop() (*ServerConn, uint64, bool) {
 
 	run.mtx.Lock()
 	if run.Status == SERVER_RXC_RUN_STATUS_RUNNING {
+		run.Job.run_mtx.Lock()
+		run.Job.decrement_run_status_count_no_lock(run.Status)
+		run.Job.increment_run_status_count_no_lock(SERVER_RXC_RUN_STATUS_STOPPING)
+		run.Job.run_mtx.Unlock()
 		run.Status = SERVER_RXC_RUN_STATUS_STOPPING
 		cts = run.Cts
 		rxc_id = run.RxcId
@@ -274,6 +329,10 @@ func (run *ServerRxcJobRun) stop(flags uint64, msg string) {
 
 	run.mtx.Lock()
 	if run.Status != SERVER_RXC_RUN_STATUS_STOPPED && run.Status != SERVER_RXC_RUN_STATUS_FAILED {
+		run.Job.run_mtx.Lock()
+		run.Job.decrement_run_status_count_no_lock(run.Status)
+		run.Job.increment_run_status_count_no_lock(SERVER_RXC_RUN_STATUS_STOPPED)
+		run.Job.run_mtx.Unlock()
 		run.Status = SERVER_RXC_RUN_STATUS_STOPPED
 		run.Stopped = time.Now()
 		run.StopFlags = flags
@@ -410,11 +469,17 @@ func (s *Server) maybe_mark_rxc_job_done(job *ServerRxcJob) bool {
 func (job *ServerRxcJob) delete_run(run *ServerRxcJobRun) bool {
 	var existing *ServerRxcJobRun
 	var ok bool
+	var status string
+
+	run.mtx.Lock()
+	status = run.Status
+	run.mtx.Unlock()
 
 	job.run_mtx.Lock()
 	existing, ok = job.run_map[run.ConnId]
 	if ok && existing == run {
 		delete(job.run_map, run.ConnId)
+		job.decrement_run_status_count_no_lock(status)
 	}
 	job.run_mtx.Unlock()
 
@@ -559,6 +624,7 @@ func (s *Server) StartRxcJob(clients []string, type_ string, script string) (*Se
 		heap_index: -1,
 		run_map: make(map[ConnId]*ServerRxcJobRun),
 		active_run_count: len(conns),
+		starting_run_count: len(conns),
 	}
 
 	s.rxc_job_mtx.Lock()
@@ -631,9 +697,7 @@ func (s *Server) StopRxcJob(job *ServerRxcJob) int {
 		var stopped bool
 
 		stopped, err = s.StopRxcJobRun(run)
-		if stopped {
-			stop_count++
-		}
+		if stopped { stop_count++ }
 		if err != nil { continue }
 	}
 

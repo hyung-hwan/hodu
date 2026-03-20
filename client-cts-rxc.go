@@ -492,11 +492,7 @@ func connect_cmd(c *Client, type_ string, script string) (*exec.Cmd, *os.File, *
 
 	effective_user = c.rxc_user
 
-/*	if type_ == "bash" {
-		// TODO: refactor stop using Context
-		//cmd = exec.CommandContext()
-		cmd = exec.Command("/bin/bash", "-c", script)
-	} else */if type_ == "simple" {
+	if type_ == "simple" {
 		argv, err = split_simple_command(script, 0)
 		if err != nil {
 			return nil, nil, nil, nil, err

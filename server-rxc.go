@@ -242,8 +242,6 @@ type server_ctl_rxc_id_runs_id_stop struct {
 
 func server_rxc_job_to_json(job *ServerRxcJob) json_out_server_rxc_job {
 	var js json_out_server_rxc_job
-	var run *ServerRxcJobRun
-	var runs []*ServerRxcJobRun
 	var done time.Time
 
 	js.JobId = job.Id
@@ -253,22 +251,13 @@ func server_rxc_job_to_json(job *ServerRxcJob) json_out_server_rxc_job {
 	done = job.get_done_time()
 	if !done.IsZero() { js.DoneMilli = done.UnixMilli() }
 
-	runs = job.snapshot_runs()
-	js.TargetCount = len(runs)
-	for _, run = range runs {
-		run.mtx.Lock()
-		switch run.Status {
-			case "running":
-				js.RunningCount++
-			case "stopping":
-				js.StoppingCount++
-			case "stopped":
-				js.StoppedCount++
-			case "failed":
-				js.FailedCount++
-		}
-		run.mtx.Unlock()
-	}
+	job.run_mtx.Lock()
+	js.TargetCount = len(job.run_map)
+	js.RunningCount = job.running_run_count
+	js.StoppingCount = job.stopping_run_count
+	js.StoppedCount = job.stopped_run_count
+	js.FailedCount = job.failed_run_count
+	job.run_mtx.Unlock()
 
 	switch {
 		case js.TargetCount <= 0:
