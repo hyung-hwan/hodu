@@ -19,6 +19,7 @@ SRCS=\
 	client-metrics.go \
 	client-peer.go \
 	client-pty.go \
+	client-rxc-profile.go \
 	hodu.go \
 	hodu.pb.go \
 	hodu_grpc.pb.go \

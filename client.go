@@ -228,7 +228,9 @@ type ClientRpx struct {
 type ClientRxc struct {
 	cts *ClientConn
 	id uint64
-	cmd *exec.Cmd
+	req_type string // orignal requested type
+	req_script string // original requested script
+	cmd *exec.Cmd // actual command
 	in *os.File
 	out *os.File
 	// TODO: err

@@ -14,6 +14,7 @@ const CLIENT_RXC_PROFILE_RELOAD_MIN_INTERVAL time.Duration = 5 * time.Second
 type ClientRxcProfile struct {
 	Name   string `yaml:"name"`
 	Script string `yaml:"script"`
+	Args   []string `yaml:"args"`
 	User   string `yaml:"user"`
 }
 
@@ -56,7 +57,8 @@ func (c *Client) GetRxcProfileFiles() []string {
 
 func append_client_rxc_profiles(dst ClientRxcProfileMap, src []ClientRxcProfile, source_file string) error {
 	var profile ClientRxcProfile
-	var copied ClientRxcProfile
+	var copied *ClientRxcProfile
+	var copied_args []string
 	var existing *ClientRxcProfile
 	var ok bool
 
@@ -77,8 +79,15 @@ func append_client_rxc_profiles(dst ClientRxcProfileMap, src []ClientRxcProfile,
 			return fmt.Errorf("duplicate rxc profile %s in %s", profile.Name, source_file)
 		}
 
-		copied = profile
-		dst[copied.Name] = &copied
+		copied = new(ClientRxcProfile)
+		*copied = profile
+		if profile.Args != nil {
+			copied_args = make([]string, len(profile.Args))
+			copy(copied_args, profile.Args)
+			copied.Args = copied_args
+		}
+
+		dst[copied.Name] = copied
 	}
 
 	return nil
@@ -210,6 +219,7 @@ func (c *Client) ResolveRxcProfile(name string) (*ClientRxcProfile, error) {
 	c.rxc_profile_mtx.Unlock()
 
 	if ok && profile != nil { return &copied, nil }
-	if err != nil { return nil, err } // reloading fails and there is no existing profile
-	return nil, nil
+	if err != nil { return nil, err } // reloading failed above and there is no existing profile found
+
+	return nil, nil // no reloading error but not resolved either
 }

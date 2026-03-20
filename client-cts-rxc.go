@@ -37,7 +37,7 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
-	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Started rxc(%d) loop for %s", crp.id, crp.cmd.String())
+	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Started rxc(%d) loop for %s(%s) - %s", crp.id, crp.req_type, crp.req_script, crp.cmd.String())
 
 	cts.C.stats.rxc_sessions.Add(1)
 
@@ -175,20 +175,102 @@ func split_simple_command(script string) ([]string, error) {
 		}
 	}
 
-	if escaped {
-		return nil, fmt.Errorf("dangling escape in simple command")
+	if escaped { return nil, fmt.Errorf("dangling escape in simple command") }
+	if quote != 0 { return nil, fmt.Errorf("unterminated quote in simple command") }
+	if token_started { args = append(args, buf.String()) }
+	if len(args) <= 0 { return nil, fmt.Errorf("blank simple command") }
+
+	return args, nil
+}
+
+func expand_rxc_profile_arg(arg_expr string, input_args []string) (string, error) {
+	var buf bytes.Buffer
+	var r rune
+	var last_pos int
+	var pos int
+	var j int
+	var arg_idx_str string
+	var arg_idx int
+	var arg_expr_len int
+	var input_args_len int
+	var err error
+
+	input_args_len = len(input_args)
+	arg_expr_len = len(arg_expr)
+	last_pos = 0
+	for pos, r = range arg_expr { // use the for .. range expression for rune-based traversal
+		if r != '$' { continue }
+
+		buf.WriteString(arg_expr[last_pos:pos])
+
+		if pos + 1 >= arg_expr_len {
+			// nothing after $
+			buf.WriteByte('$')
+			last_pos = pos + 1
+			break
+		}
+
+		if arg_expr[pos + 1] == '$' {
+			// convert $$ to a literal $
+			buf.WriteByte('$')
+			last_pos = pos + 2
+			continue
+		}
+
+		if arg_expr[pos + 1] != '{' {
+			// $ not followed by {
+			buf.WriteByte('$')
+			last_pos = pos + 1
+			continue
+		}
+
+		j = pos + 2
+		for j < arg_expr_len && arg_expr[j] != '}' { j++ }
+		if j >= arg_expr_len {
+			return "", fmt.Errorf("unterminated rxc profile args expression %s", arg_expr)
+		}
+
+		arg_idx_str = arg_expr[pos + 2:j]
+		if arg_idx_str == "@" {
+			return "", fmt.Errorf("invalid use of ${@} in rxc profile args expression %s", arg_expr)
+		}
+
+		arg_idx, err = strconv.Atoi(arg_idx_str)
+		if err != nil || arg_idx <= 0 {
+			return "", fmt.Errorf("invalid rxc profile argument index ${%s}", arg_idx_str)
+		}
+		if arg_idx > input_args_len {
+			return "", fmt.Errorf("rxc profile argument index ${%d} out of range", arg_idx)
+		}
+
+		buf.WriteString(input_args[arg_idx - 1])
+		last_pos = j + 1
 	}
 
-	if quote != 0 {
-		return nil, fmt.Errorf("unterminated quote in simple command")
-	}
+	if last_pos < arg_expr_len { buf.WriteString(arg_expr[last_pos:]) }
 
-	if token_started {
-		args = append(args, buf.String())
-	}
+	return buf.String(), nil
+}
 
-	if len(args) <= 0 {
-		return nil, fmt.Errorf("blank simple command")
+func expand_rxc_profile_args(arg_exprs []string, input_args []string) ([]string, error) {
+	var args []string
+	var arg_expr string
+
+	args = make([]string, 0)
+
+	for _, arg_expr = range arg_exprs {
+		if arg_expr == "${@}" {
+			// ${@} must be used alone
+			args = append(args, input_args...)
+		} else {
+			var expanded string
+			var err error
+			// expand_rxc_profile_arg rejects ${@} as it doesn't allow
+			// to combine it with other elements (e.g. xx${@}yy is disallowed).
+			expanded, err = expand_rxc_profile_arg(arg_expr, input_args)
+			if err != nil { return nil, err }
+			args = append(args, expanded)
+		}
 	}
 
 	return args, nil
@@ -230,6 +312,7 @@ func connect_cmd(c *Client, type_ string, script string) (*exec.Cmd, *os.File, *
 	var in_f *os.File
 	var out_f *os.File
 	var argv []string
+	var cmd_argv []string
 	var profile *ClientRxcProfile
 	var effective_user string
 	var ok bool
@@ -256,9 +339,16 @@ func connect_cmd(c *Client, type_ string, script string) (*exec.Cmd, *os.File, *
 		if profile == nil {
 			return nil, nil, nil, fmt.Errorf("unknown rxc profile %s", argv[0])
 		}
-		argv[0] = profile.Script
 		if profile.User != "" { effective_user = profile.User }
-		cmd = exec.Command(argv[0], argv[1:]...)
+		if profile.Args != nil {
+			cmd_argv, err = expand_rxc_profile_args(profile.Args, argv[1:])
+			if err != nil {
+				return nil, nil, nil, err
+			}
+		} else {
+			cmd_argv = argv[1:]
+		}
+		cmd = exec.Command(profile.Script, cmd_argv...)
 	} else {
 		return nil, nil, nil, fmt.Errorf("unsupported type - %s", type_)
 	}
@@ -327,7 +417,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 		return fmt.Errorf("multiple start on rxc(%d)", id)
 	}
 
-	crp = &ClientRxc{ cts: cts, id: id }
+	crp = &ClientRxc{ cts: cts, id: id, req_type: args[0], req_script: args[1]  }
 	err = unix.Pipe(crp.pfd[:])
 	if err != nil {
 		cts.rxc_mtx.Unlock()
