@@ -2,14 +2,26 @@ package hodu
 
 import "bytes"
 import "encoding/gob"
+import "os"
+import "syscall"
 
 type ConnId      uint64
 type RouteId     uint32 // keep this in sync with the type of RouteId in hodu.proto
 type PeerId      uint32 // keep this in sync with the type of RouteId in hodu.proto
 type RouteOption uint32
 
-const RXC_DATA_FLAG_NONE uint32 = 0
-const RXC_DATA_FLAG_STDERR uint32 = 1 << 0
+// low 16 bits reserved for various flag bits
+const RXC_FLAG_BITS uint64 = 16
+const RXC_FLAG_MASK uint64 = (uint64(1) << RXC_FLAG_BITS) - 1
+const RXC_DATA_FLAG_NONE uint64 = 0
+const RXC_DATA_FLAG_STDERR uint64 = 1 << 0
+
+// the 32 bits reserved for exit status
+const RXC_STOP_FLAG_STATUS_VALID uint64 = 1 << 0
+const RXC_STOP_STATUS_SHIFT uint64 = RXC_FLAG_BITS
+const RXC_STOP_STATUS_MASK uint64 = uint64(0xFFFFFFFF) << RXC_STOP_STATUS_SHIFT
+
+// we still have high 16 bits unused.
 
 type ConnRouteId struct {
 	conn_id ConnId
@@ -128,11 +140,31 @@ func MakeRxcStartPacket(id uint64, kind string, script string) (*Packet, error) 
 	return &Packet{Kind: PACKET_KIND_RXC_START, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: buf.Bytes()}}}, nil
 }
 
-func MakeRxcStopPacket(id uint64, msg string) *Packet {
-	// the rpty stop conveys an error/info message
-	return &Packet{Kind: PACKET_KIND_RXC_STOP, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Data: []byte(msg)}}}
+func MakeRxcStopFlagsFromProcessState(ps *os.ProcessState) uint64 {
+	var ws syscall.WaitStatus
+	var ok bool
+
+	if ps == nil { return 0 }
+
+	ws, ok = ps.Sys().(syscall.WaitStatus)
+	if !ok { return 0 }
+
+	return RXC_STOP_FLAG_STATUS_VALID | (uint64(uint32(ws)) << RXC_STOP_STATUS_SHIFT)
 }
 
-func MakeRxcDataPacket(id uint64, flags uint32, data []byte) *Packet {
+func GetRxcStopExitCode(flags uint64) int {
+	var ws syscall.WaitStatus
+	if flags & RXC_STOP_FLAG_STATUS_VALID == 0 { return -1 }
+	ws = syscall.WaitStatus(uint32((flags & RXC_STOP_STATUS_MASK) >> RXC_STOP_STATUS_SHIFT))
+	if !ws.Exited() { return -1 }
+	return ws.ExitStatus()
+}
+
+func MakeRxcStopPacket(id uint64, flags uint64, msg string) *Packet {
+	// the rpty stop conveys an error/info message
+	return &Packet{Kind: PACKET_KIND_RXC_STOP, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Flags: flags, Data: []byte(msg)}}}
+}
+
+func MakeRxcDataPacket(id uint64, flags uint64, data []byte) *Packet {
 	return &Packet{Kind: PACKET_KIND_RXC_DATA, U: &Packet_RxcEvt{RxcEvt: &RxcEvent{Id: id, Flags: flags, Data: data}}}
 }

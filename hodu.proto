@@ -95,7 +95,7 @@ message RpxEvent {
 
 message RxcEvent {
 	uint64 Id = 1;
-	uint32 Flags = 2;
+	uint64 Flags = 2;
 	bytes  Data = 3;
 };
 

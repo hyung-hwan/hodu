@@ -36,6 +36,8 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	var out_revents int16
 	var err_revents int16
 	var sig_revents int16
+	var stop_flags uint64
+	var stop_msg string
 	var stdout_open bool
 	var stderr_open bool
 	var err error
@@ -142,14 +144,18 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 	}
 
 	cts.C.log.Write(cts.Sid, LOG_DEBUG, "Ending rxc(%d) loop", crp.id)
-	err = cts.psc.Send(MakeRxcStopPacket(crp.id, ""))
+	crp.ReqStop()
+	crp.stdin.Close() // close the input before waiting for program termination
+	err = crp.cmd.Wait()
+	if err != nil && crp.cmd.ProcessState == nil {
+		stop_msg = err.Error()
+	}
+	stop_flags = MakeRxcStopFlagsFromProcessState(crp.cmd.ProcessState)
+	err = cts.psc.Send(MakeRxcStopPacket(crp.id, stop_flags, stop_msg))
 	if err != nil {
 		cts.C.log.Write(cts.Sid, LOG_WARN, "Failed to send %s from rxc(%d) to server - %s", PACKET_KIND_RXC_STOP.String(), crp.id, err.Error())
 	}
 
-	crp.ReqStop()
-	crp.stdin.Close() // close the input before waiting for program termination
-	crp.cmd.Wait()
 	crp.stderr.Close()
 	crp.stdout.Close()
 	unix.Close(crp.pfd[0])
@@ -603,7 +609,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 	if err != nil {
 		cts.rxc_mtx.Unlock()
 
-		err2 = cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
+		err2 = cts.psc.Send(MakeRxcStopPacket(id, 0, err.Error()))
 		if err2 != nil {
 			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s for rxc(%d) start failure to server - %s", PACKET_KIND_RXC_STOP.String(), id, err2.Error())
 		}
@@ -614,7 +620,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 	if err != nil {
 		cts.rxc_mtx.Unlock()
 
-		err2 = cts.psc.Send(MakeRxcStopPacket(id, err.Error()))
+		err2 = cts.psc.Send(MakeRxcStopPacket(id, 0, err.Error()))
 		if err2 != nil {
 			cts.C.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s for rxc(%d) start failure to server - %s", PACKET_KIND_RXC_STOP.String(), id, err2.Error())
 		}

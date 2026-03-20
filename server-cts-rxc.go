@@ -135,7 +135,7 @@ func (cts *ServerConn) StopRxcForWs(ws *websocket.Conn) error {
 		return fmt.Errorf("unknown websocket connection for rxc - %v", ws.RemoteAddr())
 	}
 
-	err = cts.pss.Send(MakeRxcStopPacket(rxc.id, ""))
+	err = cts.pss.Send(MakeRxcStopPacket(rxc.id, 0, ""))
 	if err != nil {
 		cts.S.log.Write(cts.Sid, LOG_ERROR, "Failed to send %s(%d) for server %s websocket %v - %s", PACKET_KIND_RXC_STOP.String(), rxc.id, cts.RemoteAddr, ws.RemoteAddr(), err.Error())
 	}
@@ -150,7 +150,7 @@ func (cts *ServerConn) StopRxcForWs(ws *websocket.Conn) error {
 	return nil
 }
 
-func (cts *ServerConn) SendStopRxcById(id uint64, flags uint32) error {
+func (cts *ServerConn) SendStopRxcById(id uint64, flags uint64) error {
 	var ok bool
 	var err error
 
@@ -159,7 +159,7 @@ func (cts *ServerConn) SendStopRxcById(id uint64, flags uint32) error {
 		return fmt.Errorf("unknown rxc id %d", id)
 	}
 
-	err = cts.pss.Send(MakeRxcStopPacket(id, ""))
+	err = cts.pss.Send(MakeRxcStopPacket(id, flags, ""))
 	if err != nil {
 		return fmt.Errorf("failed to send %s(%d) to client - %s", PACKET_KIND_RXC_STOP.String(), id, err.Error())
 	}
@@ -167,7 +167,7 @@ func (cts *ServerConn) SendStopRxcById(id uint64, flags uint32) error {
 	return nil
 }
 
-func (cts *ServerConn) StopRxcSinkById(id uint64, flags uint32, msg string) error {
+func (cts *ServerConn) StopRxcSinkById(id uint64, flags uint64, msg string) error {
 	var rxc *ServerRxc
 	var ok bool
 	var err error
@@ -179,7 +179,7 @@ func (cts *ServerConn) StopRxcSinkById(id uint64, flags uint32, msg string) erro
 	cts.S.stats.rxc_sessions.Add(-1)
 
 	if rxc.sink != nil {
-		err = rxc.sink.Stop(msg)
+		err = rxc.sink.Stop(flags, msg)
 		if err != nil { return err }
 	}
 
@@ -201,7 +201,7 @@ func (cts *ServerConn) WriteRxcForWs(ws *websocket.Conn, data []byte) error {
 	return nil
 }
 
-func (cts *ServerConn) ReadRxcAndWriteSinkById(id uint64, flags uint32, data []byte) error {
+func (cts *ServerConn) ReadRxcAndWriteSinkById(id uint64, flags uint64, data []byte) error {
 	var rxc *ServerRxc
 	var ok bool
 

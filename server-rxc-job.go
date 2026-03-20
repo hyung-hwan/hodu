@@ -47,6 +47,7 @@ type ServerRxcJobRun struct {
 	Stopped time.Time
 	RxcId uint64
 	Status string
+	StopFlags uint64
 	StopMsg string
 
 	Output [2][]byte
@@ -61,8 +62,8 @@ type ServerRxcJobExpiryHeap []*ServerRxcJob
 
 type ServerRxcSink interface {
 	ReqStop()
-	Write(flags uint32, data []byte) error
-	Stop(msg string) error
+	Write(flags uint64, data []byte) error
+	Stop(flags uint64, msg string) error
 }
 
 type ServerRxcWebsocketSink struct {
@@ -76,7 +77,7 @@ func (sink *ServerRxcWebsocketSink) ReqStop() {
 	}
 }
 
-func (sink *ServerRxcWebsocketSink) Write(flags uint32, data []byte) error {
+func (sink *ServerRxcWebsocketSink) Write(flags uint64, data []byte) error {
 	// TODO: how to distinguish stdout and stderr? when sending iov, encode the info?
 	var data_type string
 	if flags & RXC_DATA_FLAG_STDERR != 0 {
@@ -87,7 +88,7 @@ func (sink *ServerRxcWebsocketSink) Write(flags uint32, data []byte) error {
 	return send_ws_data_for_xterm(sink.ws, data_type, base64.StdEncoding.EncodeToString(data))
 }
 
-func (sink *ServerRxcWebsocketSink) Stop(msg string) error {
+func (sink *ServerRxcWebsocketSink) Stop(flags uint64, msg string) error {
 	sink.ReqStop()
 	return nil
 }
@@ -267,13 +268,14 @@ func (run *ServerRxcJobRun) append_output(data []byte, outidx int, capture_tail 
 	run.mtx.Unlock()
 }
 
-func (run *ServerRxcJobRun) stop(msg string) {
+func (run *ServerRxcJobRun) stop(flags uint64, msg string) {
 	var transitioned bool
 
 	run.mtx.Lock()
 	if run.Status != SERVER_RXC_RUN_STATUS_STOPPED && run.Status != SERVER_RXC_RUN_STATUS_FAILED {
 		run.Status = SERVER_RXC_RUN_STATUS_STOPPED
 		run.Stopped = time.Now()
+		run.StopFlags = flags
 		run.StopMsg = msg
 		transitioned = true
 	}
@@ -290,10 +292,10 @@ func (run *ServerRxcJobRun) ReqStop() {
 	// this is called from run.Cts.receive_from_stream() or run.Cts.ReqStop()
 	// I can assume that the cause for this stop request is "connection closed".
 	// If you want to specify your own reason, you must call Stop() instead.
-	run.stop("connection closed")
+	run.stop(0, "connection closed")
 }
 
-func (run *ServerRxcJobRun) Write(flags uint32, data []byte) error {
+func (run *ServerRxcJobRun) Write(flags uint64, data []byte) error {
 	var outidx int
 
 	outidx = 0
@@ -303,8 +305,8 @@ func (run *ServerRxcJobRun) Write(flags uint32, data []byte) error {
 	return nil
 }
 
-func (run *ServerRxcJobRun) Stop(msg string) error {
-	run.stop(msg)
+func (run *ServerRxcJobRun) Stop(flags uint64, msg string) error {
+	run.stop(flags, msg)
 	return nil
 }
 
@@ -590,9 +592,10 @@ func (s *Server) StopRxcJobRun(run *ServerRxcJobRun) (bool, error) {
 		return false, nil
 	}
 
-	err = cts.SendStopRxcById(rxc_id, 0) // TODO: set flags properly...
+	// sever sends a stop request to abort the run on the client side
+	err = cts.SendStopRxcById(rxc_id, 0)
 	if err != nil {
-		run.stop(err.Error())
+		run.stop(0, err.Error())
 		return false, err
 	}
 

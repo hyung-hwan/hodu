@@ -204,6 +204,7 @@ type json_out_server_rxc_run struct {
 	ClientToken string `json:"client-token"`
 	RxcId uint64 `json:"rxc-id"`
 	Status string `json:"status"`
+	ExitCode int `json:"exit-code"`
 	StopMsg string `json:"stop-msg"`
 	CreatedMilli int64 `json:"created-milli"`
 	StartedMilli int64 `json:"started-milli"`
@@ -288,6 +289,7 @@ func server_rxc_run_to_json(run *ServerRxcJobRun, with_output bool) json_out_ser
 	js.ClientToken = run.ClientToken
 	js.RxcId = run.RxcId
 	js.Status = run.Status
+	js.ExitCode = GetRxcStopExitCode(run.StopFlags)
 	js.StopMsg = run.StopMsg
 	js.CreatedMilli = run.Created.UnixMilli()
 	if !run.Started.IsZero() { js.StartedMilli = run.Started.UnixMilli() }
