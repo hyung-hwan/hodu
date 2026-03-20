@@ -11,6 +11,7 @@ import "os/user"
 import "strconv"
 import "sync"
 import "syscall"
+import "unicode"
 
 import "golang.org/x/sys/unix"
 
@@ -123,19 +124,16 @@ func (cts *ClientConn) RxcLoop(crp *ClientRxc, wg *sync.WaitGroup) {
 func split_simple_command(script string) ([]string, error) {
 	var args []string
 	var buf bytes.Buffer
-	var ch byte
-	var quote byte
-	var i int
+	var ch rune
+	var quote rune
 	var token_started bool
 	var escaped bool
 
 	args = make([]string, 0)
 
-	for i = 0; i < len(script); i++ {
-		ch = script[i]
-
+	for _, ch = range script {
 		if escaped {
-			buf.WriteByte(ch)
+			buf.WriteRune(ch)
 			token_started = true
 			escaped = false
 			continue
@@ -151,7 +149,7 @@ func split_simple_command(script string) ([]string, error) {
 			if ch == quote {
 				quote = 0
 			} else {
-				buf.WriteByte(ch)
+				buf.WriteRune(ch)
 				token_started = true
 			}
 			continue
@@ -162,16 +160,17 @@ func split_simple_command(script string) ([]string, error) {
 				quote = ch
 				token_started = true
 
-			case ' ', '\t', '\r', '\n':
-				if token_started {
-					args = append(args, buf.String())
-					buf.Reset()
-					token_started = false
-				}
-
 			default:
-				buf.WriteByte(ch)
-				token_started = true
+				if unicode.IsSpace(ch) {
+					if token_started {
+						args = append(args, buf.String())
+						buf.Reset()
+						token_started = false
+					}
+				} else {
+					buf.WriteRune(ch)
+					token_started = true
+				}
 		}
 	}
 
