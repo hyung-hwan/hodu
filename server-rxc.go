@@ -210,9 +210,9 @@ type json_out_server_rxc_run struct {
 	CreatedMilli int64 `json:"created-milli"`
 	StartedMilli int64 `json:"started-milli"`
 	StoppedMilli int64 `json:"stopped-milli"`
-	Stdout []byte `json:"stdout"`
+	Stdout []byte `json:"stdout,omitempty"`
 	StdoutTruncated bool `json:"stdout-truncated"`
-	Stderr []byte `json:"stderr"`
+	Stderr []byte `json:"stderr,omitempty"`
 	StderrTruncated bool `json:"stderr-truncated"`
 }
 

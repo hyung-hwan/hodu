@@ -410,10 +410,12 @@ func expand_rxc_profile_arg(arg_expr string, input_args []string) (string, error
 			return "", fmt.Errorf("invalid rxc profile argument index ${%s}", arg_idx_str)
 		}
 		if arg_idx > input_args_len {
-			return "", fmt.Errorf("rxc profile argument index ${%d} out of range", arg_idx)
+			//return "", fmt.Errorf("rxc profile argument index ${%d} out of range", arg_idx)
+			// don't return failure. just carry on without writing anything
+			// write nothing to buf.
+		} else {
+			buf.WriteString(input_args[arg_idx - 1])
 		}
-
-		buf.WriteString(input_args[arg_idx - 1])
 		last_pos = j + 1
 	}
 
@@ -628,7 +630,7 @@ func (cts *ClientConn) StartRxc(id uint64, data []byte, wg *sync.WaitGroup) erro
 	for i = 0; i < 2; i++ {
 		var flags int
 		flags, err = unix.FcntlInt(uintptr(crp.pfd[i]), unix.F_GETFL, 0)
-		if err != nil {
+		if err == nil {
 			unix.FcntlInt(uintptr(crp.pfd[i]), unix.F_SETFL, flags | unix.O_NONBLOCK)
 		}
 	}

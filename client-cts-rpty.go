@@ -146,7 +146,7 @@ func (cts *ClientConn) StartRpty(id uint64, wg *sync.WaitGroup) error {
 	for i = 0; i < 2; i++ {
 		var flags int
 		flags, err = unix.FcntlInt(uintptr(crp.pfd[i]), unix.F_GETFL, 0)
-		if err != nil {
+		if err == nil {
 			unix.FcntlInt(uintptr(crp.pfd[i]), unix.F_SETFL, flags | unix.O_NONBLOCK)
 		}
 	}
