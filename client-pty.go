@@ -71,8 +71,8 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 			var err error
 
 			poll_fds = []unix.PollFd{
-				unix.PollFd{Fd: int32(out.Fd()), Events: unix.POLLIN},
 				unix.PollFd{Fd: int32(pfd[0]), Events: unix.POLLIN},
+				unix.PollFd{Fd: int32(out.Fd()), Events: unix.POLLIN},
 			}
 
 			c.stats.pty_sessions.Add(1)
@@ -87,8 +87,8 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					continue
 				}
 
-				out_revents = poll_fds[0].Revents
-				sig_revents = poll_fds[1].Revents
+				sig_revents = poll_fds[0].Revents
+				out_revents = poll_fds[1].Revents
 
 				if (out_revents & unix.POLLIN) != 0 {
 					n, err = out.Read(buf[:])

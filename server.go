@@ -2,6 +2,7 @@ package hodu
 
 import "container/list"
 import "context"
+import "crypto/rsa"
 import "crypto/tls"
 import "errors"
 import "fmt"
@@ -82,6 +83,8 @@ type ServerConfig struct {
 	RpxAddrs []string
 	RpxTls *tls.Config
 	RpxClientTokenAttrName string
+	RpxClientTokenProtection string
+	RpxClientTokenRsaKey *rsa.PrivateKey
 	RpxClientTokenRegex *regexp.Regexp
 	RpxClientTokenSubmatchIndex int
 
@@ -1397,12 +1400,22 @@ type ServerWebsocketHandler interface {
 	ServeWebsocket(ws *websocket.Conn) (int, error)
 }
 
+type ServerHttpHandlerExtraInfo struct {
+	// more information	about the request processed
+	extra_id string
+}
+
+type server_http_request_context_key int
+const server_http_handler_extra_info_key server_http_request_context_key = iota
+
 func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var status_code int
 		var err error
 		var start_time time.Time
 		var time_taken time.Duration
+		var newctx context.Context
+		var xinfo ServerHttpHandlerExtraInfo
 
 		// this deferred function is to overcome the recovering implemenation
 		// from panic done in go's http server. in that implemenation, panic
@@ -1415,6 +1428,9 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 		}()
 
 		start_time = time.Now()
+
+		newctx = context.WithValue(req.Context(), server_http_handler_extra_info_key, &xinfo)
+		req = req.WithContext(newctx)
 
 		if handler.Cors(req) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1441,10 +1457,13 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 		time_taken = time.Since(start_time) // time.Now().Sub(start_time)
 
 		if status_code > 0 {
+			var id string = handler.Identity()
+			if xinfo.extra_id != "" { id = id + "/" + xinfo.extra_id  }
+
 			if err != nil {
-				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds(), err.Error())
+				s.log.Write(id, LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds(), err.Error())
 			} else {
-				s.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds())
+				s.log.Write(id, LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds())
 			}
 		}
 	})
@@ -1464,7 +1483,9 @@ func (s *Server) SafeWrapWebsocketHandler(handler websocket.Handler) http.Handle
 }
 
 func (s *Server) WrapWebsocketHandler(handler ServerWebsocketHandler) websocket.Handler {
-	return websocket.Handler(func(ws *websocket.Conn) {
+	var f websocket.Handler
+
+	f = websocket.Handler(func(ws *websocket.Conn) {
 		var status_code int
 		var err error
 		var start_time time.Time
@@ -1486,6 +1507,7 @@ func (s *Server) WrapWebsocketHandler(handler ServerWebsocketHandler) websocket.
 			}
 		}
 	})
+	return f;
 }
 
 func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfig) (*Server, error) {

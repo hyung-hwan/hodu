@@ -75,6 +75,9 @@ type RPXServiceConfig struct {
 
 type RPXClientTokenConfig struct {
 	AttrName string `yaml:"attr-name"`
+	Protection string `yaml:"protection"`
+	TokenRsaKeyText string `yaml:"token-rsa-key-text"`
+	TokenRsaKeyFile string `yaml:"token-rsa-key-file"`
 	Regex string `yaml:"regex"`
 	SubmatchIndex int `yaml:"submatch-index"`
 }
@@ -393,14 +396,43 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 }
 
 // --------------------------------------------------------------------
+func make_rsa_private_key_config(key_text string, key_file string, default_key_text []byte, key_name string) (*rsa.PrivateKey, error) {
+	var rsa_key_text []byte
+	var rk *rsa.PrivateKey
+	var pb *pem.Block
+	var b []byte
+	var err error
+
+	if key_text == "" && key_file != "" {
+		rsa_key_text, err = os.ReadFile(key_file)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read %s - %s", key_file, err.Error())
+		}
+	}
+	if len(rsa_key_text) == 0 { rsa_key_text = []byte(key_text) }
+	if len(rsa_key_text) == 0 { rsa_key_text = default_key_text }
+	if len(rsa_key_text) == 0 { return nil, nil }
+
+	pb, b = pem.Decode(rsa_key_text)
+	if pb == nil || len(b) > 0 {
+		return nil, fmt.Errorf("invalid %s text %.32s... - no block or too many blocks", key_name, string(rsa_key_text))
+	}
+
+	rk, err = x509.ParsePKCS1PrivateKey(pb.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("invalid %s text %.32s... - %s", key_name, string(rsa_key_text), err.Error())
+	}
+
+	return rk, nil
+}
+
+// --------------------------------------------------------------------
 func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 	var config hodu.HttpAuthConfig
 	var cred string
 	var b []byte
 	var x []string
-	var rsa_key_text []byte
 	var rk *rsa.PrivateKey
-	var pb *pem.Block
 	var rule HttpAccessRule
 	var idx int
 	var err error
@@ -428,27 +460,8 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 	}
 
 	// load rsa key
-	if cfg.TokenRsaKeyText == "" && cfg.TokenRsaKeyFile != "" {
-		rsa_key_text, err = os.ReadFile(cfg.TokenRsaKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read %s - %s", cfg.TokenRsaKeyFile, err.Error())
-		}
-	}
-	if len(rsa_key_text) == 0 { rsa_key_text = []byte(cfg.TokenRsaKeyText) }
-	if len(rsa_key_text) == 0 { rsa_key_text = hodu_rsa_key_text }
-
-	pb, b = pem.Decode(rsa_key_text)
-	if pb == nil || len(b) > 0 {
-		// show up to first 8 characters only
-		return nil, fmt.Errorf("invalid token rsa key text %.32s... - no block or too many blocks", string(rsa_key_text))
-	}
-
-	rk, err = x509.ParsePKCS1PrivateKey(pb.Bytes)
-	if err != nil {
-		// show up to first 8 characters only
-		return nil, fmt.Errorf("invalid token rsa key text %.32s... - %s", string(rsa_key_text), err.Error())
-	}
-
+	rk, err = make_rsa_private_key_config(cfg.TokenRsaKeyText, cfg.TokenRsaKeyFile, hodu_rsa_key_text, "token rsa key")
+	if err != nil { return nil, err }
 	config.TokenRsaKey = rk
 
 	// load access rules

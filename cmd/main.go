@@ -138,6 +138,12 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
 	config.RpxClientTokenAttrName = cfg.RPX.ClientToken.AttrName
+	config.RpxClientTokenProtection = cfg.RPX.ClientToken.Protection
+	config.RpxClientTokenRsaKey, err = make_rsa_private_key_config(cfg.RPX.ClientToken.TokenRsaKeyText, cfg.RPX.ClientToken.TokenRsaKeyFile, nil, "rpx client token rsa key")
+	if err != nil { return err }
+	if strings.EqualFold(config.RpxClientTokenProtection, "rsa-aes") && config.RpxClientTokenRsaKey == nil {
+		return fmt.Errorf("missing rpx client token rsa key for protection %s", config.RpxClientTokenProtection)
+	}
 	if cfg.RPX.ClientToken.Regex != "" {
 		config.RpxClientTokenRegex, err = regexp.Compile(cfg.RPX.ClientToken.Regex)
 		if err != nil { return err }

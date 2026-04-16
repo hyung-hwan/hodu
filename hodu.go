@@ -18,6 +18,8 @@ import "strings"
 import "sync"
 import "time"
 
+import "golang.org/x/sys/unix"
+
 const HODU_RPC_VERSION uint32 = 0x010000
 
 type LogLevel int
@@ -434,6 +436,7 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 					// verification ok. let's check the actual payload
 					var now time.Time
 					now = time.Now()
+// TODO: subject check. other claim check
 					if !now.Before(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return http.StatusOK, "" } // not expired
 				}
 			}
@@ -581,4 +584,28 @@ func read_line_limited(r *bufio.Reader, max int) (string, error) {
 		}
 		return string(line), err
 	}
+}
+
+
+func read_fd_full(fd int, buf []byte) error {
+	var off int
+
+	off = 0
+	for off < len(buf) {
+		n, err := unix.Read(fd, buf[off:])
+		if err != nil {
+			if errors.Is(err, unix.EINTR) { continue }
+			if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EWOULDBLOCK) {
+				// for nonblocking fds, wait/retry as appropriate
+				continue
+			}
+			return err
+		}
+		if n == 0 {
+			if off == len(buf) { return nil }
+			return io.ErrUnexpectedEOF
+		}
+		off += n
+	}
+	return nil
 }

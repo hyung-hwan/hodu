@@ -78,8 +78,8 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 			var err error
 
 			poll_fds = []unix.PollFd{
-				unix.PollFd{Fd: int32(out.Fd()), Events: unix.POLLIN},
 				unix.PollFd{Fd: int32(pfd[0]), Events: unix.POLLIN},
+				unix.PollFd{Fd: int32(out.Fd()), Events: unix.POLLIN},
 			}
 
 			s.stats.pty_sessions.Add(1)
@@ -94,8 +94,8 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					continue
 				}
 
-				out_revents = poll_fds[0].Revents
-				sig_revents = poll_fds[1].Revents
+				sig_revents = poll_fds[0].Revents
+				out_revents = poll_fds[1].Revents
 
 				if (out_revents & unix.POLLIN) != 0 {
 					n, err = out.Read(buf[:])
@@ -114,7 +114,27 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 						break
 					}
 				}
+
 				if (sig_revents & unix.POLLIN) != 0 {
+					// currently the code doesn't read from the signal fd as the only
+					// implemented signal is stop. for now it exits the loop.
+					/*
+					// read the signal fd
+					n, err = unix.Read(pfd[0], buf[0:1]) // consume the 1-byte header. signal string max 255 chars
+					if (err == nil && n > 0) {
+						err = read_fd_full(pfd[0], buf[0:n]) // consume n bytes
+						if (err == nil) {
+							// new pty session requested
+							if buf[0] == 'o' {
+								poll_fds = append(poll_fds,
+							} else if buf[0] == 'c' {
+							}
+						}
+
+						// treat read failure as stop notification
+					}
+					*/
+
 					s.log.Write(pty.Id, LOG_DEBUG, "[%s] Stop request noticed on pty signal pipe", req.RemoteAddr)
 					break
 				}
@@ -123,6 +143,7 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					s.log.Write(pty.Id, LOG_DEBUG, "[%s] Error detected on pty stdout", req.RemoteAddr)
 					break
 				}
+
 				if (sig_revents & (unix.POLLERR | unix.POLLHUP | unix.POLLNVAL)) != 0 {
 					s.log.Write(pty.Id, LOG_DEBUG, "[%s] EOF detected on pty signal pipe", req.RemoteAddr)
 					break
@@ -132,6 +153,7 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 					break
 				}
 			}
+
 			s.stats.pty_sessions.Add(-1)
 		}
 	}()
@@ -205,6 +227,7 @@ ws_recv_loop:
 							tty = nil
 						}
 						if pfd[1] >= 0 {
+							// write to the signal fd
 							unix.Write(pfd[1], []byte{0})
 						}
 						break ws_recv_loop

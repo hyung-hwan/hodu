@@ -26,6 +26,7 @@ SRCS=\
 	jwt.go \
 	packet.go \
 	pty.go \
+	rsa-aes.go \
 	server.go \
 	server-ctl.go \
 	server-cts-rpty.go \

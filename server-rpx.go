@@ -31,6 +31,9 @@ func (rpx *server_rpx) Authenticate(req *http.Request) (int, string) {
 
 func (rpx *server_rpx) get_client_token(req *http.Request) string {
 	var val string
+	var data []byte
+	var rsa_aes *RSAAES
+	var err error
 
 	// TODO: enhance this client token extraction logic with some expression language?
 	val = req.Header.Get(rpx.S.Cfg.RpxClientTokenAttrName)
@@ -38,6 +41,16 @@ func (rpx *server_rpx) get_client_token(req *http.Request) string {
 
 	if rpx.S.Cfg.RpxClientTokenRegex != nil {
 		val = get_regex_submatch(rpx.S.Cfg.RpxClientTokenRegex, val, rpx.S.Cfg.RpxClientTokenSubmatchIndex)
+	}
+
+	if strings.EqualFold(rpx.S.Cfg.RpxClientTokenProtection, "rsa-aes-256-gcm") {
+		rsa_aes = NewRSAAES(rpx.S.Cfg.RpxClientTokenRsaKey)
+		data, err = rsa_aes.Decipher(val)
+		if err != nil {
+			rpx.S.log.Write(rpx.Id, LOG_WARN, "[%s] Failed to decrypt protected client token - %s", req.RemoteAddr, err.Error())
+			return ""
+		}
+		val = string(data)
 	}
 
 	return val
@@ -50,6 +63,7 @@ func (rpx* server_rpx) handle_header_data(rpx_id uint64, data []byte, w http.Res
 	var status_code int
 	var err error
 
+	// i don't want the sender hammer the server with very large header data
 	const rpx_header_line_max = 65535 // TODO: make this configurable
 
 	r = bufio.NewReader(bytes.NewReader(data))
@@ -231,15 +245,23 @@ func (rpx *server_rpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int,
 	var ws_upgrade bool
 	var buf [4096]byte
 	var wg sync.WaitGroup
+	var xinfo *ServerHttpHandlerExtraInfo
 	var err error
 
 	s = rpx.S
 	client_token = rpx.get_client_token(req)
+
 	cts = s.FindServerConnByClientToken(client_token)
 	if cts == nil {
 		status_code = WriteEmptyRespHeader(w, http.StatusNotFound)
 		err = fmt.Errorf("unknown client token - %s", client_token)
 		goto oops
+	}
+
+	xinfo = req.Context().Value(server_http_handler_extra_info_key).(*ServerHttpHandlerExtraInfo)
+	if xinfo != nil {
+		// set more info for logging in the outer handler
+		xinfo.extra_id = client_token
 	}
 
 	srpx, err = rpx.alloc_server_rpx(cts, req)
