@@ -10,9 +10,9 @@ function fail(string $msg): void {
 
 function usage(): void {
 	fail(
-		"USAGE: rsa-aes-256-gcm.php encipher key-file [data]\n" .
+		"USAGE: rsa-aes-256-gcm.php encipher key-file token [ttl-seconds]\n" .
 		"       rsa-aes-256-gcm.php decipher key-file [document]\n\n" .
-		"If data or document is omitted, stdin is used."
+		"If document is omitted, stdin is used. ttl-seconds defaults to 30."
 	);
 }
 
@@ -221,27 +221,64 @@ function decipher($private_key, string $doc): string {
 	return $plaintext;
 }
 
+function make_token_payload(string $token, int $now, int $ttl): string {
+	return rtrim(strtr(base64_encode($token), "+/", "-_"), "=") . "|" . (string)$now . "|" . (string)($now + $ttl);
+}
+
+function parse_token_payload(string $payload): string {
+	$parts = explode("|", $payload, 3);
+	$token = "";
+	$padding_len = 0;
+
+	if (count($parts) !== 3) {
+		fail("invalid protected token payload");
+	}
+
+	$padding_len = (4 - (strlen($parts[0]) % 4)) % 4;
+	$token = base64_decode(strtr($parts[0] . str_repeat("=", $padding_len), "-_", "+/"), true);
+	if ($token === false) {
+		fail("invalid protected token text");
+	}
+
+	return $token . "|" . $parts[1] . "|" . $parts[2];
+}
+
 if ($argc < 3) {
 	usage();
 }
 
 $mode = $argv[1];
 $key_file = $argv[2];
-$input = $argc >= 4 ? $argv[3] : stream_get_contents(STDIN);
-
-if ($input === false) {
-	fail("failed to read input");
-}
 
 if ($mode === "encipher") {
+	$input = "";
+	$ttl = 30;
+	$now = time();
 	$public_key = load_public_key($key_file);
-	echo encipher($public_key, $input) . PHP_EOL;
+
+	if ($argc >= 4) {
+		$input = $argv[3];
+	} else {
+		fail("missing token");
+	}
+	if ($argc >= 5) {
+		if (!ctype_digit($argv[4])) {
+			fail("invalid ttl-seconds");
+		}
+		$ttl = (int)$argv[4];
+	}
+
+	echo encipher($public_key, make_token_payload($input, $now, $ttl)) . PHP_EOL;
 	exit(0);
 }
 
 if ($mode === "decipher") {
+	$input = $argc >= 4 ? $argv[3] : stream_get_contents(STDIN);
 	$private_key = load_private_key($key_file);
-	echo decipher($private_key, $input) . PHP_EOL;
+	if ($input === false) {
+		fail("failed to read input");
+	}
+	echo parse_token_payload(decipher($private_key, $input)) . PHP_EOL;
 	exit(0);
 }
 

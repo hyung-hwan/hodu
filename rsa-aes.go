@@ -7,11 +7,19 @@ import "crypto/rsa"
 import "crypto/sha256"
 import "encoding/base64"
 import "fmt"
+import "strconv"
 import "strings"
+import "time"
 
 // currently, it supports rsa-aes-128-gcm only.
 type RSAAES struct {
 	key *rsa.PrivateKey
+}
+
+type RSAAESToken struct {
+	Token string
+	IssuedAt time.Time
+	ExpiresAt time.Time
 }
 
 func NewRSAAES(key *rsa.PrivateKey) *RSAAES {
@@ -100,4 +108,61 @@ func (e *RSAAES) Decipher(doc string) ([]byte, error) {
 	if err != nil { return nil, fmt.Errorf("failed to decrypt ciphertext - %s", err.Error()) }
 
 	return plaintext, nil
+}
+
+func (e *RSAAES) EncipherToken(token string, issued_at time.Time, expires_at time.Time) (string, error) {
+	var plain string
+
+	plain = base64.RawURLEncoding.EncodeToString([]byte(token)) +
+		"|" + strconv.FormatInt(issued_at.Unix(), 10) +
+		"|" + strconv.FormatInt(expires_at.Unix(), 10)
+
+	return e.Encipher([]byte(plain))
+}
+
+func (e *RSAAES) DecipherToken(doc string, now time.Time) (*RSAAESToken, error) {
+	var data []byte
+	var parts []string
+	var token_data []byte
+	var issued_at_n int64
+	var expires_at_n int64
+	var token RSAAESToken
+	var err error
+
+	data, err = e.Decipher(doc)
+	if err != nil { return nil, err }
+
+	parts = strings.SplitN(string(data), "|", 3)
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid protected token payload")
+	}
+
+	token_data, err = base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("invalid protected token text - %s", err.Error())
+	}
+
+	issued_at_n, err = strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid protected token issued-at - %s", err.Error())
+	}
+
+	expires_at_n, err = strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid protected token expiry - %s", err.Error())
+	}
+
+	token.Token = string(token_data)
+	token.IssuedAt = time.Unix(issued_at_n, 0)
+	token.ExpiresAt = time.Unix(expires_at_n, 0)
+
+	const time_format string = "2006-01-02 15:04:05 -0700"
+	if now.Before(token.IssuedAt) {
+		return nil, fmt.Errorf("protected token not valid until %s", token.IssuedAt.Format(time_format))
+	}
+	if !now.Before(token.ExpiresAt) {
+		return nil, fmt.Errorf("protected token expired at %s", token.ExpiresAt.Format(time_format))
+	}
+
+	return &token, nil
 }

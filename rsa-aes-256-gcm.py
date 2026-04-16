@@ -3,6 +3,7 @@
 import base64
 import os
 import sys
+import time
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -19,9 +20,9 @@ def fail(msg: str) -> None:
 
 def usage() -> None:
 	fail(
-		"USAGE: rsa-aes-256-gcm.py encipher key-file [data]\n"
+		"USAGE: rsa-aes-256-gcm.py encipher key-file token [ttl-seconds]\n"
 		"       rsa-aes-256-gcm.py decipher key-file [document]\n\n"
-		"If data or document is omitted, stdin is used."
+		"If document is omitted, stdin is used. ttl-seconds defaults to 30."
 	)
 
 
@@ -140,25 +141,66 @@ def decipher(private_key, doc: str) -> str:
 	return plaintext.decode("utf-8")
 
 
+def make_token_payload(token: str, now: int, ttl: int) -> str:
+	return (
+		base64.urlsafe_b64encode(token.encode("utf-8")).decode("ascii").rstrip("=")
+		+ "|"
+		+ str(now)
+		+ "|"
+		+ str(now + ttl)
+	)
+
+
+def parse_token_payload(payload: str) -> str:
+	parts = payload.split("|", 2)
+	padding_len = 0
+
+	if len(parts) != 3:
+		fail("invalid protected token payload")
+
+	padding_len = (-len(parts[0])) % 4
+	try:
+		token = base64.urlsafe_b64decode(parts[0] + ("=" * padding_len)).decode("utf-8")
+	except Exception:
+		fail("invalid protected token text")
+
+	return token + "|" + parts[1] + "|" + parts[2]
+
+
 def main() -> None:
 	if len(sys.argv) < 3:
 		usage()
 
 	mode = sys.argv[1]
 	key_file = sys.argv[2]
-	if len(sys.argv) >= 4:
-		input_text = sys.argv[3]
-	else:
-		input_text = sys.stdin.read()
 
 	if mode == "encipher":
+		now = 0
+		ttl = 30
+		input_text = ""
+
+		if len(sys.argv) >= 4:
+			input_text = sys.argv[3]
+		else:
+			fail("missing token")
+		if len(sys.argv) >= 5:
+			try:
+				ttl = int(sys.argv[4])
+			except ValueError:
+				fail("invalid ttl-seconds")
+		now = int(time.time())
 		public_key = load_public_key(key_file)
-		print(encipher(public_key, input_text))
+		print(encipher(public_key, make_token_payload(input_text, now, ttl)))
 		return
 
 	if mode == "decipher":
+		input_text = ""
+		if len(sys.argv) >= 4:
+			input_text = sys.argv[3]
+		else:
+			input_text = sys.stdin.read()
 		private_key = load_private_key(key_file)
-		print(decipher(private_key, input_text))
+		print(parse_token_payload(decipher(private_key, input_text)))
 		return
 
 	usage()

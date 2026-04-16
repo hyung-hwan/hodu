@@ -10,6 +10,7 @@ import "net/http"
 import "strconv"
 import "strings"
 import "sync"
+import "time"
 
 type server_rpx struct {
 	S *Server
@@ -31,8 +32,8 @@ func (rpx *server_rpx) Authenticate(req *http.Request) (int, string) {
 
 func (rpx *server_rpx) get_client_token(req *http.Request) string {
 	var val string
-	var data []byte
 	var rsa_aes *RSAAES
+	var token *RSAAESToken
 	var err error
 
 	// TODO: enhance this client token extraction logic with some expression language?
@@ -45,12 +46,12 @@ func (rpx *server_rpx) get_client_token(req *http.Request) string {
 
 	if strings.EqualFold(rpx.S.Cfg.RpxClientTokenProtection, "rsa-aes-256-gcm") {
 		rsa_aes = NewRSAAES(rpx.S.Cfg.RpxClientTokenRsaKey)
-		data, err = rsa_aes.Decipher(val)
+		token, err = rsa_aes.DecipherToken(val, time.Now())
 		if err != nil {
 			rpx.S.log.Write(rpx.Id, LOG_WARN, "[%s] Failed to decrypt protected client token - %s", req.RemoteAddr, err.Error())
 			return ""
 		}
-		val = string(data)
+		val = token.Token
 	}
 
 	return val
