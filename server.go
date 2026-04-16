@@ -1400,14 +1400,6 @@ type ServerWebsocketHandler interface {
 	ServeWebsocket(ws *websocket.Conn) (int, error)
 }
 
-type ServerHttpHandlerExtraInfo struct {
-	// more information	about the request processed
-	extra_id string
-}
-
-type server_http_request_context_key int
-const server_http_handler_extra_info_key server_http_request_context_key = iota
-
 func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var status_code int
@@ -1415,7 +1407,7 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 		var start_time time.Time
 		var time_taken time.Duration
 		var newctx context.Context
-		var xinfo ServerHttpHandlerExtraInfo
+		var xinfo HttpHandlerExtraInfo
 
 		// this deferred function is to overcome the recovering implemenation
 		// from panic done in go's http server. in that implemenation, panic
@@ -1429,7 +1421,7 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 
 		start_time = time.Now()
 
-		newctx = context.WithValue(req.Context(), server_http_handler_extra_info_key, &xinfo)
+		newctx = context.WithValue(req.Context(), http_handler_extra_info_key, &xinfo)
 		req = req.WithContext(newctx)
 
 		if handler.Cors(req) {
@@ -1459,7 +1451,6 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 		if status_code > 0 {
 			var id string = handler.Identity()
 			if xinfo.extra_id != "" { id = id + "/" + xinfo.extra_id  }
-
 			if err != nil {
 				s.log.Write(id, LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds(), err.Error())
 			} else {

@@ -1710,6 +1710,8 @@ func (c *Client) WrapHttpHandler(handler ClientHttpHandler) http.Handler {
 		var err error
 		var start_time time.Time
 		var time_taken time.Duration
+		var newctx context.Context
+		var xinfo HttpHandlerExtraInfo
 
 		// this deferred function is to overcome the recovering implemenation
 		// from panic done in go's http server. in that implemenation, panic
@@ -1722,6 +1724,9 @@ func (c *Client) WrapHttpHandler(handler ClientHttpHandler) http.Handler {
 		}()
 
 		start_time = time.Now()
+
+		newctx = context.WithValue(req.Context(), http_handler_extra_info_key, &xinfo)
+		req = req.WithContext(newctx)
 
 		if handler.Cors(req) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1750,10 +1755,12 @@ func (c *Client) WrapHttpHandler(handler ClientHttpHandler) http.Handler {
 		time_taken = time.Since(start_time) //time.Now().Sub(start_time)
 
 		if status_code > 0 {
+			var id string = handler.Identity()
+			if xinfo.extra_id != "" { id = id + "/" + xinfo.extra_id  }
 			if err != nil {
-				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds(), err.Error())
+				c.log.Write(id, LOG_INFO, "[%s] %s %s %d %.9f - %s", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds(), err.Error())
 			} else {
-				c.log.Write(handler.Identity(), LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds())
+				c.log.Write(id, LOG_INFO, "[%s] %s %s %d %.9f", req.RemoteAddr, req.Method, req.RequestURI, status_code, time_taken.Seconds())
 			}
 		}
 	})

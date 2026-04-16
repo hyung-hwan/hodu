@@ -58,6 +58,13 @@ type Service interface {
 	WriteLog(id string, level LogLevel, fmtstr string, args ...interface{})
 }
 
+type HttpHandlerExtraInfo struct {
+	// more information about the request processed
+	extra_id string
+}
+type http_request_context_key int
+const http_handler_extra_info_key http_request_context_key = iota
+
 type HttpAccessAction int
 const (
 	HTTP_ACCESS_ACCEPT HttpAccessAction = iota

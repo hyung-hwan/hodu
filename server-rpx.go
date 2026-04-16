@@ -246,7 +246,7 @@ func (rpx *server_rpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int,
 	var ws_upgrade bool
 	var buf [4096]byte
 	var wg sync.WaitGroup
-	var xinfo *ServerHttpHandlerExtraInfo
+	var xinfo *HttpHandlerExtraInfo
 	var err error
 
 	s = rpx.S
@@ -259,7 +259,7 @@ func (rpx *server_rpx) ServeHTTP(w http.ResponseWriter, req *http.Request) (int,
 		goto oops
 	}
 
-	xinfo = req.Context().Value(server_http_handler_extra_info_key).(*ServerHttpHandlerExtraInfo)
+	xinfo = req.Context().Value(http_handler_extra_info_key).(*HttpHandlerExtraInfo)
 	if xinfo != nil {
 		// set more info for logging in the outer handler
 		xinfo.extra_id = client_token
