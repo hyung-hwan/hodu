@@ -90,6 +90,19 @@ def rsa_oaep_sha256_decrypt(private_key, ciphertext: bytes) -> bytes:
 		fail("rsa decryption failed")
 
 
+def encode_url_base64(data: bytes) -> str:
+	return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def decode_url_base64(text: str) -> bytes:
+	padding_len = (-len(text)) % 4
+
+	try:
+		return base64.b64decode(text + ("=" * padding_len), altchars=b"-_", validate=True)
+	except Exception:
+		raise ValueError()
+
+
 def encipher(public_key, text: str) -> str:
 	aes_key = os.urandom(32)
 	nonce = os.urandom(12)
@@ -97,11 +110,11 @@ def encipher(public_key, text: str) -> str:
 	encrypted_key = rsa_oaep_sha256_encrypt(public_key, aes_key)
 
 	return (
-		base64.b64encode(encrypted_key).decode("ascii")
+		encode_url_base64(encrypted_key)
 		+ "."
-		+ base64.b64encode(nonce).decode("ascii")
+		+ encode_url_base64(nonce)
 		+ "."
-		+ base64.b64encode(ciphertext).decode("ascii")
+		+ encode_url_base64(ciphertext)
 	)
 
 
@@ -112,17 +125,17 @@ def decipher(private_key, doc: str) -> str:
 		fail("invalid serialized token document")
 
 	try:
-		encrypted_key = base64.b64decode(parts[0], validate=True)
+		encrypted_key = decode_url_base64(parts[0])
 	except Exception:
 		fail("invalid encrypted key")
 
 	try:
-		nonce = base64.b64decode(parts[1], validate=True)
+		nonce = decode_url_base64(parts[1])
 	except Exception:
 		fail("invalid nonce")
 
 	try:
-		ciphertext = base64.b64decode(parts[2], validate=True)
+		ciphertext = decode_url_base64(parts[2])
 	except Exception:
 		fail("invalid ciphertext")
 

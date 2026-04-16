@@ -196,7 +196,7 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			claim.IssuedAt = now.Unix()
 			claim.ExpiresAt = now.Add(s.Cfg.CtlAuth.TokenTtl).Unix()
 			jwt = NewJWT(s.Cfg.CtlAuth.TokenRsaKey, &claim)
-			tok, err = jwt.SignRS512()
+			tok, err = jwt.SignRS256()
 			if err != nil {
 				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
 				je.Encode(JsonErrmsg{Text: err.Error()})
@@ -961,7 +961,7 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		req = ws.Request()
 		if req.Header.Get("Authorization") == "" {
 			var token string
-			token = req.FormValue("token")
+			token = req.FormValue("auth-token") // this is an authorization token
 			if token != "" {
 				// websocket doesn't actual have extra headers except a few fixed
 				// ones. add "Authorization" header from the query paramerer and

@@ -48,7 +48,7 @@ func (rpx *server_rpx) get_client_token(req *http.Request) string {
 		rsa_aes = NewRSAAES(rpx.S.Cfg.RpxClientTokenRsaKey)
 		token, err = rsa_aes.DecipherToken(val, time.Now())
 		if err != nil {
-			rpx.S.log.Write(rpx.Id, LOG_WARN, "[%s] Failed to decrypt protected client token - %s", req.RemoteAddr, err.Error())
+			rpx.S.log.Write(rpx.Id, LOG_WARN, "[%s] Failed to decrypt protected client token [%s] - %s", req.RemoteAddr, val, err.Error())
 			return ""
 		}
 		val = token.Token

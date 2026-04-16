@@ -438,7 +438,7 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 				var jwt *JWT[ServerTokenClaim]
 				var claim ServerTokenClaim
 				jwt = NewJWT(auth.TokenRsaKey, &claim)
-				err = jwt.VerifyRS512(strings.TrimSpace(auth_parts[1]))
+				err = jwt.VerifyRS256(strings.TrimSpace(auth_parts[1]))
 				if err == nil {
 					// verification ok. let's check the actual payload
 					var now time.Time

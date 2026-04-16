@@ -166,6 +166,19 @@ function rsa_oaep_sha256_decrypt($private_key, string $ciphertext): string {
 	return oaep_decode_sha256($encoded, intdiv((int)$details["bits"] + 7, 8));
 }
 
+function encode_url_base64(string $data): string {
+	return rtrim(strtr(base64_encode($data), "+/", "-_"), "=");
+}
+
+function decode_url_base64(string $data) {
+	$padding_len = 0;
+	$decoded = "";
+
+	$padding_len = (4 - (strlen($data) % 4)) % 4;
+	$decoded = base64_decode(strtr($data . str_repeat("=", $padding_len), "-_", "+/"), true);
+	return $decoded;
+}
+
 function encipher($public_key, string $text): string {
 	$aes_key = random_bytes(32);
 	$nonce = random_bytes(12);
@@ -179,7 +192,7 @@ function encipher($public_key, string $text): string {
 	$encrypted_key = rsa_oaep_sha256_encrypt($public_key, $aes_key);
 	$ciphertext .= $tag;
 
-	return base64_encode($encrypted_key) . "." . base64_encode($nonce) . "." . base64_encode($ciphertext);
+	return encode_url_base64($encrypted_key) . "." . encode_url_base64($nonce) . "." . encode_url_base64($ciphertext);
 }
 
 function decipher($private_key, string $doc): string {
@@ -189,9 +202,9 @@ function decipher($private_key, string $doc): string {
 		fail("invalid serialized token document");
 	}
 
-	$encrypted_key = base64_decode($parts[0], true);
-	$nonce = base64_decode($parts[1], true);
-	$ciphertext_and_tag = base64_decode($parts[2], true);
+	$encrypted_key = decode_url_base64($parts[0]);
+	$nonce = decode_url_base64($parts[1]);
+	$ciphertext_and_tag = decode_url_base64($parts[2]);
 
 	if ($encrypted_key === false) {
 		fail("invalid encrypted key");

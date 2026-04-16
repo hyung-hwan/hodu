@@ -28,13 +28,13 @@ func TestJwt(t *testing.T) {
 
 	var j *hodu.JWT[jwt_claim]
 	j = hodu.NewJWT(key, &jc)
-	tok, err = j.SignRS512()
+	tok, err = j.SignRS256()
 	if err != nil {
 		t.Fatalf("signing failure - %s", err.Error())
 	}
 
 	jc = jwt_claim{}
-	err = j.VerifyRS512(tok)
+	err = j.VerifyRS256(tok)
 	if err != nil {
 		t.Fatalf("verification failure - %s", err.Error())
 	}

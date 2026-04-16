@@ -16,6 +16,14 @@ import "time"
 import yaml "github.com/goccy/go-yaml"
 
 
+type ServerRptyConfig struct {
+	ClientToken struct {
+		Protection string `yaml:"protection"`
+		TokenRsaKeyText string `yaml:"token-rsa-key-text"`
+		TokenRsaKeyFile string `yaml:"token-rsa-key-file"`
+	} `yaml:"client-token"`
+}
+
 type ServerTLSConfig struct {
 	Enabled                  bool               `yaml:"enabled"`
 	CertFile                 string             `yaml:"cert-file"`
@@ -150,6 +158,7 @@ type ServerConfig struct {
 	CTL struct {
 		Service CTLServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
+		Rpty ServerRptyConfig       `yaml:"rpty"`
 	} `yaml:"ctl"`
 
 	RPX struct {

@@ -22,6 +22,14 @@ type RSAAESToken struct {
 	ExpiresAt time.Time
 }
 
+func encode_url_base64(data []byte) string {
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+func decode_url_base64(text string) ([]byte, error) {
+	return base64.RawURLEncoding.DecodeString(text)
+}
+
 func NewRSAAES(key *rsa.PrivateKey) *RSAAES {
 	return &RSAAES{key: key}
 }
@@ -58,9 +66,9 @@ func (e *RSAAES) Encipher(data []byte) (string, error) {
 	encrypted_key, err = rsa.EncryptOAEP(sha256.New(), rand.Reader, &e.key.PublicKey, aes_key, nil)
 	if err != nil { return "", err }
 
-	return base64.StdEncoding.EncodeToString(encrypted_key) +
-		"." + base64.StdEncoding.EncodeToString(nonce) +
-		"." + base64.StdEncoding.EncodeToString(ciphertext), nil
+	return encode_url_base64(encrypted_key) +
+		"." + encode_url_base64(nonce) +
+		"." + encode_url_base64(ciphertext), nil
 }
 
 func (e *RSAAES) Decipher(doc string) ([]byte, error) {
@@ -83,13 +91,13 @@ func (e *RSAAES) Decipher(doc string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid serialized token document")
 	}
 
-	encrypted_key, err = base64.StdEncoding.DecodeString(parts[0])
+	encrypted_key, err = decode_url_base64(parts[0])
 	if err != nil { return nil, fmt.Errorf("invalid encrypted key - %s", err.Error()) }
 
-	nonce, err = base64.StdEncoding.DecodeString(parts[1])
+	nonce, err = decode_url_base64(parts[1])
 	if err != nil { return nil, fmt.Errorf("invalid nonce - %s", err.Error()) }
 
-	ciphertext, err = base64.StdEncoding.DecodeString(parts[2])
+	ciphertext, err = decode_url_base64(parts[2])
 	if err != nil { return nil, fmt.Errorf("invalid ciphertext - %s", err.Error()) }
 
 	aes_key, err = rsa.DecryptOAEP(sha256.New(), rand.Reader, e.key, encrypted_key, nil)

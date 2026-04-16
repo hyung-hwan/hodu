@@ -310,6 +310,11 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var err error
 
 	s = rpty.S
+
+//////////////////
+// Authentication is missing?
+///////////
+
 	req = ws.Request()
 	token = req.FormValue("client-token")
 	if token == "" {
@@ -317,10 +322,23 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		return http.StatusBadRequest, fmt.Errorf("no client token specified")
 	}
 
+	if strings.EqualFold(s.Cfg.RptyClientTokenProtection, "rsa-aes-256-gcm") {
+		var rsa_aes *RSAAES
+		var rsa_token *RSAAESToken
+
+		rsa_aes = NewRSAAES(s.Cfg.RptyClientTokenRsaKey)
+		rsa_token, err = rsa_aes.DecipherToken(token, time.Now())
+		if err != nil {
+			s.log.Write(rpty.Id, LOG_WARN, "[%s] Failed to decrypt protected client token [%s] - %s", req.RemoteAddr, token, err.Error())
+			return http.StatusBadRequest, fmt.Errorf("invalid client token - %s", token)
+		}
+		token = rsa_token.Token
+	}
+
 	cts = s.FindServerConnByClientToken(token)
 	if cts == nil {
 		ws.Close()
-		return http.StatusBadRequest, fmt.Errorf("invalid client token - %s", token)
+		return http.StatusBadRequest, fmt.Errorf("client token not found - %s", token)
 	}
 
 ws_recv_loop:

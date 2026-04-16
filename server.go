@@ -80,6 +80,9 @@ type ServerConfig struct {
 	CtlAuth *HttpAuthConfig
 	CtlCors bool
 
+	RptyClientTokenProtection string
+	RptyClientTokenRsaKey *rsa.PrivateKey
+
 	RpxAddrs []string
 	RpxTls *tls.Config
 	RpxClientTokenAttrName string

@@ -137,6 +137,9 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
 	if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
+	config.RptyClientTokenProtection = cfg.CTL.Rpty.ClientToken.Protection
+	config.RptyClientTokenRsaKey, err = make_rsa_private_key_config(cfg.CTL.Rpty.ClientToken.TokenRsaKeyText, cfg.CTL.Rpty.ClientToken.TokenRsaKeyFile, nil, "rpx client token rsa key")
+
 	config.RpxClientTokenAttrName = cfg.RPX.ClientToken.AttrName
 	config.RpxClientTokenProtection = cfg.RPX.ClientToken.Protection
 	config.RpxClientTokenRsaKey, err = make_rsa_private_key_config(cfg.RPX.ClientToken.TokenRsaKeyText, cfg.RPX.ClientToken.TokenRsaKeyFile, nil, "rpx client token rsa key")
