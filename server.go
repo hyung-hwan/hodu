@@ -1437,6 +1437,7 @@ func (s *Server) WrapHttpHandler(handler ServerHttpHandler) http.Handler {
 		} else {
 			var realm string
 
+			// authorization applies to a controll with proper Authenticate method override.
 			status_code, realm = handler.Authenticate(req)
 			if status_code == http.StatusUnauthorized {
 				if realm != "" {
@@ -1640,6 +1641,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	s.ctl_mux.Handle("/_pty/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pty_ws{S: &s, Id: HS_ID_CTL})))
+/* Not needed any more as xterm.html bundles everything
 	s.ctl_mux.Handle("/_pty/xterm.js",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.js"}))
 	s.ctl_mux.Handle("/_pty/xterm.js/",
@@ -1656,6 +1658,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
 	s.ctl_mux.Handle("/_pty/xterm.css/",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+*/
 	s.ctl_mux.Handle("/_pty/xterm.html",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html", mode: "pty"}))
 	s.ctl_mux.Handle("/_pty/xterm.html/",
@@ -1665,6 +1668,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	s.ctl_mux.Handle("/_rpty/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_rpty_ws{S: &s, Id: HS_ID_CTL})))
+/* Not needed any more as xterm.html bundles everything
 	s.ctl_mux.Handle("/_rpty/xterm.js",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.js"}))
 	s.ctl_mux.Handle("/_rpty/xterm.js/",
@@ -1681,6 +1685,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
 	s.ctl_mux.Handle("/_rpty/xterm.css/",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
+*/
 	s.ctl_mux.Handle("/_rpty/xterm.html",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html", mode: "rpty"}))
 	s.ctl_mux.Handle("/_rpty/xterm.html/",

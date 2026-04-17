@@ -17,7 +17,7 @@ type ServerTokenClaim struct {
 	IssuedAt int64 `json:"iat"`
 }
 
-type json_out_token struct {
+type json_out_auth_token struct {
 	AccessToken string `json:"access-token"`
 	RefreshToken string `json:"refresh-token,omitempty"`
 }
@@ -164,7 +164,7 @@ func (ctl *ServerCtl) Cors(req *http.Request) bool {
 
 func (ctl *ServerCtl) Authenticate(req *http.Request) (int, string) {
 	if ctl.NoAuth || ctl.S.Cfg.CtlAuth == nil { return http.StatusOK, "" }
-	return ctl.S.Cfg.CtlAuth.Authenticate(req)
+	return ctl.S.Cfg.CtlAuth.Authenticate(req, "")
 }
 
 // ------------------------------------
@@ -204,7 +204,7 @@ func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			}
 
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
-			err = je.Encode(json_out_token{ AccessToken: tok }) // TODO: refresh token
+			err = je.Encode(json_out_auth_token{ AccessToken: tok }) // TODO: refresh token
 			if err != nil { goto oops }
 
 		default:
@@ -956,12 +956,13 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	// handle authentication using the first message.
 	// end this task if authentication fails.
 	if !ctl.NoAuth && s.Cfg.CtlAuth != nil {
+/*
 		var req *http.Request
 
 		req = ws.Request()
 		if req.Header.Get("Authorization") == "" {
 			var token string
-			token = req.FormValue("auth-token") // this is an authorization token
+			token = req.FormValue("access-token") // this is an authorization token
 			if token != "" {
 				// websocket doesn't actual have extra headers except a few fixed
 				// ones. add "Authorization" header from the query paramerer and
@@ -969,11 +970,10 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 			}
 		}
+*/
 
-		status_code, _ = s.Cfg.CtlAuth.Authenticate(req)
-		if status_code != http.StatusOK {
-			goto done
-		}
+		status_code, _ = s.Cfg.CtlAuth.Authenticate(ws.Request(), "access-token")
+		if status_code != http.StatusOK { goto done }
 	}
 
 	sbsc, err = s.bulletin.Subscribe("")

@@ -58,6 +58,19 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 	s = pty.S
 	req = ws.Request()
+
+	// handle authentication using the first message.
+	// end this task if authentication fails.
+	if s.Cfg.CtlAuth != nil {
+		var status_code int
+		var msg string
+		status_code, msg = s.Cfg.CtlAuth.Authenticate(req, "access-token")
+		if status_code != http.StatusOK {
+			ws.Close()
+			return status_code, fmt.Errorf("failed to authenticate - %s", msg)
+		}
+	}
+
 	conn_ready_chan = make(chan bool, 3)
 
 	wg.Add(1)
@@ -310,12 +323,20 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var err error
 
 	s = rpty.S
-
-//////////////////
-// Authentication is missing?
-///////////
-
 	req = ws.Request()
+
+	// handle authentication using the first message.
+	// end this task if authentication fails.
+	if s.Cfg.CtlAuth != nil {
+		var status_code int
+		var msg string
+		status_code, msg = s.Cfg.CtlAuth.Authenticate(req, "access-token")
+		if status_code != http.StatusOK {
+			ws.Close()
+			return status_code, fmt.Errorf("failed to authenticate - %s", msg)
+		}
+	}
+
 	token = req.FormValue("client-token")
 	if token == "" {
 		ws.Close()
@@ -422,6 +443,27 @@ done:
 }
 
 // ------------------------------------------------------
+//Originally, i used a plain xterm.html and use server_pty_xterm_file to serve
+//other files that xterm.html loads. Now, i bundle everything into xterm.html
+//so no other files need to be served
+
+func (pty *server_pty_xterm_file) Authenticate(req *http.Request) (int, string) {
+	// The parent method ServerCtl.Authenticate() applies
+	// authentication to all resources. i want to exclude some files.
+
+	if pty.file == "xterm.html" {
+		// this is not a real api call. but at least for xterm.html,
+		// i don't bypass authentication and and in addition,
+		// i check the value of the "access-token" parameter for
+		// jwt authentication if it exists
+		return pty.S.Cfg.CtlAuth.Authenticate(req, "access-token")
+	}
+
+	// you can download other files without authentication
+	// even if authentication is enabled. but this part must not be reached
+	// because xterm.html is the only meanful resource as of now
+	return http.StatusOK, ""
+}
 
 func (pty *server_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
@@ -431,6 +473,7 @@ func (pty *server_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 	s = pty.S
 
 	switch pty.file {
+	/*
 		case "xterm.js":
 			status_code = WriteJsRespHeader(w, http.StatusOK)
 			w.Write(xterm_js)
@@ -443,10 +486,11 @@ func (pty *server_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 		case "xterm.css":
 			status_code = WriteCssRespHeader(w, http.StatusOK)
 			w.Write(xterm_css)
+	*/
 		case "xterm.html":
 			var tmpl *template.Template
 
-			tmpl = template.New("")
+			tmpl = template.New("").Delims("{{@@", "@@}}")
 			if s.xterm_html !=  "" {
 				_, err = tmpl.Parse(s.xterm_html)
 			} else {

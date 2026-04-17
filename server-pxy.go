@@ -473,6 +473,7 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 	s = pxy.S
 
 	switch pxy.file {
+	/*
 		case "xterm.js":
 			status_code = WriteJsRespHeader(w, http.StatusOK)
 			w.Write(xterm_js)
@@ -485,6 +486,7 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 		case "xterm.css":
 			status_code = WriteCssRespHeader(w, http.StatusOK)
 			w.Write(xterm_css)
+	*/
 		case "xterm.html":
 			var tmpl *template.Template
 			var conn_id string
@@ -509,7 +511,7 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 				goto oops
 			}
 
-			tmpl = template.New("")
+			tmpl = template.New("").Delims("{{@@", "@@}}")
 			if s.xterm_html !=  "" {
 				_, err = tmpl.Parse(s.xterm_html)
 			} else {

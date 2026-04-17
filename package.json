@@ -1,0 +1,17 @@
+{
+	"name": "hodu-xterm-bundle",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build:xterm": "vite build"
+	},
+	"dependencies": {
+		"@xterm/addon-fit": "^0.10.0",
+		"@xterm/addon-unicode11": "^0.8.0",
+		"@xterm/xterm": "^5.5.0"
+	},
+	"devDependencies": {
+		"vite": "^6.0.0",
+		"vite-plugin-singlefile": "^2.0.0"
+	}
+}

@@ -3,6 +3,7 @@ package hodu
 import "encoding/base64"
 import "encoding/json"
 import "errors"
+import "fmt"
 import "io"
 import "net/http"
 import "os"
@@ -50,6 +51,19 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 	c = pty.C
 	req = ws.Request()
+
+	// handle authentication using the first message.
+	// end this task if authentication fails.
+	if c.ctl_auth != nil {
+		var status_code int
+		var msg string
+		status_code, msg = c.ctl_auth.Authenticate(req, "access-token")
+		if status_code != http.StatusOK {
+			ws.Close()
+			return status_code, fmt.Errorf("failed to authenticate - %s", msg)
+		}
+	}
+
 	conn_ready_chan = make(chan bool, 3)
 
 	wg.Add(1)
@@ -262,6 +276,21 @@ done:
 
 // ------------------------------------------------------
 
+func (pty *client_pty_xterm_file) Authenticate(req *http.Request) (int, string) {
+	if pty.file == "xterm.html" {
+		// this is not a real api call. but at least for xterm.html,
+		// i don't bypass authentication and and in addition,
+		// i check the value of the "access-token" parameter for
+		// jwt authentication if it exists
+		return pty.c.ctl_auth.Authenticate(req, "access-token")
+	}
+
+	// you can download other files without authentication
+	// even if authentication is enabled. but this part must not be reached
+	// because xterm.html is the only meanful resource as of now
+	return http.StatusOK, ""
+}
+
 func (pty *client_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var c *Client
 	var status_code int
@@ -270,6 +299,7 @@ func (pty *client_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 	c = pty.c
 
 	switch pty.file {
+	/*
 		case "xterm.js":
 			status_code = WriteJsRespHeader(w, http.StatusOK)
 			w.Write(xterm_js)
@@ -282,10 +312,11 @@ func (pty *client_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 		case "xterm.css":
 			status_code = WriteCssRespHeader(w, http.StatusOK)
 			w.Write(xterm_css)
+	*/
 		case "xterm.html":
 			var tmpl *template.Template
 
-			tmpl = template.New("")
+			tmpl = template.New("").Delims("{{@@", "@@}}")
 			if c.xterm_html !=  "" {
 				_, err = tmpl.Parse(c.xterm_html)
 			} else {

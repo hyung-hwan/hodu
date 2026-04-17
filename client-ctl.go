@@ -197,7 +197,7 @@ func (ctl *client_ctl) Cors(req *http.Request) bool {
 
 func (ctl *client_ctl) Authenticate(req *http.Request) (int, string) {
 	if ctl.c.ctl_auth == nil { return http.StatusOK, "" }
-	return ctl.c.ctl_auth.Authenticate(req)
+	return ctl.c.ctl_auth.Authenticate(req, "")
 }
 
 // ------------------------------------
@@ -237,7 +237,7 @@ func (ctl *client_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request)
 			}
 
 			status_code = WriteJsonRespHeader(w, http.StatusOK)
-			err = je.Encode(json_out_token{ AccessToken: tok }) // TODO: refresh token
+			err = je.Encode(json_out_auth_token{ AccessToken: tok }) // TODO: refresh token
 			if err != nil { goto oops }
 
 		default:
@@ -1179,24 +1179,24 @@ func (ctl *client_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	// handle authentication using the first message.
 	// end this task if authentication fails.
 	if !ctl.noauth && c.ctl_auth != nil {
+/*
 		var req *http.Request
 
 		req = ws.Request()
 		if req.Header.Get("Authorization") == "" {
-			var token string
-			token = req.FormValue("auth-token") // this is an authorization token
-			if token != "" {
+			var access_token string
+			access_token = req.FormValue("access-token") // this is an authorization token
+			if access_token != "" {
 				// websocket doesn't actual have extra headers except a few fixed
 				// ones. add "Authorization" header from the query paramerer and
 				// compose a fake header to reuse the same Authentication() function
-				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", access_token))
 			}
 		}
+*/
 
-		status_code, _ = c.ctl_auth.Authenticate(req)
-		if status_code != http.StatusOK {
-			goto done
-		}
+		status_code, _ = c.ctl_auth.Authenticate(ws.Request(), "access-token")
+		if status_code != http.StatusOK { goto done }
 	}
 
 	sbsc, err = c.bulletin.Subscribe("")

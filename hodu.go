@@ -134,6 +134,7 @@ type json_xterm_ws_event struct {
 
 // ---------------------------------------------------------
 
+/*
 //go:embed xterm.js
 var xterm_js []byte
 //go:embed xterm-addon-fit.js
@@ -142,6 +143,7 @@ var xterm_addon_fit_js []byte
 var xterm_addon_unicode11_js []byte
 //go:embed xterm.css
 var xterm_css []byte
+*/
 //go:embed xterm.html
 var xterm_html string
 
@@ -378,7 +380,26 @@ func (stats *json_out_go_stats) from_runtime_stats() {
 
 // ------------------------------------
 
-func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
+func (auth *HttpAuthConfig) check_auth_token(jwt_token string) error {
+	var jwt *JWT[ServerTokenClaim]
+	var claim ServerTokenClaim
+	var err error
+
+	jwt = NewJWT(auth.TokenRsaKey, &claim)
+	err = jwt.VerifyRS256(strings.TrimSpace(jwt_token))
+	if err == nil {
+		// verification ok. let's check the actual payload
+		var now time.Time
+		now = time.Now()
+// TODO: subject check. other claim check
+		if !now.Before(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return nil } // not expired
+		return fmt.Errorf("auth token expired");
+	} else {
+		return fmt.Errorf("failed to verify auth token");
+	}
+}
+
+func (auth *HttpAuthConfig) Authenticate(req *http.Request, auth_token_param_name string) (int, string) {
 	var rule HttpAccessRule
 	var raddrport netip.AddrPort
 	var raddr netip.Addr
@@ -432,20 +453,21 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request) (int, string) {
 		auth_hdr = req.Header.Get("Authorization")
 		if auth_hdr != "" {
 			var auth_parts []string
-
 			auth_parts = strings.Fields(auth_hdr)
 			if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") && auth.TokenRsaKey != nil {
-				var jwt *JWT[ServerTokenClaim]
-				var claim ServerTokenClaim
-				jwt = NewJWT(auth.TokenRsaKey, &claim)
-				err = jwt.VerifyRS256(strings.TrimSpace(auth_parts[1]))
-				if err == nil {
-					// verification ok. let's check the actual payload
-					var now time.Time
-					now = time.Now()
-// TODO: subject check. other claim check
-					if !now.Before(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return http.StatusOK, "" } // not expired
-				}
+				err = auth.check_auth_token(auth_parts[1])
+				if err != nil { return http.StatusUnauthorized, err.Error() }
+				return http.StatusOK, ""
+			}
+		} else if auth_token_param_name != "" {
+			// there is no Authorization header.
+			// but there may be a token parameter.
+			var auth_token string
+			auth_token = req.FormValue(auth_token_param_name)
+			if auth_token != "" {
+				err = auth.check_auth_token(auth_token)
+				if err != nil { return http.StatusUnauthorized, err.Error() }
+				return http.StatusOK, ""
 			}
 		}
 

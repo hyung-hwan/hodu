@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Terminal</title>
+<style>
+	body {
+		margin: 0;
+		height: 100%;
+	}
+
+	#terminal-container {
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		height: 100vh;
+	}
+
+	#terminal-info-container {
+		vertical-align: middle;
+		padding: 3px;
+	}
+
+	#terminal-target {
+		display: inline-block;
+		height: 100%;
+		vertical-align: middle;
+	}
+
+	#terminal-status {
+		display: inline-block;
+		font-weight: bold;
+		height: 100%;
+		vertical-align: middle;
+	}
+
+	#terminal-errmsg {
+		display: inline-block;
+		color: red;
+		height: 100%;
+		vertical-align: middle;
+	}
+
+	#terminal-control {
+		display: inline-block;
+		height: 100%;
+		vertical-align: middle;
+	}
+
+	#terminal-control button {
+		vertical-align: middle;
+	}
+
+	#terminal-view-container {
+		flex: 1;
+		width: 100%;
+		min-height: 0;
+		/*height: 100%;*/
+	}
+
+	#login-container {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background-color: rgba(0, 0, 0, 0.5);
+		z-index: 99999;
+	}
+	#login-form-container {
+		background: white;
+		padding: 20px;
+		border-radius: 8px;
+		box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+		text-align: center;
+	}
+	#login-form-title {
+		line-height: 2em;
+		font-size: 2em;
+		font-weight: bold;
+	}
+</style>
+<script type="module" src="xterm-plain.js"></script>
+</head>
+
+<body data-xt-mode="{{@@ .Mode @@}}" data-conn-id="{{@@ .ConnId @@}}" data-route-id="{{@@ .RouteId @@}}">
+
+<div id="login-container">
+	<div id="login-form-container">
+		<div id="login-form-title"></div>
+		<form id="login-form">
+			<div id="login-ssh-part" style="display: none;">
+				<label>
+					Username: <input type="text" id="username" disabled required />
+				</label>
+				<br /><br />
+				<label>
+					Password: <input type="password" id="password" disabled required />
+				</label>
+			</div>
+			<div id="login-pty-part" style="display: none;">
+				Click Connect below to start a new terminal session
+			</div>
+			<div id="login-submit-part" style="padding-top: 1em;">
+				<button type="submit" id="terminal-connect">Connect</button>
+			</div>
+		</form>
+	</div>
+</div>
+
+<div id="terminal-container">
+<div id="terminal-info-container">
+	<div id="terminal-target"></div>
+	<div id="terminal-status"></div>
+	<div id="terminal-errmsg"></div>
+	<div id="terminal-control">
+		<button id="terminal-disconnect" type="button">Disconnect</button>
+	</div>
+</div>
+<div id="terminal-view-container"></div>
+</div>
+</body>
+</html>

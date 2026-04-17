@@ -43,9 +43,8 @@ SRCS=\
 	transform.go \
 
 DATA = \
-	xterm.css \
-	xterm.js \
-	xterm-addon-fit.js \
+	xterm-plain.js \
+	xterm-plain.html \
 	xterm.html
 
 CMD_DATA=\
@@ -85,15 +84,11 @@ hodu_grpc.pb.go: hodu.proto
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		hodu.proto
 
-xterm.js:
-	curl -L -o "$@" https://cdn.jsdelivr.net/npm/@xterm/xterm/lib/xterm.min.js
-
-xterm-addon-fit.js:
-	curl -L -o "$@" https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.min.js
-
-xterm.css:
-	curl -L -o "$@" https://cdn.jsdelivr.net/npm/@xterm/xterm/css/xterm.min.css
-	sed -r -i 's|^/\*# sourceMappingURL=/.+ \*/$$||g' "$@"
+xterm.html: xterm-plain.html xterm-plain.js vite.config.js package.json
+	rm -rf .vite-xterm
+	npm run build:xterm
+	cp .vite-xterm/xterm-plain.html "$@"
+	rm -rf .vite-xterm
 
 cmd/tls.crt:
 	openssl req -x509 -newkey rsa:4096 -keyout cmd/tls.key -out cmd/tls.crt -sha256 -days 36500 -nodes -subj "/CN=$(NAME)" --addext "subjectAltName=DNS:$(NAME),IP:127.0.0.1,IP:::1"
