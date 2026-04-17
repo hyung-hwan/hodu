@@ -43,6 +43,8 @@ type ServerTLSConfig struct {
 }
 
 type ClientTLSConfig struct {
+	// The Enabled field doesnt indicate using or not using tls.
+	// It expresses the rest of items are applied or not in tls configuration.
 	Enabled            bool    `yaml:"enabled"`
 	CertFile           string  `yaml:"cert-file"`
 	KeyFile            string  `yaml:"key-file"`
@@ -83,19 +85,22 @@ type RPXServiceConfig struct {
 
 type RPXClientTokenConfig struct {
 	AttrName string `yaml:"attr-name"`
+	Regex string `yaml:"regex"`
+	SubmatchIndex int `yaml:"submatch-index"`
+
 	Protection string `yaml:"protection"`
 	TokenRsaKeyText string `yaml:"token-rsa-key-text"`
 	TokenRsaKeyFile string `yaml:"token-rsa-key-file"`
-	Regex string `yaml:"regex"`
-	SubmatchIndex int `yaml:"submatch-index"`
 }
 
 type PXYServiceConfig struct {
 	Addrs  []string `yaml:"addresses"`
+	Auth   HttpAuthConfig `yaml:"auth"`
 }
 
 type WPXServiceConfig struct {
 	Addrs  []string `yaml:"addresses"`
+	Auth   HttpAuthConfig `yaml:"auth"`
 }
 
 type RPCServiceConfig struct { // rpc server-side configuration
@@ -171,7 +176,10 @@ type ServerConfig struct {
 		Service PXYServiceConfig    `yaml:"service"`
 		TLS ServerTLSConfig         `yaml:"tls"`
 		Target struct {
-			TLS ClientTLSConfig `yaml:"tls"`
+			// TODO: This will have to be extended to be an array
+			//       of configurations to cater for different targets
+			//       It needs a name or a name pattern field to match the target.
+			TLS ClientTLSConfig    `yaml:"tls"`
 		} `yaml:"target"`
 	} `yaml:"pxy"`
 

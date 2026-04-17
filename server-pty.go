@@ -347,6 +347,11 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		var rsa_aes *RSAAES
 		var rsa_token *RSAAESToken
 
+		if s.Cfg.RptyClientTokenRsaKey ==  nil {
+			s.log.Write(rpty.Id, LOG_WARN, "[%s] Failed to decrypt protected client token [%s] - no rpty client token rsa key for %s", req.RemoteAddr, token, s.Cfg.RptyClientTokenProtection)
+			return http.StatusInternalServerError, fmt.Errorf("client token decryption failure - %s", token)
+		}
+
 		rsa_aes = NewRSAAES(s.Cfg.RptyClientTokenRsaKey)
 		rsa_token, err = rsa_aes.DecipherToken(token, time.Now())
 		if err != nil {
@@ -451,7 +456,7 @@ func (pty *server_pty_xterm_file) Authenticate(req *http.Request) (int, string) 
 	// The parent method ServerCtl.Authenticate() applies
 	// authentication to all resources. i want to exclude some files.
 
-	if pty.file == "xterm.html" {
+	if pty.S.Cfg.CtlAuth != nil && pty.file == "xterm.html" {
 		// this is not a real api call. but at least for xterm.html,
 		// i don't bypass authentication and and in addition,
 		// i check the value of the "access-token" parameter for

@@ -97,8 +97,15 @@ window.onload = function(event) {
 		let url = window.location.protocol + "//" + window.location.host;
 		let pathname = window.location.pathname;
 
+		const qparams = new URLSearchParams(window.location.search);
+		const xparams = new URLSearchParams();
+
 		pathname = pathname.substring(0, pathname.lastIndexOf("/"));
 		url += pathname + "/session-info";
+
+		const access_token = qparams.get("access-token");
+		if (access_token !== null && access_token != "") xparams.set("access-token", access_token);
+		if (xparams.size > 0) url += "?" + xparams.toString();
 
 		try {
 			const resp = await fetch(url);
@@ -156,14 +163,13 @@ window.onload = function(event) {
 		pathname = pathname.substring(0, pathname.lastIndexOf("/"));
 		url = prefix + window.location.host + pathname + "/ws";
 
-		if (xt_mode == "rpty") {
-			const access_token = qparams.get("access-token");
+		const access_token = qparams.get("access-token");
+		if (access_token !== null && access_token != "") xparams.set("access-token", access_token);
+		if (xt_mode == "rpty" || xt_mode == "pty") {
 			const client_token = qparams.get("client-token");
-
-			if (access_token != null && access_token != "") xparams.set("access-token", access_token);
-			if (client_token != null && client_token != "") xparams.set("client-token", client_token);
-			if (xparams.size > 0) url += "?" + xparams.toString();
+			if (client_token !== null && client_token != "") xparams.set("client-token", client_token);
 		}
+		if (xparams.size > 0) url += "?" + xparams.toString();
 
 		socket = new WebSocket(url);
 		socket.binaryType = "arraybuffer";

@@ -1179,22 +1179,6 @@ func (ctl *client_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	// handle authentication using the first message.
 	// end this task if authentication fails.
 	if !ctl.noauth && c.ctl_auth != nil {
-/*
-		var req *http.Request
-
-		req = ws.Request()
-		if req.Header.Get("Authorization") == "" {
-			var access_token string
-			access_token = req.FormValue("access-token") // this is an authorization token
-			if access_token != "" {
-				// websocket doesn't actual have extra headers except a few fixed
-				// ones. add "Authorization" header from the query paramerer and
-				// compose a fake header to reuse the same Authentication() function
-				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", access_token))
-			}
-		}
-*/
-
 		status_code, _ = c.ctl_auth.Authenticate(ws.Request(), "access-token")
 		if status_code != http.StatusOK { goto done }
 	}

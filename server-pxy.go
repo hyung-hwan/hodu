@@ -35,6 +35,7 @@ type server_pxy_http_main struct {
 type server_pxy_xterm_file struct {
 	server_pxy
 	file string
+	HttpAuth* HttpAuthConfig
 }
 
 type server_pxy_http_wpx struct {
@@ -187,6 +188,7 @@ func (pxy *server_pxy) Cors(req *http.Request) bool {
 }
 
 func (pxy *server_pxy) Authenticate(req *http.Request) (int, string) {
+	// no authentication by default
 	return http.StatusOK, ""
 }
 
@@ -464,6 +466,12 @@ func (pxy *server_pxy_http_wpx) ServeHTTP(w http.ResponseWriter, req *http.Reque
 //	return status_code, err
 }
 // ------------------------------------
+func (pxy *server_pxy_xterm_file) Authenticate(req *http.Request) (int, string) {
+	if pxy.HttpAuth != nil && pxy.file == "xterm.html" {
+		return pxy.HttpAuth.Authenticate(req, "access-token")
+	}
+	return http.StatusOK, ""
+}
 
 func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
@@ -666,6 +674,7 @@ type server_pxy_ssh_ws struct {
 	S *Server
 	ws *websocket.Conn
 	Id string
+	HttpAuth* HttpAuthConfig
 }
 
 func (pxy *server_pxy_ssh_ws) Identity() string {
@@ -841,7 +850,17 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 	s = pxy.S
 	req = ws.Request()
+
 	ssh_state.init()
+
+	// server_pxy_ssh_ws is instantiated from two different contexts - pxy and wpx
+	// use the provided HttpAuth value for each instantiation rather than accessing
+	// the server configuration directly.
+	if pxy.HttpAuth != nil {
+		var status_code int
+		status_code, _ = pxy.HttpAuth.Authenticate(ws.Request(), "access-token")
+		if status_code != http.StatusOK { goto done }
+	}
 
 	port_id = req.PathValue("port_id")
 	conn_id = req.PathValue("conn_id")
@@ -862,7 +881,7 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		}
 
 		// [SUPER-IMPORTANT!!]
-		// create a fake server route. this is not a compleete structure.
+		// create a fake server route. this is not a complete structure.
 		// some pointer fields are nil. extra care needs to be taken
 		// below to ensure it doesn't access undesired fields when exitending
 		// code further

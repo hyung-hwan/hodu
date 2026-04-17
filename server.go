@@ -94,9 +94,11 @@ type ServerConfig struct {
 	PxyAddrs []string
 	PxyTls *tls.Config
 	PxyTargetTls *tls.Config
+	PxyAuth *HttpAuthConfig
 
 	WpxAddrs []string
 	WpxTls *tls.Config
+	WpxAuth *HttpAuthConfig
 }
 
 type ServerEventKind int
@@ -1609,7 +1611,8 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes{ServerCtl{S: &s, Id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}",
-		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl{S: &s, Id: HS_ID_CTL}}))
+		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, HttpAuth: nil}))
+
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}/peers",
 		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id_peers{ServerCtl{S: &s, Id: HS_ID_CTL}}))
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/server-conns/{conn_id}/routes/{route_id}/peers/{peer_id}",
@@ -1754,7 +1757,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/{$}",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_redir:xterm.html"}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm.html",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm.html"}))
+		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm.html", HttpAuth: s.Cfg.PxyAuth}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm.html/",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
 	/*
@@ -1777,10 +1780,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	*/
 
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/ws",
-		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY})))
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY, HttpAuth: s.Cfg.PxyAuth})))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/session-info",
-		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl{S: &s, Id: HS_ID_PXY, NoAuth: true}}))
-
+		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl: ServerCtl{S: &s, Id: HS_ID_PXY, NoAuth: true}, HttpAuth: s.Cfg.PxyAuth}))
 	s.pxy_mux.Handle("/_ssh/",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
 	s.pxy_mux.Handle("/favicon.ico",
@@ -1814,7 +1816,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.wpx_mux.Handle("/_ssh/{port_id}/{$}",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_redir:xterm.html"}))
 	s.wpx_mux.Handle("/_ssh/{port_id}/xterm.html",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm.html"}))
+		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm.html", HttpAuth: s.Cfg.WpxAuth}))
 	s.wpx_mux.Handle("/_ssh/{port_id}/xterm.html/",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))
 	/*
@@ -1837,9 +1839,9 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	*/
 
 	s.wpx_mux.Handle("/_ssh/{port_id}/ws",
-		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_WPX})))
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_WPX, HttpAuth: s.Cfg.WpxAuth })))
 	s.wpx_mux.Handle("/_ssh/{port_id}/session-info",
-		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl{S: &s, Id: HS_ID_WPX, NoAuth: true}}))
+		s.WrapHttpHandler(&server_ctl_server_conns_id_routes_id{ServerCtl: ServerCtl{S: &s, Id: HS_ID_WPX, NoAuth: true}, HttpAuth: s.Cfg.WpxAuth}))
 
 	s.wpx_mux.Handle("/_ssh/",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))

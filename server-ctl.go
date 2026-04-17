@@ -114,6 +114,7 @@ type server_ctl_server_conns_id_routes struct {
 
 type server_ctl_server_conns_id_routes_id struct {
 	ServerCtl
+	HttpAuth *HttpAuthConfig
 }
 
 type server_ctl_server_conns_id_routes_id_peers struct {
@@ -446,6 +447,18 @@ oops:
 }
 
 // ------------------------------------
+
+func (ctl *server_ctl_server_conns_id_routes_id) Authenticate(req *http.Request) (int, string) {
+	if ctl.HttpAuth != nil {
+		// this is kind of hack to cater for the use of this object
+		// from the wpx context for session-info call
+		return ctl.HttpAuth.Authenticate(req, "access-token")
+	}
+
+	// this part must be the same as ServerCtl.Authenticate
+	if ctl.NoAuth || ctl.S.Cfg.CtlAuth == nil { return http.StatusOK, "" }
+	return ctl.S.Cfg.CtlAuth.Authenticate(req, "")
+}
 
 func (ctl *server_ctl_server_conns_id_routes_id) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
@@ -956,22 +969,6 @@ func (ctl *server_ctl_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	// handle authentication using the first message.
 	// end this task if authentication fails.
 	if !ctl.NoAuth && s.Cfg.CtlAuth != nil {
-/*
-		var req *http.Request
-
-		req = ws.Request()
-		if req.Header.Get("Authorization") == "" {
-			var token string
-			token = req.FormValue("access-token") // this is an authorization token
-			if token != "" {
-				// websocket doesn't actual have extra headers except a few fixed
-				// ones. add "Authorization" header from the query paramerer and
-				// compose a fake header to reuse the same Authentication() function
-				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-			}
-		}
-*/
-
 		status_code, _ = s.Cfg.CtlAuth.Authenticate(ws.Request(), "access-token")
 		if status_code != http.StatusOK { goto done }
 	}

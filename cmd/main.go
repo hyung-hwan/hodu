@@ -128,7 +128,11 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	if err != nil { return err }
 	config.PxyTargetTls, err = make_tls_client_config(&cfg.PXY.Target.TLS)
 	if err != nil { return err }
+	config.PxyAuth, err = make_http_auth_config(&cfg.PXY.Service.Auth)
+	if err != nil { return err }
 	config.WpxTls, err = make_tls_server_config(&cfg.WPX.TLS)
+	if err != nil { return err }
+	config.WpxAuth, err = make_http_auth_config(&cfg.WPX.Service.Auth)
 	if err != nil { return err }
 
 	if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
@@ -138,20 +142,19 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
 	config.RptyClientTokenProtection = cfg.CTL.Rpty.ClientToken.Protection
-	config.RptyClientTokenRsaKey, err = make_rsa_private_key_config(cfg.CTL.Rpty.ClientToken.TokenRsaKeyText, cfg.CTL.Rpty.ClientToken.TokenRsaKeyFile, nil, "rpx client token rsa key")
+	config.RptyClientTokenRsaKey, err = make_rsa_private_key_config(cfg.CTL.Rpty.ClientToken.TokenRsaKeyText, cfg.CTL.Rpty.ClientToken.TokenRsaKeyFile, hodu_rsa_key_text, "rpty client token rsa key")
+	if err != nil { return err }
 
 	config.RpxClientTokenAttrName = cfg.RPX.ClientToken.AttrName
-	config.RpxClientTokenProtection = cfg.RPX.ClientToken.Protection
-	config.RpxClientTokenRsaKey, err = make_rsa_private_key_config(cfg.RPX.ClientToken.TokenRsaKeyText, cfg.RPX.ClientToken.TokenRsaKeyFile, nil, "rpx client token rsa key")
-	if err != nil { return err }
-	if strings.EqualFold(config.RpxClientTokenProtection, "rsa-aes-256-gcm") && config.RpxClientTokenRsaKey == nil {
-		return fmt.Errorf("missing rpx client token rsa key for protection %s", config.RpxClientTokenProtection)
-	}
+	config.RpxClientTokenSubmatchIndex = cfg.RPX.ClientToken.SubmatchIndex
 	if cfg.RPX.ClientToken.Regex != "" {
 		config.RpxClientTokenRegex, err = regexp.Compile(cfg.RPX.ClientToken.Regex)
 		if err != nil { return err }
 	}
-	config.RpxClientTokenSubmatchIndex = cfg.RPX.ClientToken.SubmatchIndex
+
+	config.RpxClientTokenProtection = cfg.RPX.ClientToken.Protection
+	config.RpxClientTokenRsaKey, err = make_rsa_private_key_config(cfg.RPX.ClientToken.TokenRsaKeyText, cfg.RPX.ClientToken.TokenRsaKeyFile, hodu_rsa_key_text, "rpx client token rsa key")
+	if err != nil { return err }
 
 	config.CtlCors = cfg.CTL.Service.Cors
 	config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
@@ -635,7 +638,7 @@ func main() {
 
 wrong_usage:
 	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--rxc-profile-files=pattern] [--client-token=string] [--rpx-target-addr=addr:port] [peer-addr:peer-port ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--rxc-profile-files=pattern] [--client-token=string] [--rpx-target-addr=addr:port] [local-target-addr:local-target-port:remote-binding-addr:remote-binding-port:type:description ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
 

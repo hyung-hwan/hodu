@@ -277,7 +277,7 @@ done:
 // ------------------------------------------------------
 
 func (pty *client_pty_xterm_file) Authenticate(req *http.Request) (int, string) {
-	if pty.file == "xterm.html" {
+	if pty.c.ctl_auth != nil && pty.file == "xterm.html" {
 		// this is not a real api call. but at least for xterm.html,
 		// i don't bypass authentication and and in addition,
 		// i check the value of the "access-token" parameter for
