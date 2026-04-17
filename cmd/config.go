@@ -321,7 +321,7 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 		if cfg.ClientCACertText != "" {
 			ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ClientCACertText))
 			if !ok {
-				return nil, fmt.Errorf("failed to append certificate to pool")
+				return nil, fmt.Errorf("failed to append configured certificate text to pool")
 			}
 		} else if cfg.ClientCACertFile != "" {
 			var text []byte
@@ -331,12 +331,14 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 			}
 			ok = cert_pool.AppendCertsFromPEM(text)
 			if !ok {
-				return nil, fmt.Errorf("failed to append certificate to pool")
+				return nil, fmt.Errorf("failed to append configured certificate file to pool")
 			}
 		} else {
+			// if the client ca cert is not specified, use the bundled tls cert
+			// as a trusted ca cert.
 			ok = cert_pool.AppendCertsFromPEM(hodu_tls_cert_text)
 			if !ok {
-				return nil, fmt.Errorf("failed to append certificate to pool")
+				return nil, fmt.Errorf("failed to append builtin certificate to pool")
 			}
 		}
 
@@ -499,6 +501,8 @@ func make_http_auth_config(cfg *HttpAuthConfig) (*hodu.HttpAuthConfig, error) {
 				action = hodu.HTTP_ACCESS_REJECT
 			case "auth-required":
 				action = hodu.HTTP_ACCESS_AUTH_REQUIRED
+			case "cert-required":
+				action = hodu.HTTP_ACCESS_CERT_REQUIRED
 			default:
 				return nil, fmt.Errorf("invalid access rule action %s", rule.Action)
 		}

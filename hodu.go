@@ -70,6 +70,7 @@ const (
 	HTTP_ACCESS_ACCEPT HttpAccessAction = iota
 	HTTP_ACCESS_REJECT
 	HTTP_ACCESS_AUTH_REQUIRED
+	HTTP_ACCESS_CERT_REQUIRED
 )
 
 type HttpAccessRule struct {
@@ -434,6 +435,12 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request, access_token_param_n
 					return http.StatusOK, ""
 				} else if rule.Action == HTTP_ACCESS_REJECT {
 					return http.StatusForbidden, ""
+				} else if rule.Action == HTTP_ACCESS_CERT_REQUIRED {
+					if req.TLS == nil || len(req.TLS.PeerCertificates) <= 0 {
+						return http.StatusForbidden, ""
+					} else {
+						return http.StatusOK, ""
+					}
 				}
 
 				// HTTP_ACCESS_AUTH_REQUIRED.

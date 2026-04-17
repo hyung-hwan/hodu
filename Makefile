@@ -99,4 +99,11 @@ cmd/tls.key:
 cmd/rsa.key:
 	openssl genrsa -traditional -out cmd/rsa.key 2048
 
-.PHONY: all clean test
+mtls-client-cert-for-test:
+	## you can use this recipe to generate certificate/key files for mtls testing against
+	## the built-in certificate used as trusted ca.
+	openssl genrsa -out mtls-client.key 2048
+	openssl req -new -key mtls-client.key -out mtls-client.csr -subj "/CN=mtls-client"
+	openssl x509 -req -in mtls-client.csr -CA cmd/tls.crt -CAkey cmd/tls.key  -CAcreateserial -out mtls-client.crt -days 365
+
+.PHONY: all clean test mtls-client-cert-for-test

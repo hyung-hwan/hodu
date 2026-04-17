@@ -47,11 +47,6 @@ window.onload = function(event) {
 	const fit_addon = new FitAddon();
 	const unicode11_addon = new Unicode11Addon();
 	const text_decoder = new TextDecoder();
-	let set_terminal_target;
-	let set_terminal_status;
-	let adjust_terminal_size_unconnected;
-	let fetch_session_info;
-	let toggle_login_form;
 
 	void event;
 
@@ -72,12 +67,12 @@ window.onload = function(event) {
 	term.unicode.activeVersion = "11";
 	term.open(terminal_view_container);
 
-	set_terminal_target = function(name) {
+	const set_terminal_target = function(name) {
 		terminal_target.innerText = name;
 		login_form_title.innerText = name;
 	};
 
-	set_terminal_status = function(msg, errmsg) {
+	const set_terminal_status = function(msg, errmsg) {
 		if (msg != null) terminal_status.innerText = msg;
 		if (errmsg != null) {
 			if (errmsg != "") {
@@ -89,11 +84,11 @@ window.onload = function(event) {
 		}
 	};
 
-	adjust_terminal_size_unconnected = function() {
+	const adjust_terminal_size_unconnected = function() {
 		fit_addon.fit();
 	};
 
-	fetch_session_info = async function() {
+	const fetch_session_info = async function() {
 		let url = window.location.protocol + "//" + window.location.host;
 		let pathname = window.location.pathname;
 
@@ -127,7 +122,7 @@ window.onload = function(event) {
 		}
 	};
 
-	toggle_login_form = function(visible) {
+	const toggle_login_form = function(visible) {
 		if (visible && xt_mode == "ssh") fetch_session_info();
 		login_container.style.visibility = (visible ? "visible" : "hidden");
 		terminal_disconnect.style.visibility = (visible ? "hidden" : "visible");
@@ -165,7 +160,7 @@ window.onload = function(event) {
 
 		const access_token = qparams.get("access-token");
 		if (access_token !== null && access_token != "") xparams.set("access-token", access_token);
-		if (xt_mode == "rpty" || xt_mode == "pty") {
+		if (xt_mode == "rpty") {
 			const client_token = qparams.get("client-token");
 			if (client_token !== null && client_token != "") xparams.set("client-token", client_token);
 		}
