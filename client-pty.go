@@ -345,7 +345,7 @@ func (pty *client_pty_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 		default:
 			if strings.HasPrefix(pty.file, "_redir:") {
 				status_code = http.StatusMovedPermanently
-				w.Header().Set("Location", pty.file[7:])
+				w.Header().Set("Location", append_raw_query(pty.file[7:], req))
 				w.WriteHeader(status_code)
 			} else {
 				status_code = WriteEmptyRespHeader(w, http.StatusNotFound)

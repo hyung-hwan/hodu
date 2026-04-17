@@ -554,7 +554,7 @@ func (pxy *server_pxy_xterm_file) ServeHTTP(w http.ResponseWriter, req *http.Req
 		default:
 			if strings.HasPrefix(pxy.file, "_redir:") {
 				status_code = http.StatusMovedPermanently
-				w.Header().Set("Location", pxy.file[7:])
+				w.Header().Set("Location", append_raw_query(pxy.file[7:], req))
 				w.WriteHeader(status_code)
 			} else {
 				status_code = WriteEmptyRespHeader(w, http.StatusNotFound)

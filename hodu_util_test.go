@@ -182,7 +182,7 @@ func TestHttpAuthConfigAuthenticateWithEncodedHeaders(t *testing.T) {
 	req.Header.Set("X-Auth-Username", username)
 	req.Header.Set("X-Auth-Password", password)
 
-	status, realm = auth.Authenticate(req)
+	status, realm = auth.Authenticate(req, "")
 	if status != http.StatusOK || realm != "" {
 		t.Fatalf("unexpected auth result status=%d realm=%q", status, realm)
 	}
@@ -203,7 +203,7 @@ func TestHttpAuthConfigAuthenticateRejectsInvalidBase64(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1:12345"
 	req.Header.Set("X-Auth-Username", "%%%")
 
-	status, _ = auth.Authenticate(req)
+	status, _ = auth.Authenticate(req, "")
 	if status != http.StatusBadRequest {
 		t.Fatalf("expected bad request for invalid header encoding, got %d", status)
 	}
@@ -226,7 +226,7 @@ func TestHttpAuthConfigAccessRuleReject(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "http://example.com/blocked/path", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 
-	status, _ = auth.Authenticate(req)
+	status, _ = auth.Authenticate(req, "")
 	if status != http.StatusForbidden {
 		t.Fatalf("expected forbidden status, got %d", status)
 	}

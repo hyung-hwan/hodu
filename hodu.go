@@ -597,6 +597,11 @@ func get_regex_submatch(re *regexp.Regexp, str string, n int) string {
 	return str[start:end]
 }
 
+func append_raw_query(location string, req *http.Request) string {
+	if req.URL.RawQuery == "" { return location }
+	return location + "?" + req.URL.RawQuery
+}
+
 func read_line_limited(r *bufio.Reader, max int) (string, error) {
 	var b []byte
 	var line []byte
