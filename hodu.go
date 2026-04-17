@@ -380,7 +380,7 @@ func (stats *json_out_go_stats) from_runtime_stats() {
 
 // ------------------------------------
 
-func (auth *HttpAuthConfig) check_auth_token(jwt_token string) error {
+func (auth *HttpAuthConfig) check_access_token(jwt_token string) error {
 	var jwt *JWT[ServerTokenClaim]
 	var claim ServerTokenClaim
 	var err error
@@ -393,13 +393,13 @@ func (auth *HttpAuthConfig) check_auth_token(jwt_token string) error {
 		now = time.Now()
 // TODO: subject check. other claim check
 		if !now.Before(time.Unix(claim.IssuedAt, 0)) && now.Before(time.Unix(claim.ExpiresAt, 0)) { return nil } // not expired
-		return fmt.Errorf("auth token expired");
+		return fmt.Errorf("access token expired");
 	} else {
-		return fmt.Errorf("failed to verify auth token");
+		return fmt.Errorf("failed to verify access token");
 	}
 }
 
-func (auth *HttpAuthConfig) Authenticate(req *http.Request, auth_token_param_name string) (int, string) {
+func (auth *HttpAuthConfig) Authenticate(req *http.Request, access_token_param_name string) (int, string) {
 	var rule HttpAccessRule
 	var raddrport netip.AddrPort
 	var raddr netip.Addr
@@ -455,18 +455,18 @@ func (auth *HttpAuthConfig) Authenticate(req *http.Request, auth_token_param_nam
 			var auth_parts []string
 			auth_parts = strings.Fields(auth_hdr)
 			if len(auth_parts) == 2 && strings.EqualFold(auth_parts[0], "Bearer") && auth.TokenRsaKey != nil {
-				err = auth.check_auth_token(auth_parts[1])
-				if err != nil { return http.StatusUnauthorized, err.Error() }
+				err = auth.check_access_token(auth_parts[1])
+				if err != nil { return http.StatusUnauthorized, "" } // not returning auth.Realm becuase it sents the Authorization header
 				return http.StatusOK, ""
 			}
-		} else if auth_token_param_name != "" {
+		} else if access_token_param_name != "" {
 			// there is no Authorization header.
 			// but there may be a token parameter.
-			var auth_token string
-			auth_token = req.FormValue(auth_token_param_name)
-			if auth_token != "" {
-				err = auth.check_auth_token(auth_token)
-				if err != nil { return http.StatusUnauthorized, err.Error() }
+			var access_token string
+			access_token = req.FormValue(access_token_param_name)
+			if access_token != "" {
+				err = auth.check_access_token(access_token)
+				if err != nil { return http.StatusUnauthorized, "" } // not returning auth.Realm because it sent an access token
 				return http.StatusOK, ""
 			}
 		}
