@@ -56,11 +56,10 @@ func (pty *client_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	// end this task if authentication fails.
 	if c.ctl_auth != nil {
 		var status_code int
-		var msg string
-		status_code, msg = c.ctl_auth.Authenticate(req, "access-token")
+		status_code, _ = c.ctl_auth.Authenticate(req, "access-token")
 		if status_code != http.StatusOK {
 			ws.Close()
-			return status_code, fmt.Errorf("failed to authenticate - %s", msg)
+			return status_code, fmt.Errorf("failed to authenticate")
 		}
 	}
 

@@ -560,16 +560,16 @@ func main() {
 			pty_shell = v
 			return nil
 		})
-		flgs.Func("rxc-profile-files", "specify a file pattern for rxc profiles", func(v string) error {
-			rxc_profile_files = append(rxc_profile_files, v)
-			return nil
-		})
 		flgs.Func("client-token", "specify a client token", func(v string) error {
 			client_token = v
 			return nil
 		})
 		flgs.Func("rpx-target-addr", "specify the target address for rpx service", func(v string) error {
 			rpx_target_addr = v
+			return nil
+		})
+		flgs.Func("rxc-profile-files", "specify a file pattern for rxc profiles", func(v string) error {
+			rxc_profile_files = append(rxc_profile_files, v)
 			return nil
 		})
 		flgs.SetOutput(io.Discard)

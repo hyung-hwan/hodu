@@ -63,11 +63,10 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	// end this task if authentication fails.
 	if s.Cfg.CtlAuth != nil {
 		var status_code int
-		var msg string
-		status_code, msg = s.Cfg.CtlAuth.Authenticate(req, "access-token")
+		status_code, _ = s.Cfg.CtlAuth.Authenticate(req, "access-token")
 		if status_code != http.StatusOK {
 			ws.Close()
-			return status_code, fmt.Errorf("failed to authenticate - %s", msg)
+			return status_code, fmt.Errorf("failed to authenticate")
 		}
 	}
 
@@ -329,11 +328,10 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	// end this task if authentication fails.
 	if s.Cfg.CtlAuth != nil {
 		var status_code int
-		var msg string
-		status_code, msg = s.Cfg.CtlAuth.Authenticate(req, "access-token")
+		status_code, _ = s.Cfg.CtlAuth.Authenticate(req, "access-token")
 		if status_code != http.StatusOK {
 			ws.Close()
-			return status_code, fmt.Errorf("failed to authenticate - %s", msg)
+			return status_code, fmt.Errorf("failed to authenticate")
 		}
 	}
 
