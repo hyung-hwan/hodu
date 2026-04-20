@@ -10,8 +10,8 @@ function fail(string $msg): void {
 
 function usage(): void {
 	fail(
-		"USAGE: rsa-aes-256-gcm.php encipher key-file token [ttl-seconds]\n" .
-		"       rsa-aes-256-gcm.php decipher key-file [document]\n\n" .
+		"USAGE: rsa-aes-256-gcm.php encipher public-key-file text-to-encipher [ttl-seconds]\n" .
+		"       rsa-aes-256-gcm.php decipher private-key-file [document]\n\n" .
 		"If document is omitted, stdin is used. ttl-seconds defaults to 30."
 	);
 }

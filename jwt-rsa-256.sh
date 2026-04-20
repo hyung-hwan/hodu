@@ -3,7 +3,7 @@
 b64() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
 
 usage() {
-	echo "Usage: $0 generate key-file [ttl-seconds]" >&2
+	echo "Usage: $0 generate private-key-file [ttl-seconds]" >&2
 	exit 1
 }
 

@@ -20,8 +20,8 @@ def fail(msg: str) -> None:
 
 def usage() -> None:
 	fail(
-		"USAGE: rsa-aes-256-gcm.py encipher key-file token [ttl-seconds]\n"
-		"       rsa-aes-256-gcm.py decipher key-file [document]\n\n"
+		"USAGE: rsa-aes-256-gcm.py encipher public-key-file text-to-encipher [ttl-seconds]\n"
+		"       rsa-aes-256-gcm.py decipher private-key-file [document]\n\n"
 		"If document is omitted, stdin is used. ttl-seconds defaults to 30."
 	)
 
