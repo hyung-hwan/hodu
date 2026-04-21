@@ -1,6 +1,7 @@
 package hodu
 
 import "container/list"
+import "crypto/rsa"
 import "encoding/json"
 import "fmt"
 import "net/http"
@@ -20,6 +21,10 @@ type ServerTokenClaim struct {
 type json_out_auth_token struct {
 	AccessToken string `json:"access-token"`
 	RefreshToken string `json:"refresh-token,omitempty"`
+}
+
+type json_out_client_token struct {
+	ClientToken string `json:"client-token"`
 }
 
 type json_out_server_conn struct {
@@ -94,6 +99,10 @@ type ServerCtl struct {
 	S *Server
 	Id string
 	NoAuth bool // override the auth configuration if true
+}
+
+type server_ctl_encipher struct {
+	ServerCtl
 }
 
 type server_ctl_token struct {
@@ -172,41 +181,115 @@ func (ctl *ServerCtl) Authenticate(req *http.Request) (int, string) {
 
 func (ctl *server_ctl_token) ServeHTTP(w http.ResponseWriter, req *http.Request) (int, error) {
 	var s *Server
+	var q url.Values
 	var status_code int
 	var je *json.Encoder
+	var _type string
+	var endpoint string
+	var source string
+	var key *rsa.PrivateKey
+	var ttl time.Duration
 	var err error
 
 	s = ctl.S
 	je = json.NewEncoder(w)
 
+	// while different combinations will return success
+	// meaningful combinations are as follows:
+	//  - _ctl/token - get access token
+	//  - _ctl/token?type=client-token&endpoint=rpx&source=abcdefg - get enciphered client token
+	//  - _ctl/token?type=client-token&endpoint=rpty&source=abcdefg - get enciphered client token
+	q = req.URL.Query()
+	_type = q.Get("type")
+	endpoint = q.Get("endpoint")
+	source = q.Get("source")
+
+	if s.Cfg.CtlAuth == nil || !s.Cfg.CtlAuth.Enabled {
+		// this check may look a bit weird if endpoint is rpty or rpx
+		// but this request itself is coming in from the ctl endpoint
+		// if the ctl authentication is properly configured, i don't
+		// want to enable this call.
+		status_code = WriteJsonRespHeader(w, http.StatusForbidden)
+		err = fmt.Errorf("auth not enabled")
+		je.Encode(JsonErrmsg{Text: err.Error()})
+		goto oops
+	}
+
+	if endpoint == "rpty" {
+		key = s.Cfg.RptyClientTokenRsaKey
+		ttl = s.Cfg.RptyClientTokenTtl
+	} else if endpoint == "rpx" {
+		key = s.Cfg.RpxClientTokenRsaKey
+		ttl = s.Cfg.RpxClientTokenTtl
+	} else {
+		key = s.Cfg.CtlAuth.TokenRsaKey
+		ttl = s.Cfg.CtlAuth.TokenTtl
+	}
+	_ = key
+	_ = ttl
+
 	switch req.Method {
 		case http.MethodGet:
-			var jwt *JWT[ServerTokenClaim]
-			var claim ServerTokenClaim
-			var tok string
-			var now time.Time
-
-			if s.Cfg.CtlAuth == nil || !s.Cfg.CtlAuth.Enabled || s.Cfg.CtlAuth.TokenRsaKey == nil {
+			if key == nil {
 				status_code = WriteJsonRespHeader(w, http.StatusForbidden)
-				err = fmt.Errorf("auth not enabled or token rsa key not set")
+				// 'enabled' may sound weird but use this word as it's given out tot the caller
+				err = fmt.Errorf("token rsa key not enabled") 
+				je.Encode(JsonErrmsg{Text: err.Error()})
+				goto oops
+			}
+			if ttl <= 0 {
+				status_code = WriteJsonRespHeader(w, http.StatusForbidden)
+				// 'enabled' may sound weird but use this word as it's given out tot the caller
+				err = fmt.Errorf("token ttl not enabled")
 				je.Encode(JsonErrmsg{Text: err.Error()})
 				goto oops
 			}
 
-			now = time.Now()
-			claim.IssuedAt = now.Unix()
-			claim.ExpiresAt = now.Add(s.Cfg.CtlAuth.TokenTtl).Unix()
-			jwt = NewJWT(s.Cfg.CtlAuth.TokenRsaKey, &claim)
-			tok, err = jwt.SignRS256()
-			if err != nil {
-				status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
-				je.Encode(JsonErrmsg{Text: err.Error()})
-				goto oops
-			}
+			if _type == "client-token" {
+				var enc *RSAAES
+				var tok string
+				var now time.Time
 
-			status_code = WriteJsonRespHeader(w, http.StatusOK)
-			err = je.Encode(json_out_auth_token{ AccessToken: tok }) // TODO: refresh token
-			if err != nil { goto oops }
+				if source == "" {
+					status_code = WriteJsonRespHeader(w, http.StatusBadRequest)
+					err = fmt.Errorf("source text for client token not provided")
+					je.Encode(JsonErrmsg{Text: err.Error()})
+					goto oops
+				}
+
+				enc = NewRSAAES(key)
+				now = time.Now()
+				tok, err = enc.EncipherToken(source, now,  now.Add(ttl))
+				if err != nil {
+					status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
+					je.Encode(JsonErrmsg{Text: err.Error()})
+					goto oops
+				}
+
+				status_code = WriteJsonRespHeader(w, http.StatusOK)
+				err = je.Encode(json_out_client_token{ ClientToken: tok })
+				if err != nil { goto oops }
+			} else {
+				var jwt *JWT[ServerTokenClaim]
+				var claim ServerTokenClaim
+				var tok string
+				var now time.Time
+
+				now = time.Now()
+				claim.IssuedAt = now.Unix()
+				claim.ExpiresAt = now.Add(ttl).Unix()
+				jwt = NewJWT(key, &claim)
+				tok, err = jwt.SignRS256()
+				if err != nil {
+					status_code = WriteJsonRespHeader(w, http.StatusInternalServerError)
+					je.Encode(JsonErrmsg{Text: err.Error()})
+					goto oops
+				}
+
+				status_code = WriteJsonRespHeader(w, http.StatusOK)
+				err = je.Encode(json_out_auth_token{ AccessToken: tok }) // TODO: refresh token
+				if err != nil { goto oops }
+			}
 
 		default:
 			status_code = WriteEmptyRespHeader(w, http.StatusMethodNotAllowed)

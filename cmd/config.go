@@ -21,6 +21,7 @@ type ServerRptyConfig struct {
 		Protection string `yaml:"protection"`
 		TokenRsaKeyText string `yaml:"token-rsa-key-text"`
 		TokenRsaKeyFile string `yaml:"token-rsa-key-file"`
+		TokenTtl string `yaml:"token-ttl"`
 	} `yaml:"client-token"`
 }
 
@@ -91,6 +92,7 @@ type RPXClientTokenConfig struct {
 	Protection string `yaml:"protection"`
 	TokenRsaKeyText string `yaml:"token-rsa-key-text"`
 	TokenRsaKeyFile string `yaml:"token-rsa-key-file"`
+	TokenTtl string `yaml:"token-ttl"`
 }
 
 type PXYServiceConfig struct {

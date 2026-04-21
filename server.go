@@ -82,6 +82,7 @@ type ServerConfig struct {
 
 	RptyClientTokenProtection string
 	RptyClientTokenRsaKey *rsa.PrivateKey
+	RptyClientTokenTtl time.Duration
 
 	RpxAddrs []string
 	RpxTls *tls.Config
@@ -90,6 +91,7 @@ type ServerConfig struct {
 	RpxClientTokenRsaKey *rsa.PrivateKey
 	RpxClientTokenRegex *regexp.Regexp
 	RpxClientTokenSubmatchIndex int
+	RpxClientTokenTtl time.Duration
 
 	PxyAddrs []string
 	PxyTls *tls.Config
@@ -1389,7 +1391,7 @@ func (hlw *server_http_log_writer) Write(p []byte) (n int, err error) {
 	// the standard http.Server always requires *log.Logger
 	// use this iowriter to create a logger to pass it to the http server.
 	// since this is another log write wrapper, give adjustment value
-	hlw.svr.log.WriteWithCallDepth(hlw.id, LOG_INFO, hlw.depth, string(p))
+	hlw.svr.log.WriteWithCallDepth(hlw.id, LOG_INFO, hlw.depth, "%s", string(p))
 	return len(p), nil
 }
 

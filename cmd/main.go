@@ -142,6 +142,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	if len(config.WpxAddrs) <= 0 { config.WpxAddrs = cfg.WPX.Service.Addrs }
 
 	config.RptyClientTokenProtection = cfg.CTL.Rpty.ClientToken.Protection
+	config.RptyClientTokenTtl, err = hodu.ParseDurationString(cfg.CTL.Rpty.ClientToken.TokenTtl)
+	if err != nil { return err }
 	config.RptyClientTokenRsaKey, err = make_rsa_private_key_config(cfg.CTL.Rpty.ClientToken.TokenRsaKeyText, cfg.CTL.Rpty.ClientToken.TokenRsaKeyFile, hodu_rsa_key_text, "rpty client token rsa key")
 	if err != nil { return err }
 
@@ -153,6 +155,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	}
 
 	config.RpxClientTokenProtection = cfg.RPX.ClientToken.Protection
+	config.RpxClientTokenTtl, err = hodu.ParseDurationString(cfg.RPX.ClientToken.TokenTtl)
+	if err != nil { return err }
 	config.RpxClientTokenRsaKey, err = make_rsa_private_key_config(cfg.RPX.ClientToken.TokenRsaKeyText, cfg.RPX.ClientToken.TokenRsaKeyFile, hodu_rsa_key_text, "rpx client token rsa key")
 	if err != nil { return err }
 
