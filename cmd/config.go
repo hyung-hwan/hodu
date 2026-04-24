@@ -379,7 +379,8 @@ func make_tls_client_config(cfg *ClientTLSConfig) (*tls.Config, error) {
 			return nil, fmt.Errorf("failed to load key pair - %s", err.Error())
 		}
 
-		cert_pool = x509.NewCertPool()
+		cert_pool, err = x509.SystemCertPool()
+		if err != nil { cert_pool = x509.NewCertPool() }
 		if cfg.ServerCACertText != "" {
 			ok = cert_pool.AppendCertsFromPEM([]byte(cfg.ServerCACertText))
 			if !ok {
