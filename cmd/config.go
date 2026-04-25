@@ -25,6 +25,14 @@ type ServerRptyConfig struct {
 	} `yaml:"client-token"`
 }
 
+type ServerTLSSNIConfig struct {
+	ServerName               string             `yaml:"server-name"`
+	CertFile                 string             `yaml:"cert-file"`
+	KeyFile                  string             `yaml:"key-file"`
+	CertText                 string             `yaml:"cert-text"`
+	KeyText                  string             `yaml:"key-text"`
+}
+
 type ServerTLSConfig struct {
 	Enabled                  bool               `yaml:"enabled"`
 	CertFile                 string             `yaml:"cert-file"`
@@ -41,6 +49,8 @@ type ServerTLSConfig struct {
 	//MaxVersion               TLSVersion         `yaml:"max-version"`
 	//PreferServerCipherSuites bool               `yaml:"prefer-server-cipher-suites"`
 	//ClientAllowedSans        []string           `yaml:"client-allowed-sans"`
+
+	SNI                      []ServerTLSSNIConfig  `yaml:"sni"`
 }
 
 type ClientTLSConfig struct {
@@ -298,14 +308,67 @@ func log_strings_to_mask(str []string) hodu.LogMask {
 
 // --------------------------------------------------------------------
 
+type ServerSNICert struct {
+	server_name string
+	cert tls.Certificate
+}
+
+func hostname_wildcard_match(wildcard string, name string) bool {
+	var suffix_start int
+	var suffix_len int
+	var prefix_end int
+	var i int
+
+	// must start with "*."
+	if len(wildcard) < 3 || wildcard[0] != '*' || wildcard[1] != '.' { return false }
+
+	// suffix is everything after "*."
+	suffix_start = 1 // points to "."
+	suffix_len = len(wildcard) - suffix_start
+
+	// name must be longer than suffix (so there's at least one label)
+	if len(name) <= suffix_len { return false }
+
+	// check suffix match
+	if name[len(name)-suffix_len:] != wildcard[suffix_start:] { return false }
+
+	// check there is exactly one label before suffix
+	prefix_end = len(name) - suffix_len
+	if prefix_end == 0 { return false }
+
+	// ensure no '.' in the prefix (only one label)
+	for i = 0; i < prefix_end; i++ {
+		if name[i] == '.' { return false }
+	}
+
+	return true
+}
+
 func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 	var tlscfg *tls.Config
 
 	if cfg.Enabled {
 		var cert tls.Certificate
 		var cert_pool *x509.CertPool
+		var sni_certs []ServerSNICert
+		var i int
 		var ok bool
 		var err error
+
+		for i = range cfg.SNI {
+			if cfg.SNI[i].CertText != "" && cfg.SNI[i].KeyText != "" {
+				cert, err = tls.X509KeyPair([]byte(cfg.SNI[i].CertText), []byte(cfg.SNI[i].KeyText))
+			} else if cfg.SNI[i].CertFile != "" && cfg.SNI[i].KeyFile != "" {
+				cert, err = tls.LoadX509KeyPair(cfg.SNI[i].CertFile, cfg.SNI[i].KeyFile)
+			} else {
+				continue;
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to load key pair - %s", err.Error())
+			}
+
+			sni_certs = append(sni_certs, ServerSNICert{server_name: strings.ToLower(cfg.SNI[i].ServerName), cert: cert});
+		}
 
 		if cfg.CertText != "" && cfg.KeyText != "" {
 			cert, err = tls.X509KeyPair([]byte(cfg.CertText), []byte(cfg.KeyText))
@@ -346,10 +409,26 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 
 		tlscfg = &tls.Config{
 			Certificates: []tls.Certificate{cert},
-			// If multiple certificates are configured, we may have to implement GetCertificate
-			// GetCertificate: func (chi *tls.ClientHelloInfo) (*Certificate, error) { return cert, nil }
 			ClientAuth: tls_string_to_client_auth_type(cfg.ClientAuthType),
 			ClientCAs: cert_pool, // trusted CA certs for client certificate verification
+		}
+
+		if (len(sni_certs) > 0) {
+			tlscfg.GetCertificate = func (chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
+				var server_name string
+				var x int
+
+				server_name = strings.TrimSuffix(strings.ToLower(chi.ServerName), ".")
+				if server_name == "" { return nil, nil }
+
+				for x = range sni_certs {
+					if sni_certs[x].server_name == server_name || hostname_wildcard_match(sni_certs[x].server_name, server_name) {
+						return &sni_certs[x].cert, nil
+					}
+				}
+
+				return nil, nil
+			}
 		}
 	}
 
