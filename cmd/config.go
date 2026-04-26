@@ -9,6 +9,7 @@ import "fmt"
 import "hodu"
 import "net/netip"
 import "os"
+import "regexp"
 import "strings"
 import "time"
 
@@ -26,7 +27,7 @@ type ServerRptyConfig struct {
 }
 
 type ServerTLSSNIConfig struct {
-	ServerName               string             `yaml:"server-name"`
+	Name                     string             `yaml:"name-regex"`
 	CertFile                 string             `yaml:"cert-file"`
 	KeyFile                  string             `yaml:"key-file"`
 	CertText                 string             `yaml:"cert-text"`
@@ -50,7 +51,7 @@ type ServerTLSConfig struct {
 	//PreferServerCipherSuites bool               `yaml:"prefer-server-cipher-suites"`
 	//ClientAllowedSans        []string           `yaml:"client-allowed-sans"`
 
-	SNI                      []ServerTLSSNIConfig  `yaml:"sni"`
+	SNIs                     []ServerTLSSNIConfig  `yaml:"snis"`
 }
 
 type ClientTLSConfig struct {
@@ -309,7 +310,7 @@ func log_strings_to_mask(str []string) hodu.LogMask {
 // --------------------------------------------------------------------
 
 type ServerSNICert struct {
-	server_name string
+	name *regexp.Regexp
 	cert tls.Certificate
 }
 
@@ -355,19 +356,26 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 		var ok bool
 		var err error
 
-		for i = range cfg.SNI {
-			if cfg.SNI[i].CertText != "" && cfg.SNI[i].KeyText != "" {
-				cert, err = tls.X509KeyPair([]byte(cfg.SNI[i].CertText), []byte(cfg.SNI[i].KeyText))
-			} else if cfg.SNI[i].CertFile != "" && cfg.SNI[i].KeyFile != "" {
-				cert, err = tls.LoadX509KeyPair(cfg.SNI[i].CertFile, cfg.SNI[i].KeyFile)
+		for i = range cfg.SNIs {
+			var regex *regexp.Regexp
+
+			if cfg.SNIs[i].CertText != "" && cfg.SNIs[i].KeyText != "" {
+				cert, err = tls.X509KeyPair([]byte(cfg.SNIs[i].CertText), []byte(cfg.SNIs[i].KeyText))
+			} else if cfg.SNIs[i].CertFile != "" && cfg.SNIs[i].KeyFile != "" {
+				cert, err = tls.LoadX509KeyPair(cfg.SNIs[i].CertFile, cfg.SNIs[i].KeyFile)
 			} else {
 				continue;
 			}
 			if err != nil {
-				return nil, fmt.Errorf("failed to load key pair - %s", err.Error())
+				return nil, fmt.Errorf("failed to load sni key pair - %s", err.Error())
 			}
 
-			sni_certs = append(sni_certs, ServerSNICert{server_name: strings.ToLower(cfg.SNI[i].ServerName), cert: cert});
+			regex, err = regexp.Compile(cfg.SNIs[i].Name)
+			if err != nil {
+				return nil, fmt.Errorf("failed to compile sni name-regex - %s", err.Error())
+			}
+
+			sni_certs = append(sni_certs, ServerSNICert{name: regex, cert: cert});
 		}
 
 		if cfg.CertText != "" && cfg.KeyText != "" {
@@ -422,7 +430,7 @@ func make_tls_server_config(cfg *ServerTLSConfig) (*tls.Config, error) {
 				if server_name == "" { return nil, nil }
 
 				for x = range sni_certs {
-					if sni_certs[x].server_name == server_name || hostname_wildcard_match(sni_certs[x].server_name, server_name) {
+					if sni_certs[x].name.MatchString(server_name) {
 						return &sni_certs[x].cert, nil
 					}
 				}
