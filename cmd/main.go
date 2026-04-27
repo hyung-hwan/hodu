@@ -99,7 +99,7 @@ func (sh *signal_handler) WriteLog(id string, level hodu.LogLevel, fmt string, a
 
 // --------------------------------------------------------------------
 
-func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy_addrs []string, wpx_addrs []string, cfg *ServerConfig) error {
+func server_main(ctl_addrs []string, ect_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy_addrs []string, wpx_addrs []string, cfg *ServerConfig) error {
 	var s *hodu.Server
 	var config *hodu.ServerConfig
 	var logger *AppLogger
@@ -111,6 +111,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 
 	config = &hodu.ServerConfig{
 		CtlAddrs: ctl_addrs,
+		EctAddrs: ect_addrs,
 		RpcAddrs: rpc_addrs,
 		RpxAddrs: rpx_addrs,
 		PxyAddrs: pxy_addrs,
@@ -119,6 +120,8 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 
 	// load configuration from cfg
 	config.CtlTls, err = make_tls_server_config(&cfg.CTL.TLS)
+	if err != nil { return err }
+	config.EctTls, err = make_tls_server_config(&cfg.ECT.TLS)
 	if err != nil { return err }
 	config.RpcTls, err = make_tls_server_config(&cfg.RPC.TLS)
 	if err != nil { return err }
@@ -136,6 +139,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	if err != nil { return err }
 
 	if len(config.CtlAddrs) <= 0 { config.CtlAddrs = cfg.CTL.Service.Addrs }
+	if len(config.EctAddrs) <= 0 { config.EctAddrs = cfg.ECT.Service.Addrs }
 	if len(config.RpcAddrs) <= 0 { config.RpcAddrs = cfg.RPC.Service.Addrs }
 	if len(config.RpxAddrs) <= 0 { config.RpxAddrs = cfg.RPX.Service.Addrs }
 	if len(config.PxyAddrs) <= 0 { config.PxyAddrs = cfg.PXY.Service.Addrs }
@@ -163,8 +167,11 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 	config.CtlCors = cfg.CTL.Service.Cors
 	config.CtlAuth, err = make_http_auth_config(&cfg.CTL.Service.Auth)
 	if err != nil { return err }
-
 	config.CtlPrefix = cfg.CTL.Service.Prefix
+
+	config.EctAuth, err = make_http_auth_config(&cfg.ECT.Service.Auth)
+	if err != nil { return err }
+
 	config.RpcMaxConns = cfg.APP.MaxRpcConns
 	config.RpcMinPingIntvl = cfg.APP.MinRpcPingIntvl
 	config.MaxPeers = cfg.APP.MaxPeers
@@ -221,6 +228,7 @@ func server_main(ctl_addrs []string, rpc_addrs []string, rpx_addrs[] string, pxy
 
 	s.StartService(nil)
 	s.StartCtlService()
+	s.StartEctService()
 	s.StartRpxService()
 	s.StartPxyService()
 	s.StartWpxService()
@@ -424,6 +432,7 @@ func main() {
 	if strings.EqualFold(os.Args[1], "server") {
 		var rpc_addrs []string
 		var ctl_addrs []string
+		var ect_addrs []string
 		var rpx_addrs []string
 		var pxy_addrs []string
 		var wpx_addrs []string
@@ -434,6 +443,7 @@ func main() {
 		var cfg ServerConfig
 
 		ctl_addrs = make([]string, 0)
+		ect_addrs = make([]string, 0)
 		rpc_addrs = make([]string, 0)
 		rpx_addrs = make([]string, 0)
 		pxy_addrs = make([]string, 0)
@@ -442,6 +452,10 @@ func main() {
 		flgs = flag.NewFlagSet("", flag.ContinueOnError)
 		flgs.Func("ctl-on", "specify a listening address for control channel", func(v string) error {
 			ctl_addrs = append(ctl_addrs, v)
+			return nil
+		})
+		flgs.Func("ect-on", "specify a listening address for limited external control channel", func(v string) error {
+			ect_addrs = append(ect_addrs, v)
 			return nil
 		})
 		flgs.Func("rpc-on", "specify a rpc listening address", func(v string) error {
@@ -518,7 +532,7 @@ func main() {
 			cfg.APP.PtyShell = pty_shell
 		}
 
-		err = server_main(ctl_addrs, rpc_addrs, rpx_addrs, pxy_addrs, wpx_addrs, &cfg)
+		err = server_main(ctl_addrs, ect_addrs, rpc_addrs, rpx_addrs, pxy_addrs, wpx_addrs, &cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: server error - %s\n", err.Error())
 			goto oops
@@ -641,8 +655,8 @@ func main() {
 	os.Exit(0)
 
 wrong_usage:
-	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string]\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--rxc-profile-files=pattern] [--client-token=string] [--rpx-target-addr=addr:port] [local-target-addr:local-target-port:remote-binding-addr:remote-binding-port:type:description ...]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "USAGE: %s server --rpc-on=addr:port --ctl-on=addr:port --ect-on=addr:port --rpx-on=addr:port --pxy-on=addr:port --wpx-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s client --rpc-to=addr:port --ctl-on=addr:port [--config-file=file] [--config-file-pattern=pattern] [--pty-shell=string] [--rxc-profile-files=pattern] [--client-token=string] [--rpx-target-addr=addr:port] [local-target-addr:local-target-port,remote-binding-addr:remote-binding-port,type,description ...]\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s version\n", os.Args[0])
 	os.Exit(1)
 

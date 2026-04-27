@@ -91,6 +91,11 @@ type CTLServiceConfig struct {
 	Auth   HttpAuthConfig `yaml:"auth"`
 }
 
+type ECTServiceConfig struct {
+	Addrs  []string `yaml:"addresses"`
+	Auth   HttpAuthConfig `yaml:"auth"`
+}
+
 type RPXServiceConfig struct {
 	Addrs  []string `yaml:"addresses"`
 }
@@ -178,6 +183,11 @@ type ServerConfig struct {
 		TLS ServerTLSConfig         `yaml:"tls"`
 		Rpty ServerRptyConfig       `yaml:"rpty"`
 	} `yaml:"ctl"`
+
+	ECT struct {
+		Service ECTServiceConfig    `yaml:"service"`
+		TLS ServerTLSConfig         `yaml:"tls"`
+	} `yaml:"ect"`
 
 	RPX struct {
 		Service RPXServiceConfig         `yaml:"service"`

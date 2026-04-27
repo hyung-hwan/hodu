@@ -27,6 +27,7 @@ type server_pty_ws struct {
 type server_rpty_ws struct {
 	S *Server
 	Id string
+	Auth *HttpAuthConfig
 	ws *websocket.Conn
 }
 
@@ -34,6 +35,7 @@ type server_pty_xterm_file struct {
 	ServerCtl
 	file string
 	mode string
+	auth *HttpAuthConfig
 }
 
 // ------------------------------------------------------
@@ -315,6 +317,7 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var req *http.Request
 	var token string
 	var cts *ServerConn
+	var auth *HttpAuthConfig
 	//var username string
 	//var password string
 	var rp *ServerRpty
@@ -326,9 +329,11 @@ func (rpty *server_rpty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 	// handle authentication using the first message.
 	// end this task if authentication fails.
-	if s.Cfg.CtlAuth != nil {
+	auth = rpty.Auth
+	if auth == nil { auth = s.Cfg.CtlAuth }
+	if auth != nil {
 		var status_code int
-		status_code, _ = s.Cfg.CtlAuth.Authenticate(req, "access-token")
+		status_code, _ = auth.Authenticate(req, "access-token")
 		if status_code != http.StatusOK {
 			ws.Close()
 			return status_code, fmt.Errorf("failed to authenticate")
@@ -453,13 +458,16 @@ done:
 func (pty *server_pty_xterm_file) Authenticate(req *http.Request) (int, string) {
 	// The parent method ServerCtl.Authenticate() applies
 	// authentication to all resources. i want to exclude some files.
+	var auth *HttpAuthConfig
 
-	if pty.S.Cfg.CtlAuth != nil && pty.file == "xterm.html" {
+	auth = pty.auth
+	if auth == nil { auth = pty.S.Cfg.CtlAuth }
+	if auth != nil && pty.file == "xterm.html" {
 		// this is not a real api call. but at least for xterm.html,
 		// i don't bypass authentication and and in addition,
 		// i check the value of the "access-token" parameter for
 		// jwt authentication if it exists
-		return pty.S.Cfg.CtlAuth.Authenticate(req, "access-token")
+		return auth.Authenticate(req, "access-token")
 	}
 
 	// you can download other files without authentication

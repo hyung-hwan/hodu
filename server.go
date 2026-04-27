@@ -35,6 +35,7 @@ const CTS_LIMIT int = 16384
 type PortId uint16
 const PORT_ID_MARKER string = "_"
 const HS_ID_CTL string = "ctl"
+const HS_ID_ECT string = "ect"
 const HS_ID_RPX string = "rpx"
 const HS_ID_PXY string = "pxy"
 const HS_ID_WPX string = "wpx"
@@ -79,6 +80,10 @@ type ServerConfig struct {
 	CtlPrefix string
 	CtlAuth *HttpAuthConfig
 	CtlCors bool
+
+	EctAddrs []string
+	EctTls *tls.Config
+	EctAuth *HttpAuthConfig
 
 	RptyClientTokenProtection string
 	RptyClientTokenRsaKey *rsa.PrivateKey
@@ -161,6 +166,11 @@ type Server struct {
 	ctl              []*http.Server // control server
 	ctl_addrs_mtx    sync.Mutex
 	ctl_addrs        *list.List // of net.Addr
+
+	ect_mux          *http.ServeMux
+	ect              []*http.Server // control server
+	ect_addrs_mtx    sync.Mutex
+	ect_addrs        *list.List // of net.Addr
 
 	rpc              []*net.TCPListener // main listener for grpc
 	rpc_wg           sync.WaitGroup
@@ -1520,6 +1530,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	var hs_max_header_bytes int
 	var hs_base_ctx func(net.Listener) context.Context
 	var hs_log_ctl *log.Logger
+	var hs_log_ect *log.Logger
 	var hs_log_rpx *log.Logger
 	var hs_log_pxy *log.Logger
 	var hs_log_wpx *log.Logger
@@ -1568,6 +1579,7 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.bulletin = NewBulletin[*ServerEvent](&s, 1024)
 
 	s.ctl_addrs = list.New()
+	s.ect_addrs = list.New()
 	s.rpx_addrs = list.New()
 	s.pxy_addrs = list.New()
 	s.wpx_addrs = list.New()
@@ -1597,10 +1609,11 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	// if s.Ctx is cancelled, i like all in-flight requests to be cancelled as well
 	hs_base_ctx = func(_ net.Listener) context.Context { return s.Ctx }
 
-	hs_log_ctl = log.New(&server_http_log_writer{svr: &s, id: "ctl", depth: +2}, "", 0)
-	hs_log_rpx = log.New(&server_http_log_writer{svr: &s, id: "rpx", depth: +2}, "", 0)
-	hs_log_pxy = log.New(&server_http_log_writer{svr: &s, id: "pxy", depth: +2}, "", 0)
-	hs_log_wpx = log.New(&server_http_log_writer{svr: &s, id: "wpx", depth: +2}, "", 0)
+	hs_log_ctl = log.New(&server_http_log_writer{svr: &s, id: HS_ID_CTL, depth: +2}, "", 0)
+	hs_log_ect = log.New(&server_http_log_writer{svr: &s, id: HS_ID_ECT, depth: +2}, "", 0)
+	hs_log_rpx = log.New(&server_http_log_writer{svr: &s, id: HS_ID_RPX, depth: +2}, "", 0)
+	hs_log_pxy = log.New(&server_http_log_writer{svr: &s, id: HS_ID_PXY, depth: +2}, "", 0)
+	hs_log_wpx = log.New(&server_http_log_writer{svr: &s, id: HS_ID_WPX, depth: +2}, "", 0)
 
 	// ---------------------------------------------------------
 
@@ -1641,29 +1654,12 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/metrics",
 		promhttp.HandlerFor(s.promreg, promhttp.HandlerOpts{ EnableOpenMetrics: true }))
 
-	s.ctl_mux.Handle("/_ctl/events",
+	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/events",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_ctl_ws{ServerCtl{S: &s, Id: HS_ID_CTL}})))
+	//s.cfg.CtlPrefix applies to "/_ctl/" something only
 
 	s.ctl_mux.Handle("/_pty/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pty_ws{S: &s, Id: HS_ID_CTL})))
-/* Not needed any more as xterm.html bundles everything
-	s.ctl_mux.Handle("/_pty/xterm.js",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.js"}))
-	s.ctl_mux.Handle("/_pty/xterm.js/",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-	s.ctl_mux.Handle("/_pty/xterm-addon-fit.js",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
-	s.ctl_mux.Handle("/_pty/xterm-addon-fit.js/",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-	s.ctl_mux.Handle("/_pty/xterm-addon-unicode11.js",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-unicode11.js"}))
-	s.ctl_mux.Handle("/_pty/xterm-addon-unicode11.js/",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-	s.ctl_mux.Handle("/_pty/xterm.css",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
-	s.ctl_mux.Handle("/_pty/xterm.css/",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-*/
 	s.ctl_mux.Handle("/_pty/xterm.html",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html", mode: "pty"}))
 	s.ctl_mux.Handle("/_pty/xterm.html/",
@@ -1673,24 +1669,6 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	s.ctl_mux.Handle("/_rpty/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_rpty_ws{S: &s, Id: HS_ID_CTL})))
-/* Not needed any more as xterm.html bundles everything
-	s.ctl_mux.Handle("/_rpty/xterm.js",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.js"}))
-	s.ctl_mux.Handle("/_rpty/xterm.js/",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-	s.ctl_mux.Handle("/_rpty/xterm-addon-fit.js",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
-	s.ctl_mux.Handle("/_rpty/xterm-addon-fit.js/",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-	s.ctl_mux.Handle("/_rpty/xterm-addon-unicode11.js",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm-addon-unicode11.js"}))
-	s.ctl_mux.Handle("/_rpty/xterm-addon-unicode11.js/",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-	s.ctl_mux.Handle("/_rpty/xterm.css",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.css"}))
-	s.ctl_mux.Handle("/_rpty/xterm.css/",
-		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "_forbidden"}))
-*/
 	s.ctl_mux.Handle("/_rpty/xterm.html",
 		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_CTL}, file: "xterm.html", mode: "rpty"}))
 	s.ctl_mux.Handle("/_rpty/xterm.html/",
@@ -1730,6 +1708,34 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	}
 
 	// ---------------------------------------------------------
+	s.ect_mux = http.NewServeMux()
+
+	// make some possibly external services accessible on others ports for convenience
+	s.ect_mux.Handle("/_rpty/ws",
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_rpty_ws{S: &s, Id: HS_ID_ECT, Auth: s.Cfg.EctAuth})))
+	s.ect_mux.Handle("/_rpty/xterm.html",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_ECT}, file: "xterm.html", mode: "rpty", auth: s.Cfg.EctAuth})) // override the auth field to not use s.Cfg.CtlAuth
+	s.ect_mux.Handle("/_rpty/xterm.html/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_ECT}, file: "_forbidden"}))
+	s.ect_mux.Handle("/_rpty/{$}",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_ECT}, file: "_redir:xterm.html"}))
+
+	s.ect = make([]*http.Server, len(cfg.EctAddrs))
+	for i = 0; i < len(cfg.EctAddrs); i++ {
+		s.ect[i] = &http.Server{
+			Addr: cfg.EctAddrs[i],
+			Handler: s.ect_mux,
+			TLSConfig: cfg.EctTls.Clone(),
+			ReadHeaderTimeout: hs_read_header_timeout,
+			IdleTimeout: hs_idle_timeout,
+			MaxHeaderBytes: hs_max_header_bytes,
+			BaseContext: hs_base_ctx,
+			ErrorLog: hs_log_ect,
+			// TODO: more settings
+		}
+	}
+
+	// ---------------------------------------------------------
 
 	s.rpx_mux = http.NewServeMux() // TODO: make /_init,_ssh,_ssh/ws,_http configurable...
 	s.rpx_mux.Handle("/", s.WrapHttpHandler(&server_rpx{ S: &s, Id: HS_ID_RPX }))
@@ -1762,24 +1768,6 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm.html", HttpAuth: s.Cfg.PxyAuth}))
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm.html/",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
-	/*
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm.css",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm.css"}))
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm.css/",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm.js",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm.js"}))
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm.js/",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm-addon-fit.js",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm-addon-fit.js"}))
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm-addon-fit.js/",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm-addon-unicode11.js",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "xterm-addon-unicode11.js"}))
-	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/xterm-addon-unicode11.js/",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_PXY}, file: "_forbidden"}))
-	*/
 
 	s.pxy_mux.Handle("/_ssh/{conn_id}/{route_id}/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_PXY, HttpAuth: s.Cfg.PxyAuth})))
@@ -1821,24 +1809,6 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm.html", HttpAuth: s.Cfg.WpxAuth}))
 	s.wpx_mux.Handle("/_ssh/{port_id}/xterm.html/",
 		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))
-	/*
-	s.wpx_mux.Handle("/_ssh/{port_id}/xterm.css",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm.css"}))
-	s.wpx_mux.Handle("/_ssh/{port_id}/xterm.css/",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))
-	s.wpx_mux.Handle("/_ssh/{port_id}/xterm.js",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm.js"}))
-	s.wpx_mux.Handle("/_ssh/{port_id}/xterm.js/",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))
-	s.wpx_mux.Handle("/_ssh/{port_id}/xterm-addon-fit.js",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm-addon-fit.js"}))
-	s.wpx_mux.Handle("/_ssh/{port_id}/xterm-addon-fit.js/",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))
-	s.wpx_mux.Handle("/_ssh/{port_id}/xterm-addon-unicode11.js",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "xterm-addon-unicode11.js"}))
-	s.wpx_mux.Handle("/_ssh/{port_id}/xterm-addon-unicode11.js/",
-		s.WrapHttpHandler(&server_pxy_xterm_file{server_pxy: server_pxy{S: &s, Id: HS_ID_WPX}, file: "_forbidden"}))
-	*/
 
 	s.wpx_mux.Handle("/_ssh/{port_id}/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pxy_ssh_ws{S: &s, Id: HS_ID_WPX, HttpAuth: s.Cfg.WpxAuth })))
@@ -2037,6 +2007,65 @@ func (s *Server) RunCtlTask(wg *sync.WaitGroup) {
 	l_wg.Wait()
 }
 
+func (s* Server) run_single_ect_server(i int, cs *http.Server, wg* sync.WaitGroup) {
+	var l net.Listener
+	var err error
+
+	defer wg.Done()
+
+	s.log.Write("", LOG_INFO, "Limited external control channel[%d] started on %s", i, cs.Addr)
+
+	if s.stop_req.Load() == false {
+		// defeat hard-coded "tcp" in ListenAndServe() and ListenAndServeTLS()
+		//  err = cs.ListenAndServe()
+		//  err = cs.ListenAndServeTLS("", "")
+		l, err = net.Listen(TcpAddrStrClass(cs.Addr), cs.Addr)
+		if err == nil {
+			if s.stop_req.Load() == false {
+				var node *list.Element
+
+				s.ect_addrs_mtx.Lock()
+				node = s.ect_addrs.PushBack(l.Addr().(*net.TCPAddr))
+				s.ect_addrs_mtx.Unlock()
+
+				if s.Cfg.EctTls == nil {
+					err = cs.Serve(l)
+				} else {
+					err = cs.ServeTLS(l, "", "") // s.Cfg.EctTls must provide a certificate and a key
+				}
+
+				s.ect_addrs_mtx.Lock()
+				s.ect_addrs.Remove(node)
+				s.ect_addrs_mtx.Unlock()
+			} else {
+				err = fmt.Errorf("stop requested")
+			}
+			l.Close()
+		}
+	} else {
+		err = fmt.Errorf("stop requested")
+	}
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
+		s.log.Write("", LOG_INFO, "Limited external control channel[%d] ended", i)
+	} else {
+		s.log.Write("", LOG_ERROR, "Limited external control channel[%d] error - %s", i, err.Error())
+	}
+}
+
+func (s *Server) RunEctTask(wg *sync.WaitGroup) {
+	var ect *http.Server
+	var idx int
+	var l_wg sync.WaitGroup
+
+	defer wg.Done()
+
+	for idx, ect = range s.ect {
+		l_wg.Add(1)
+		go s.run_single_ect_server(idx, ect, &l_wg);
+	}
+	l_wg.Wait()
+}
+
 func (s *Server) run_single_rpx_server(i int, cs *http.Server, wg* sync.WaitGroup) {
 	var l net.Listener
 	var err error
@@ -2222,6 +2251,10 @@ func (s *Server) ReqStop() {
 
 		for _, hs = range s.ctl {
 			hs.Shutdown(s.Ctx) // to break s.ctl.Serve()
+		}
+
+		for _, hs = range s.ect {
+			hs.Shutdown(s.Ctx) // to break s.ect.Serve()
 		}
 
 		for _, hs = range s.rpx {
@@ -2656,6 +2689,11 @@ func (s *Server) StartExtService(svc Service, data interface{}) {
 func (s *Server) StartCtlService() {
 	s.wg.Add(1)
 	go s.RunCtlTask(&s.wg)
+}
+
+func (s *Server) StartEctService() {
+	s.wg.Add(1)
+	go s.RunEctTask(&s.wg)
 }
 
 func (s *Server) StartRpxService() {

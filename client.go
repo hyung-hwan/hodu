@@ -1902,28 +1902,9 @@ func NewClient(ctx context.Context, name string, logger Logger, cfg *ClientConfi
 
 	c.ctl_mux.Handle("/_pty/ws",
 		c.SafeWrapWebsocketHandler(c.WrapWebsocketHandler(&client_pty_ws{C: &c, Id: HS_ID_CTL})))
-
-	/*
-	c.ctl_mux.Handle("/_pty/xterm.js",
-		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.js"}))
-	c.ctl_mux.Handle("/_pty/xterm.js/",
-		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
-	c.ctl_mux.Handle("/_pty/xterm-addon-fit.js",
-		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm-addon-fit.js"}))
-	c.ctl_mux.Handle("/_pty/xterm-addon-fit.js/",
-		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
-	c.ctl_mux.Handle("/_pty/xterm-addon-unicode11.js",
-		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm-addon-unicode11.js"}))
-	c.ctl_mux.Handle("/_pty/xterm-addon-unicode11.js/",
-		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
-	c.ctl_mux.Handle("/_pty/xterm.css",
-		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.css"}))
-	c.ctl_mux.Handle("/_pty/xterm.css/",
-		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
-	*/
 	c.ctl_mux.Handle("/_pty/xterm.html",
 		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "xterm.html"}))
-	c.ctl_mux.Handle("/_pty/xterm.html/", // without this forbidden, /_pty/xterm.js/ access resulted in xterm.html.
+	c.ctl_mux.Handle("/_pty/xterm.html/",
 		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_forbidden"}))
 	c.ctl_mux.Handle("/_pty/{$}",
 		c.WrapHttpHandler(&client_pty_xterm_file{client_ctl: client_ctl{c: &c, id: HS_ID_CTL}, file: "_redir:xterm.html"}))
