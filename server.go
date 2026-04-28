@@ -1656,7 +1656,10 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 
 	s.ctl_mux.Handle(s.Cfg.CtlPrefix + "/_ctl/events",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_ctl_ws{ServerCtl{S: &s, Id: HS_ID_CTL}})))
-	//s.cfg.CtlPrefix applies to "/_ctl/" something only
+
+	// [NOTE]
+	// s.cfg.CtlPrefix applies to "/_ctl/" something only
+	// other endpoins below don't begin with /_ctl. so the prefix doesn't apply.
 
 	s.ctl_mux.Handle("/_pty/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pty_ws{S: &s, Id: HS_ID_CTL})))
@@ -1711,6 +1714,15 @@ func NewServer(ctx context.Context, name string, logger Logger, cfg *ServerConfi
 	s.ect_mux = http.NewServeMux()
 
 	// make some possibly external services accessible on others ports for convenience
+	s.ect_mux.Handle("/_pty/ws",
+		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_pty_ws{S: &s, Id: HS_ID_ECT, Auth: s.Cfg.EctAuth})))
+	s.ect_mux.Handle("/_pty/xterm.html",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_ECT}, file: "xterm.html", mode: "pty", auth: s.Cfg.EctAuth})) // override the auth field to not use s.Cfg.CtlAuth
+	s.ect_mux.Handle("/_pty/xterm.html/",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_ECT}, file: "_forbidden"}))
+	s.ect_mux.Handle("/_pty/{$}",
+		s.WrapHttpHandler(&server_pty_xterm_file{ServerCtl: ServerCtl{S: &s, Id: HS_ID_ECT}, file: "_redir:xterm.html"}))
+
 	s.ect_mux.Handle("/_rpty/ws",
 		s.SafeWrapWebsocketHandler(s.WrapWebsocketHandler(&server_rpty_ws{S: &s, Id: HS_ID_ECT, Auth: s.Cfg.EctAuth})))
 	s.ect_mux.Handle("/_rpty/xterm.html",

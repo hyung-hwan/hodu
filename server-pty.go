@@ -21,6 +21,7 @@ import "golang.org/x/sys/unix"
 type server_pty_ws struct {
 	S *Server
 	Id string
+	Auth *HttpAuthConfig
 	ws *websocket.Conn
 }
 
@@ -47,6 +48,7 @@ func (pty *server_pty_ws) Identity() string {
 func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var s *Server
 	var req *http.Request
+	var auth *HttpAuthConfig
 	//var username string
 	//var password string
 	var in *os.File
@@ -63,9 +65,11 @@ func (pty *server_pty_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 
 	// handle authentication using the first message.
 	// end this task if authentication fails.
-	if s.Cfg.CtlAuth != nil {
+	auth = pty.Auth
+	if auth == nil { auth = s.Cfg.CtlAuth }
+	if auth != nil {
 		var status_code int
-		status_code, _ = s.Cfg.CtlAuth.Authenticate(req, "access-token")
+		status_code, _ = auth.Authenticate(req, "access-token")
 		if status_code != http.StatusOK {
 			ws.Close()
 			return status_code, fmt.Errorf("failed to authenticate")
