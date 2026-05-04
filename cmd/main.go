@@ -365,14 +365,14 @@ func client_main(ctl_addrs []string, rpc_addrs []string, route_configs []string,
 	config.HttpMaxHeaderBytes = cfg.APP.HttpMaxHeaderBytes
 
 	if cfg.APP.TokenText != "" {
-		config.Token = cfg.APP.TokenText
+		config.Token = strings.TrimSpace(cfg.APP.TokenText)
 	} else if cfg.APP.TokenFile != "" {
 		var bytes []byte
 		bytes, err = os.ReadFile(cfg.APP.TokenFile)
 		if err != nil {
 			return fmt.Errorf("unable to read token file - %s", err.Error())
 		}
-		config.Token = string(bytes)
+		config.Token = strings.TrimSpace(string(bytes))
 	}
 	// end of loading configuration from cfg
 
