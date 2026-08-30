@@ -2,6 +2,8 @@
 # make GOARCH=386
 # make GOARCH=amd64
 # make GOOS=linux GOARCH=mips
+# make GOOS=freebsd GOARCH=386
+# make GOMEMLIMIT=150MiB GOGC=50
 #
 # 'go tool dist list' for available os and architextures
 
