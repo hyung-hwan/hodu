@@ -7,6 +7,10 @@ import "golang.org/x/net/websocket"
 
 // Rpty
 func (cts *ServerConn) StartRpty(ws *websocket.Conn) (*ServerRpty, error) {
+	return cts.start_rpty(ws, nil, nil)
+}
+
+func (cts *ServerConn) start_rpty(ws *websocket.Conn, output func([]byte), stopped func()) (*ServerRpty, error) {
 	var ok bool
 	var start_id uint64
 	var assigned_id uint64
@@ -32,7 +36,7 @@ func (cts *ServerConn) StartRpty(ws *websocket.Conn) (*ServerRpty, error) {
 	}
 
 	_, ok = cts.rpty_map_by_ws[ws]
-	if ok {
+	if ok && output == nil {
 		cts.rpty_mtx.Unlock()
 		return nil, fmt.Errorf("connection already associated with rpty. possibly internal error")
 	}
@@ -40,17 +44,19 @@ func (cts *ServerConn) StartRpty(ws *websocket.Conn) (*ServerRpty, error) {
 	rpty = &ServerRpty{
 		id: assigned_id,
 		ws: ws,
+		output: output,
+		stopped: stopped,
 	}
 
 	cts.rpty_map[assigned_id] = rpty
-	cts.rpty_map_by_ws[ws] = rpty
+	if output == nil { cts.rpty_map_by_ws[ws] = rpty }
 	cts.rpty_mtx.Unlock()
 
 	err = cts.pss.Send(MakeRptyStartPacket(assigned_id))
 	if err != nil {
 		cts.rpty_mtx.Lock()
 		delete(cts.rpty_map, assigned_id)
-		delete(cts.rpty_map_by_ws, ws)
+		if output == nil { delete(cts.rpty_map_by_ws, ws) }
 		cts.rpty_mtx.Unlock()
 		return nil , err
 	}
@@ -177,6 +183,7 @@ func (cts *ServerConn) ReadRptyAndWriteWs(id uint64, data []byte) error {
 	}
 	cts.rpty_mtx.Unlock()
 
+	if rpty.output != nil { rpty.output(data); return nil }
 	err = send_ws_data_for_xterm(rpty.ws, "iov", base64.StdEncoding.EncodeToString(data))
 	if err != nil {
 		return fmt.Errorf("failed to write rpty data(%d) to ws - %s", id, err.Error())

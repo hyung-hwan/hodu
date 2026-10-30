@@ -4,231 +4,313 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 
 function utf8ToBase64(str) {
-	const encoder = new TextEncoder();
-	const data = encoder.encode(str);
-	const binaryString = String.fromCharCode.apply(null, data);
-	return btoa(binaryString);
+	const bytes = new TextEncoder().encode(str);
+	let binary = "";
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return btoa(binary);
 }
 
-function base64ToBinary(b64) {
-	const binaryString = atob(b64);
-	const bytes = new Uint8Array(binaryString.length);
-	let i;
-
-	for (i = 0; i < binaryString.length; i++) {
-		bytes[i] = binaryString.charCodeAt(i);
-	}
-	return bytes;
+function base64ToBinary(encoded) {
+	return Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
 }
 
-window.onload = function(event) {
-	const xt_mode = document.body.dataset.xtMode || "";
-	const conn_id = document.body.dataset.connId || "";
-	const route_id = document.body.dataset.routeId || "";
-	const terminal_target = document.getElementById("terminal-target");
-	const terminal_status = document.getElementById("terminal-status");
-	const terminal_errmsg = document.getElementById("terminal-errmsg");
-	const terminal_view_container = document.getElementById("terminal-view-container");
-	const terminal_connect = document.getElementById("terminal-connect");
-	const terminal_disconnect = document.getElementById("terminal-disconnect");
-	const login_container = document.getElementById("login-container");
-	const login_form_title = document.getElementById("login-form-title");
-	const login_form = document.getElementById("login-form");
-	const login_ssh_part = document.getElementById("login-ssh-part");
-	const login_pty_part = document.getElementById("login-pty-part");
-	const username_field = document.getElementById("username");
-	const password_field = document.getElementById("password");
-	const qparams = new URLSearchParams(window.location.search);
-	const term = new Terminal({
-		lineHeight: 1.2,
-		fontFamily: "Ubuntu Mono, Consolas, SF Mono, courier-new, courier, monospace",
-		allowProposedApi: true
-	});
-	const fit_addon = new FitAddon();
-	const unicode11_addon = new Unicode11Addon();
-	const text_decoder = new TextDecoder();
+window.onload = function() {
+	const mode = document.body.dataset.xtMode || "";
+	const container = document.getElementById("terminal-view-container");
+	const status = document.getElementById("terminal-status");
+	const error = document.getElementById("terminal-errmsg");
+	const target = document.getElementById("terminal-target");
+	const login = document.getElementById("login-container");
+	const form = document.getElementById("login-form");
+	const username = document.getElementById("username");
+	const password = document.getElementById("password");
+	const disconnect = document.getElementById("terminal-disconnect");
+	const horizontal = document.getElementById("terminal-split-horizontal");
+	const vertical = document.getElementById("terminal-split-vertical");
+	const parameters = new URLSearchParams(window.location.search);
+	const auto_connect = ["1", "true"].includes((parameters.get("autoconnect") || "").toLowerCase());
+	const sessions = new Map();
+	const decoder = new TextDecoder();
+	let socket = null;
+	let credentials = ["", ""];
+	let next_id = 0;
+	let active = null;
 
-	void event;
+	document.getElementById("login-ssh-part").style.display = mode === "ssh" ? "block" : "none";
+	document.getElementById("login-pty-part").style.display = mode === "ssh" ? "none" : "block";
+	username.disabled = mode !== "ssh";
+	password.disabled = mode !== "ssh";
 
-	if (xt_mode == "ssh") {
-		login_ssh_part.style.display = "block";
-		username_field.disabled = false;
-		password_field.disabled = false;
-		login_pty_part.style.display = "none";
-	} else {
-		login_ssh_part.style.display = "none";
-		username_field.disabled = true;
-		password_field.disabled = true;
-		login_pty_part.style.display = "block";
-	}
-
-	term.loadAddon(fit_addon);
-	term.loadAddon(unicode11_addon);
-	term.unicode.activeVersion = "11";
-	term.open(terminal_view_container);
-
-	const set_terminal_target = function(name) {
-		terminal_target.innerText = name;
-		login_form_title.innerText = name;
-	};
-
-	const set_terminal_status = function(msg, errmsg) {
-		if (msg != null) terminal_status.innerText = msg;
-		if (errmsg != null) {
-			if (errmsg != "") {
-				const d = new Date();
-				terminal_errmsg.innerText = "[" + d.toLocaleString() + "] " + errmsg;
-			} else {
-				terminal_errmsg.innerText = errmsg;
-			}
+	function endpoint(name, websocket = false) {
+		const url = new URL(window.location.href);
+		url.pathname = url.pathname.slice(0, url.pathname.lastIndexOf("/") + 1) + name;
+		url.search = "";
+		url.hash = "";
+		if (websocket) url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+		for (const key of ["access-token", ...(mode === "rpty" ? ["client-token"] : [])]) {
+			if (parameters.has(key)) url.searchParams.set(key, parameters.get(key));
 		}
-	};
+		return url;
+	}
 
-	const adjust_terminal_size_unconnected = function() {
-		fit_addon.fit();
-	};
-
-	const fetch_session_info = async function() {
-		let url = window.location.protocol + "//" + window.location.host;
-		let pathname = window.location.pathname;
-
-		const qparams = new URLSearchParams(window.location.search);
-		const xparams = new URLSearchParams();
-
-		pathname = pathname.substring(0, pathname.lastIndexOf("/"));
-		url += pathname + "/session-info";
-
-		const access_token = qparams.get("access-token");
-		if (access_token !== null && access_token != "") xparams.set("access-token", access_token);
-		if (xparams.size > 0) url += "?" + xparams.toString();
-
+	async function fetch_target() {
+		if (mode !== "ssh") return;
 		try {
-			const resp = await fetch(url);
-			if (!resp.ok) {
-				if (xt_mode == "ssh")
-					throw new Error(`HTTP error in getting route(${conn_id},${route_id}) information - status ${resp.status}`);
-				else
-					throw new Error(`HTTP error in getting session information - status ${resp.status}`);
-			}
-			const route = await resp.json();
-			if ("client-peer-name" in route) {
-				set_terminal_target(route["client-peer-name"]);
-				document.title = route["client-peer-name"];
-			}
-		} catch (e) {
-			set_terminal_target("");
-			document.title = "";
-			set_terminal_status(null, e);
+			const response = await fetch(endpoint("session-info"));
+			if (!response.ok) throw new Error("Session information: HTTP " + response.status);
+			const info = await response.json();
+			target.textContent = info["client-peer-name"] || "";
+			document.getElementById("login-form-title").textContent = target.textContent;
+			if (target.textContent) document.title = target.textContent;
+		} catch (failure) {
+			error.textContent = failure.message;
 		}
-	};
+	}
 
-	const toggle_login_form = function(visible) {
-		if (visible && xt_mode == "ssh") fetch_session_info();
-		login_container.style.visibility = (visible ? "visible" : "hidden");
-		terminal_disconnect.style.visibility = (visible ? "hidden" : "visible");
-		if (visible) {
-			if (xt_mode == "ssh") username_field.focus();
-			else terminal_connect.focus();
+	function set_connected(connected) {
+		horizontal.disabled = !connected;
+		vertical.disabled = !connected;
+		disconnect.disabled = !connected;
+	}
+
+	function send(session, type, data) {
+		if (socket && socket.readyState === WebSocket.OPEN) {
+			socket.send(JSON.stringify({session, type, data}));
+		}
+	}
+
+	function select(pane) {
+		if (active) active.element.classList.remove("active");
+		active = pane;
+		if (pane) pane.element.classList.add("active");
+	}
+
+	function fit(pane) {
+		if (!pane.element.isConnected || pane.view.clientWidth < 20 || pane.view.clientHeight < 20) return;
+		pane.fit.fit();
+		const size = pane.term.rows + ":" + pane.term.cols;
+		if (pane.open && size !== pane.size) {
+			pane.size = size;
+			send(pane.id, "size", [String(pane.term.rows), String(pane.term.cols)]);
+		}
+	}
+
+	function remove(pane) {
+		if (pane.open || pane.opening) send(pane.id, "close", []);
+		pane.observer.disconnect();
+		cancelAnimationFrame(pane.frame);
+		pane.term.dispose();
+		sessions.delete(pane.id);
+		const parent = pane.element.parentElement;
+		if (parent && parent.classList.contains("terminal-split")) {
+			const sibling = [...parent.children].find(child => child !== pane.element && !child.classList.contains("terminal-divider"));
+			sibling.style.flex = parent.style.flex;
+			parent.replaceWith(sibling);
 		} else {
-			term.focus();
+			pane.element.remove();
 		}
-	};
-
-	toggle_login_form(true);
-	window.onresize = adjust_terminal_size_unconnected;
-	adjust_terminal_size_unconnected();
-
-	login_form.onsubmit = async function(event) {
-		let username = "";
-		let password = "";
-		const prefix = window.location.protocol === "https:" ? "wss://" : "ws://";
-		let pathname = window.location.pathname;
-		const xparams = new URLSearchParams();
-		let url;
-		let socket;
-
-		event.preventDefault();
-		toggle_login_form(false);
-
-		if (xt_mode == "ssh") {
-			username = username_field.value.trim();
-			password = password_field.value.trim();
+		if (active === pane) {
+			select(sessions.values().next().value || null);
+			if (active) active.term.focus();
 		}
+	}
 
-		pathname = pathname.substring(0, pathname.lastIndexOf("/"));
-		url = prefix + window.location.host + pathname + "/ws";
-
-		const access_token = qparams.get("access-token");
-		if (access_token !== null && access_token != "") xparams.set("access-token", access_token);
-		if (xt_mode == "rpty") {
-			const client_token = qparams.get("client-token");
-			if (client_token !== null && client_token != "") xparams.set("client-token", client_token);
+	function divider(split, direction) {
+		const handle = document.createElement("div");
+		handle.className = "terminal-divider " + direction;
+		handle.setAttribute("role", "separator");
+		handle.setAttribute("aria-orientation", direction === "horizontal" ? "vertical" : "horizontal");
+		handle.tabIndex = 0;
+		let ratio = 50;
+		function resize(value) {
+			const first = split.children[0];
+			const second = split.children[2];
+			ratio = Math.max(10, Math.min(90, value));
+			first.style.flex = ratio + " 1 0";
+			second.style.flex = (100 - ratio) + " 1 0";
 		}
-		if (xparams.size > 0) url += "?" + xparams.toString();
-
-		socket = new WebSocket(url);
-		socket.binaryType = "arraybuffer";
-
-		set_terminal_status("Connecting...", "");
-
-		const adjust_terminal_size_connected = function() {
-			fit_addon.fit();
-			if (socket.readyState == 1)
-				socket.send(JSON.stringify({ type: "size", data: [term.rows.toString(), term.cols.toString()] }));
+		handle.onpointerdown = event => {
+			event.preventDefault();
+			handle.setPointerCapture(event.pointerId);
 		};
-
-		socket.onopen = function() {
-			socket.send(JSON.stringify({ type: "open", data: [username, password] }));
+		handle.onpointermove = event => {
+			if (!handle.hasPointerCapture(event.pointerId)) return;
+			const bounds = split.getBoundingClientRect();
+			const offset = direction === "horizontal" ? event.clientX - bounds.left : event.clientY - bounds.top;
+			const length = direction === "horizontal" ? bounds.width : bounds.height;
+			if (length > 0) resize(offset * 100 / length);
 		};
-
-		socket.onmessage = function(event) {
-			try {
-				let event_text;
-				let parsed_msg;
-
-				event_text = (typeof event.data === "string") ? event.data : text_decoder.decode(new Uint8Array(event.data));
-				parsed_msg = JSON.parse(event_text);
-				if (parsed_msg.type == "iov") {
-					for (const data of parsed_msg.data) term.write(base64ToBinary(data));
-				} else if (parsed_msg.type == "status") {
-					if (parsed_msg.data.length >= 1) {
-						if (parsed_msg.data[0] == "opened") {
-							set_terminal_status("Connected", "");
-							adjust_terminal_size_connected();
-							term.clear();
-						} else if (parsed_msg.data[0] == "closed") {
-						}
-					}
-				} else if (parsed_msg.type == "error") {
-					set_terminal_status(null, parsed_msg.data.join(" "));
-				}
-			} catch (e) {
-				set_terminal_status(null, e);
+		handle.onpointerup = event => {
+			if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+		};
+		handle.onkeydown = event => {
+			const back = direction === "horizontal" ? "ArrowLeft" : "ArrowUp";
+			const forward = direction === "horizontal" ? "ArrowRight" : "ArrowDown";
+			if (event.key === back || event.key === forward) {
+				event.preventDefault();
+				resize(ratio + (event.key === forward ? 5 : -5));
 			}
 		};
+		return handle;
+	}
 
-		socket.onerror = function(event) {
-			void event;
-			set_terminal_status("Disconnected", "");
-			toggle_login_form(true);
-			window.onresize = adjust_terminal_size_unconnected;
+	function create(direction) {
+		if (!socket || socket.readyState !== WebSocket.OPEN) return;
+		if (sessions.size >= 32) { error.textContent = "Maximum of 32 terminal panels reached"; return; }
+		const previous = active;
+		const id = String(++next_id);
+		const element = document.createElement("div");
+		const header = document.createElement("div");
+		const label = document.createElement("span");
+		const close = document.createElement("button");
+		const view = document.createElement("div");
+		element.className = "terminal-pane";
+		header.className = "terminal-pane-header";
+		label.className = "terminal-pane-label";
+		close.type = "button";
+		close.textContent = "Close";
+		close.setAttribute("aria-label", "Close terminal " + id);
+		view.className = "terminal-pane-view";
+		header.append(label, close);
+		element.append(header, view);
+		const pane = {
+			id, element, label, view,
+			term: new Terminal({
+				lineHeight: 1.2,
+				fontFamily: "Ubuntu Mono, Consolas, SF Mono, courier-new, courier, monospace",
+				allowProposedApi: true
+			}),
+			fit: new FitAddon(),
+			open: false,
+			opening: true,
+			failure: "",
+			size: "",
+			frame: 0
 		};
-
-		socket.onclose = function() {
-			set_terminal_status("Disconnected", null);
-			toggle_login_form(true);
-			window.onresize = adjust_terminal_size_unconnected;
-		};
-
-		term.onData(function(data) {
-			if (socket.readyState == 1)
-				socket.send(JSON.stringify({ type: "iov", data: [utf8ToBase64(data)] }));
+		pane.term.loadAddon(pane.fit);
+		pane.term.loadAddon(new Unicode11Addon());
+		pane.term.unicode.activeVersion = "11";
+		if (previous && direction) {
+			const split = document.createElement("div");
+			split.className = "terminal-split";
+			split.style.flexDirection = direction === "horizontal" ? "row" : "column";
+			split.style.flex = previous.element.style.flex;
+			previous.element.replaceWith(split);
+			previous.element.style.flex = "1 1 0";
+			element.style.flex = "1 1 0";
+			split.append(previous.element, divider(split, direction), element);
+		} else {
+			container.append(element);
+		}
+		sessions.set(id, pane);
+		pane.term.open(view);
+		pane.term.onData(data => {
+			if (pane.open) send(id, "iov", [utf8ToBase64(data)]);
 		});
+		pane.term.onBinary(data => {
+			if (pane.open) send(id, "iov", [btoa(data)]);
+		});
+		pane.observer = new ResizeObserver(() => {
+			cancelAnimationFrame(pane.frame);
+			pane.frame = requestAnimationFrame(() => fit(pane));
+		});
+		pane.observer.observe(view);
+		element.addEventListener("pointerdown", () => select(pane));
+		view.addEventListener("focusin", () => select(pane));
+		close.onclick = () => remove(pane);
+		label.textContent = "Terminal " + id + " — Connecting";
+		select(pane);
+		pane.term.focus();
+		fit(pane);
+		send(id, "open", credentials);
+	}
 
-		window.onresize = adjust_terminal_size_connected;
-		terminal_disconnect.onclick = function(event) {
-			void event;
-			socket.send(JSON.stringify({ type: "close", data: [""] }));
+	form.onsubmit = event => {
+		event.preventDefault();
+		if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+		for (const pane of [...sessions.values()]) remove(pane);
+		credentials = mode === "ssh" ? [username.value.trim(), password.value] : ["", ""];
+		password.value = "";
+		login.style.visibility = "hidden";
+		error.textContent = "";
+		status.textContent = "Connecting...";
+		const connection = new WebSocket(endpoint("ws", true));
+		let started = false;
+		const fail_initial = message => {
+			error.textContent = message;
+			status.textContent = "Disconnected";
+			login.style.visibility = "visible";
+			set_connected(false);
+			connection.close();
+		};
+		socket = connection;
+		connection.binaryType = "arraybuffer";
+		connection.onopen = () => {
+			if (socket !== connection) return;
+			status.textContent = "Connected";
+			set_connected(true);
+			create();
+		};
+		connection.onmessage = event => {
+			if (socket !== connection) return;
+			try {
+				const message = JSON.parse(typeof event.data === "string" ? event.data : decoder.decode(event.data));
+				const pane = sessions.get(message.session);
+				if (!pane) {
+					if (message.type === "error") {
+						error.textContent = message.data.join(" ");
+						if (!started) fail_initial(error.textContent);
+					}
+					return;
+				}
+				if (message.type === "iov") {
+					for (const data of message.data) pane.term.write(base64ToBinary(data));
+				} else if (message.type === "status") {
+					pane.open = message.data[0] === "opened";
+					pane.opening = false;
+					pane.label.textContent = "Terminal " + pane.id + (pane.open ? " — Connected" : " — Closed") + (pane.failure ? ": " + pane.failure : "");
+					if (pane.open) {
+						started = true;
+						fit(pane);
+					} else if (!started) {
+						fail_initial(pane.failure || "Unable to open terminal session");
+					}
+				} else if (message.type === "error") {
+					pane.failure = message.data.join(" ");
+					pane.label.textContent = "Terminal " + pane.id + " — " + message.data.join(" ");
+					if (!started) {
+						fail_initial(pane.failure);
+					}
+				}
+			} catch (failure) {
+				error.textContent = failure.message;
+			}
+		};
+		connection.onerror = () => {
+			if (socket !== connection) return;
+			if (!started) fail_initial("WebSocket connection failed");
+			else error.textContent = "WebSocket connection failed";
+		};
+		connection.onclose = () => {
+			if (socket !== connection) return;
+			socket = null;
+			credentials = ["", ""];
+			status.textContent = "Disconnected";
+			set_connected(false);
+			for (const pane of sessions.values()) {
+				pane.open = false;
+				pane.opening = false;
+				pane.label.textContent = "Terminal " + pane.id + " — Disconnected";
+			}
+			login.style.visibility = "visible";
 		};
 	};
+	horizontal.onclick = () => create("horizontal");
+	vertical.onclick = () => create("vertical");
+	disconnect.onclick = () => { if (socket) socket.close(); };
+	window.addEventListener("pagehide", () => { if (socket) socket.close(); });
+	set_connected(false);
+	fetch_target();
+	if (mode === "ssh" || !auto_connect) login.style.visibility = "visible";
+	else form.requestSubmit();
 };

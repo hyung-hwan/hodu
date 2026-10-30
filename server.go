@@ -291,6 +291,8 @@ type ServerRoute struct {
 type ServerRpty struct {
 	id uint64
 	ws *websocket.Conn
+	output func([]byte)
+	stopped func()
 }
 
 type ServerRpx struct {
@@ -343,6 +345,7 @@ func (g *GuardedPacketStreamServer) Context() context.Context {
 // ------------------------------------
 
 func (rpty *ServerRpty) ReqStop() {
+	if rpty.stopped != nil { rpty.stopped(); return }
 	//rpty.ws.Close() // dirty way
 	rpty.ws.SetReadDeadline(time.Now()) // slightly cleaner way
 }

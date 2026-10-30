@@ -129,6 +129,7 @@ type json_out_go_stats struct {
 
 
 type json_xterm_ws_event struct {
+	Session string `json:"session,omitempty"`
 	Type string `json:"type"`
 	Data []string `json:"data"`
 }

@@ -3,18 +3,13 @@ package hodu
 import "bufio"
 import "context"
 import "crypto/tls"
-import "encoding/base64"
-import "encoding/json"
-import "errors"
 import "fmt"
 import "io"
 import "net"
 import "net/http"
 import "net/netip"
 import "net/url"
-import "strconv"
 import "strings"
-import "sync"
 import "text/template"
 import "time"
 
@@ -570,270 +565,15 @@ oops:
 
 // ------------------------------------
 
-type server_pxy_ssh_ws_conn_state struct {
-	mtx sync.RWMutex
-	connecting bool
-	c *ssh.Client
-	sess *ssh.Session
-	in io.Writer
-	out io.Reader
-
-	ready_chan chan bool
-}
-
-func (st *server_pxy_ssh_ws_conn_state) init() {
-	 // ready_chan is not bound to the mutex
-	 st.ready_chan = make(chan bool, 3)
-}
-
-func (st *server_pxy_ssh_ws_conn_state) prepare_connect() bool {
-	var ok bool
-
-	st.mtx.Lock()
-	if st.connecting || st.sess != nil {
-		ok = false
-	} else {
-		st.connecting = true
-		ok = true
-	}
-	st.mtx.Unlock()
-
-	return ok
-}
-
-
-func (st *server_pxy_ssh_ws_conn_state) set_connected(c *ssh.Client, sess *ssh.Session, in io.Writer, out io.Reader) {
-	st.mtx.Lock()
-	st.c = c
-	st.sess = sess
-	st.in = in
-	st.out = out
-	st.connecting = false
-	st.mtx.Unlock()
-}
-
-func (st *server_pxy_ssh_ws_conn_state) set_connect_failed() {
-	st.mtx.Lock()
-	st.connecting = false
-	st.mtx.Unlock()
-}
-
-func (st *server_pxy_ssh_ws_conn_state) get_sess() *ssh.Session {
-	var sess *ssh.Session
-	st.mtx.RLock()
-	sess = st.sess
-	st.mtx.RUnlock()
-	return sess
-}
-
-func (st *server_pxy_ssh_ws_conn_state) get_in() io.Writer {
-	var in io.Writer
-	st.mtx.RLock()
-	in = st.in
-	st.mtx.RUnlock()
-	return in
-}
-
-func (st *server_pxy_ssh_ws_conn_state) get_out() io.Reader {
-	var out io.Reader
-	st.mtx.RLock()
-	out = st.out
-	st.mtx.RUnlock()
-	return out
-}
-
-func (st *server_pxy_ssh_ws_conn_state) has_sess() bool {
-	var ok bool
-	st.mtx.RLock()
-	ok = st.sess != nil
-	st.mtx.RUnlock()
-	return ok
-}
-
-func (st *server_pxy_ssh_ws_conn_state) end() {
-	var c *ssh.Client
-	var sess *ssh.Session
-
-	st.mtx.Lock()
-	c = st.c
-	sess = st.sess
-	st.c = nil
-	st.sess = nil
-	st.in = nil
-	st.out = nil
-	st.connecting = false
-	st.mtx.Unlock()
-
-	if sess != nil { sess.Close() }
-	if c != nil { c.Close() }
-}
-
-// ------------------------------------
-
 type server_pxy_ssh_ws struct {
 	S *Server
 	ws *websocket.Conn
 	Id string
-	HttpAuth* HttpAuthConfig
+	HttpAuth *HttpAuthConfig
 }
 
 func (pxy *server_pxy_ssh_ws) Identity() string {
 	return pxy.Id
-}
-
-// TODO: put this task to sync group.
-// TODO: put the above proxy task to sync group too.
-
-func (pxy *server_pxy_ssh_ws) connect_ssh(ctx context.Context, username string, password string, r *ServerRoute) (*ssh.Client, *ssh.Session, io.Writer, io.Reader, error) {
-	var cc *ssh.ClientConfig
-	var addr *net.TCPAddr
-	var dialer *net.Dialer
-	var conn net.Conn
-	var ssh_conn ssh.Conn
-	var chans <-chan ssh.NewChannel
-	var reqs <-chan *ssh.Request
-	var c *ssh.Client
-	var sess *ssh.Session
-	var in io.Writer // input to target
-	var out io.Reader // ooutput from target
-	var err error
-
-	// [NOTE]
-	// There is no authentication implemented for this websocket endpoint
-	// I suppose authentication should be done at the ssh layer.
-	// However, this can open doors to DoS attacks.
-	cc = &ssh.ClientConfig{
-		User: username,
-		Auth: []ssh.AuthMethod{ ssh.Password(password) },
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		// Timeout: 5 * time.Second , // timeout is also set on the passed ctx. it may not been needed here.
-	}
-
-/* Is this protection needed?
-	if r.SvcOption & RouteOption(ROUTE_OPTION_SSH) == 0 {
-		err = fmt.Errorf("target not ssh")
-		goto oops
-	}
-*/
-	addr = svc_addr_to_dst_addr(r.SvcAddr)
-
-	dialer = &net.Dialer{}
-	conn, err = dialer.DialContext(ctx, TcpAddrClass(addr), addr.String())
-	if err != nil { goto oops }
-
-	ssh_conn, chans, reqs, err = ssh.NewClientConn(conn, addr.String(), cc)
-	if err != nil { goto oops }
-
-	c = ssh.NewClient(ssh_conn, chans, reqs)
-
-	sess, err = c.NewSession()
-	if err != nil { goto oops }
-
-	out, err = sess.StdoutPipe()
-	if err != nil { goto oops }
-
-	in, err = sess.StdinPipe()
-	if err != nil { goto oops }
-
-	err = sess.RequestPty("xterm", 25, 80, ssh.TerminalModes{})
-	if err != nil { goto oops }
-
-	err = sess.Shell()
-	if err != nil { goto oops }
-
-	return c, sess, in, out, nil
-
-oops:
-	if sess != nil { sess.Close() }
-	if c != nil { c.Close() }
-	return nil, nil, nil, nil, err
-}
-
-func (pxy *server_pxy_ssh_ws) connect_ssh_for_ws(ws *websocket.Conn, ssh_state *server_pxy_ssh_ws_conn_state, ctx context.Context, cancel context.CancelFunc, username string, password string, r* ServerRoute) {
-
-	var s *Server
-	var req *http.Request
-
-	var c *ssh.Client
-	var sess *ssh.Session
-	var in io.Writer
-	var out io.Reader
-
-	var err error
-
-	s = pxy.S;
-	req = ws.Request();
-
-	c, sess, in, out, err = pxy.connect_ssh(ctx, username, password, r)
-	if err != nil {
-		ssh_state.set_connect_failed()
-
-		s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to connect ssh - %s", req.RemoteAddr, err.Error())
-		send_ws_data_for_xterm(ws, "error", err.Error())
-
-		//ws.Close() // dirty way to flag out the error
-		ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
-	} else {
-		ssh_state.set_connected(c, sess, in, out)
-
-		err = send_ws_data_for_xterm(ws, "status", "opened")
-		if err != nil {
-			// ws failuer after ssh success
-			s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write opened event to websocket - %s", req.RemoteAddr, err.Error())
-			ssh_state.end()
-			//ws.Close() // dirty way to flag out the error
-			ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
-		} else {
-			s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Opened SSH session", req.RemoteAddr)
-			ssh_state.ready_chan <- true // notify
-		}
-	}
-}
-
-func (pxy *server_pxy_ssh_ws) read_ssh_for_ws(ws *websocket.Conn, ssh_state *server_pxy_ssh_ws_conn_state, wg *sync.WaitGroup)  {
-	var s *Server
-	var req *http.Request
-	var conn_ready bool
-
-	defer wg.Done()
-
-	s = pxy.S;
-	req = ws.Request();
-
-	conn_ready = <-ssh_state.ready_chan // received notification
-	if conn_ready { // connected
-		var buf [2048]byte
-		var n int
-		var out io.Reader
-		var err error
-
-		out = ssh_state.get_out()
-		if out == nil { goto done } // double-check. something is wrong internally.
-
-		s.stats.ssh_proxy_sessions.Add(1)
-		for {
-			n, err = out.Read(buf[:])
-			if n > 0 {
-				var err2 error
-				err2 = send_ws_data_for_xterm(ws, "iov", base64.StdEncoding.EncodeToString(buf[:n]))
-				if err2 != nil {
-					s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to send to websocket - %s", req.RemoteAddr, err2.Error())
-					break
-				}
-			}
-			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to read from SSH stdout - %s", req.RemoteAddr, err.Error())
-				}
-				break
-			}
-		}
-		s.stats.ssh_proxy_sessions.Add(-1)
-	}
-
-done:
-	//ws.Close() // dirty way to break the main loop
-	ws.SetReadDeadline(time.Now()) // slightly cleaner way to break the main loop
 }
 
 func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
@@ -843,15 +583,12 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	var conn_id string
 	var route_id string
 	var r *ServerRoute
-	var ssh_state server_pxy_ssh_ws_conn_state
-	var wg sync.WaitGroup
-	var connect_ssh_cancel Atom[context.CancelFunc]
+	var pool xterm_ssh_pool
 	var err error
 
 	s = pxy.S
 	req = ws.Request()
 
-	ssh_state.init()
 
 	// server_pxy_ssh_ws is instantiated from two different contexts - pxy and wpx
 	// use the provided HttpAuth value for each instantiation rather than accessing
@@ -859,7 +596,7 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 	if pxy.HttpAuth != nil {
 		var status_code int
 		status_code, _ = pxy.HttpAuth.Authenticate(ws.Request(), "access-token")
-		if status_code != http.StatusOK { goto done }
+		if status_code != http.StatusOK { ws.Close(); return status_code, fmt.Errorf("failed to authenticate") }
 	}
 
 	port_id = req.PathValue("port_id")
@@ -876,8 +613,8 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		var pi *ServerRouteProxyInfo
 		pi, err = s.wpx_foreign_port_proxy_maker("ssh", conn_id)
 		if err != nil {
-			send_ws_data_for_xterm(ws, "error", err.Error())
-			goto done
+			ws.Close()
+			return http.StatusBadRequest, err
 		}
 
 		// [SUPER-IMPORTANT!!]
@@ -888,121 +625,12 @@ func (pxy *server_pxy_ssh_ws) ServeWebsocket(ws *websocket.Conn) (int, error) {
 		r = proxy_info_to_server_route(pi)
 	}
 	if err != nil {
-		send_ws_data_for_xterm(ws, "error", err.Error())
-		goto done
+		ws.Close()
+		return http.StatusBadRequest, err
 	}
 
-	wg.Add(1)
-	go pxy.read_ssh_for_ws(ws, &ssh_state, &wg) // start the ssh read loop
-
-ws_recv_loop: //read from ws and write to ssh
-	for {
-		var msg []byte
-		err = websocket.Message.Receive(ws, &msg)
-		if err != nil { goto done } // to skip writing an error back to ws
-
-		if len(msg) > 0 {
-			var ev json_xterm_ws_event
-			err = json.Unmarshal(msg, &ev)
-			if err == nil {
-				switch ev.Type {
-					case "open":
-						if len(ev.Data) == 2 {
-							var can_connect bool
-							var username string
-							var password string
-							var ctx context.Context
-							var cancel context.CancelFunc
-
-							can_connect = ssh_state.prepare_connect();
-							if !can_connect {
-								s.log.Write(pxy.Id, LOG_WARN, "[%s] SSH session is already opening/opened", req.RemoteAddr)
-								break
-							}
-
-							username = string(ev.Data[0])
-							password = string(ev.Data[1])
-
-							ctx, cancel = context.WithTimeout(req.Context(), 10 * time.Second) //TODO: configurable timeout
-							connect_ssh_cancel.Set(cancel)
-
-							wg.Add(1)
-							go func() {
-								defer wg.Done()
-								pxy.connect_ssh_for_ws(ws, &ssh_state, ctx, cancel, username, password, r)
-								cancel()
-								connect_ssh_cancel.Set(nil)
-							}()
-					      }
-
-					case "close":
-						var cancel context.CancelFunc
-						cancel = connect_ssh_cancel.Get() // is it a good way to avoid mutex against Set() marked with @@@ above?
-						if cancel != nil { cancel() }
-						// don't need to store nil in connect_ssh_cancel
-						break ws_recv_loop
-
-					case "iov":
-						var in io.Writer
-						in = ssh_state.get_in()
-						if in != nil {
-							var i int
-							for i, _ = range ev.Data {
-								var bytes []byte
-								bytes, err = base64.StdEncoding.DecodeString(ev.Data[i])
-								if err != nil {
-									s.log.Write(pxy.Id, LOG_WARN, "[%s] Invalid pxy iov data received - %s", req.RemoteAddr, ev.Data[i])
-								} else {
-									_, err = in.Write(bytes)
-									if err != nil {
-										s.log.Write(pxy.Id, LOG_ERROR, "[%s] Failed to write to SSH in - %s", req.RemoteAddr, err.Error())
-										break
-									}
-								}
-							}
-						}
-
-					case "size":
-						var sess *ssh.Session
-						sess = ssh_state.get_sess()
-						if sess != nil && len(ev.Data) == 2 {
-							var rows int
-							var cols int
-							rows, _ = strconv.Atoi(ev.Data[0])
-							cols, _ = strconv.Atoi(ev.Data[1])
-							sess.WindowChange(rows, cols)
-							s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Resized terminal to %d,%d", req.RemoteAddr, rows, cols)
-							// ignore error
-						}
-				}
-			}
-		}
-	}
-
-	if ssh_state.has_sess() {
-		err = send_ws_data_for_xterm(ws, "status", "closed")
-		if err != nil { goto done }
-	}
-
-done:
-	{
-		// cancel any ongoing ssh connection attempts if
-		// the flow got out of ws_recv_loop and reached here
-		// without proper close or timeout.
-		var cancel context.CancelFunc
-		cancel = connect_ssh_cancel.Get()
-		if cancel != nil { cancel() }
-		connect_ssh_cancel.Set(nil)
-	}
-
-	ssh_state.ready_chan <- false
-
-	ssh_state.end() // immediate close of existing ssh connections
-	ws.Close()
-	wg.Wait()
-	ssh_state.end() // just in case...
-
-	s.log.Write(pxy.Id, LOG_DEBUG, "[%s] Ended SSH Session", req.RemoteAddr)
-
-	return http.StatusOK, err
+	pool.route = r
+	pool.count = func(delta int64) { s.stats.ssh_proxy_sessions.Add(delta) }
+	pool.clients = make(map[xterm_ssh_credentials]*ssh.Client)
+	return serve_xterm_sessions(ws, pool.open, pool.close)
 }

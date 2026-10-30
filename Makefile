@@ -43,6 +43,9 @@ SRCS=\
 	server-rxc-job.go \
 	system.go \
 	transform.go \
+	xterm-rpty.go \
+	xterm-session.go \
+	xterm-ssh.go
 
 DATA = \
 	xterm-plain.js \
