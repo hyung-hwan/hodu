@@ -393,8 +393,8 @@ A page supports up to 32 sessions over one WebSocket, all using the same termina
 type and target. SSH panels share an SSH connection when credentials match.
 Closing one panel or exiting its shell leaves the other panels running.
 
-For PTY and RPTY, add `autoconnect=1` or `autoconnect=true` to skip the initial
-Connect prompt:
+For PTY and RPTY, add `autoconnect=1`, `autoconnect=true`, or
+`autoconnect=yes` (case-insensitive) to skip the initial Connect prompt:
 
 ```text
 http://127.0.0.1:8888/_rpty/xterm.html?client-token=demo-client&autoconnect=1
