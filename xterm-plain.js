@@ -28,13 +28,21 @@ window.onload = function() {
 	const horizontal = document.getElementById("terminal-split-horizontal");
 	const vertical = document.getElementById("terminal-split-vertical");
 	const parameters = new URLSearchParams(window.location.search);
-	const auto_connect = ["1", "true", "yes"].includes((parameters.get("autoconnect") || "").toLowerCase());
-	const sessions = new Map();
+	const auto_connect = ["1", "true", "yes"].includes((parameters.get("ac") || "").toLowerCase());
+	const multi_terminal = ["1", "true", "yes"].includes((parameters.get("mt") || "").toLowerCase());
+	const sessions = multi_terminal ? new Map() : null;
+	let single_terminal = null;
 	const decoder = new TextDecoder();
 	let socket = null;
 	let credentials = ["", ""];
 	let next_id = 0;
 	let active = null;
+
+	if (multi_terminal) {
+		document.body.classList.add("multi-terminal");
+		horizontal.hidden = false;
+		vertical.hidden = false;
+	}
 
 	document.getElementById("login-ssh-part").style.display = mode === "ssh" ? "block" : "none";
 	document.getElementById("login-pty-part").style.display = mode === "ssh" ? "none" : "block";
@@ -71,18 +79,21 @@ window.onload = function() {
 		horizontal.disabled = !connected;
 		vertical.disabled = !connected;
 		disconnect.disabled = !connected;
+		if (!multi_terminal) disconnect.style.visibility = connected ? "visible" : "hidden";
 	}
 
 	function send(session, type, data) {
 		if (socket && socket.readyState === WebSocket.OPEN) {
-			socket.send(JSON.stringify({session, type, data}));
+			const message = {type, data};
+			if (multi_terminal) message.session = session;
+			socket.send(JSON.stringify(message));
 		}
 	}
 
 	function select(pane) {
-		if (active) active.element.classList.remove("active");
+		if (multi_terminal && active) active.element.classList.remove("active");
 		active = pane;
-		if (pane) pane.element.classList.add("active");
+		if (multi_terminal && pane) pane.element.classList.add("active");
 	}
 
 	function fit(pane) {
@@ -155,24 +166,27 @@ window.onload = function() {
 	}
 
 	function create(direction) {
-		if (!socket || socket.readyState !== WebSocket.OPEN) return;
-		if (sessions.size >= 32) { error.textContent = "Maximum of 32 terminal panels reached"; return; }
+		if (multi_terminal && (!socket || socket.readyState !== WebSocket.OPEN)) return;
+		if (!multi_terminal && single_terminal) return;
+		if (multi_terminal && sessions.size >= 32) { error.textContent = "Maximum of 32 terminal panels reached"; return; }
 		const previous = active;
-		const id = String(++next_id);
-		const element = document.createElement("div");
-		const header = document.createElement("div");
-		const label = document.createElement("span");
-		const close = document.createElement("button");
-		const view = document.createElement("div");
-		element.className = "terminal-pane";
-		header.className = "terminal-pane-header";
-		label.className = "terminal-pane-label";
-		close.type = "button";
-		close.textContent = "Close";
-		close.setAttribute("aria-label", "Close terminal " + id);
-		view.className = "terminal-pane-view";
-		header.append(label, close);
-		element.append(header, view);
+		const id = multi_terminal ? String(++next_id) : undefined;
+		const element = multi_terminal ? document.createElement("div") : container;
+		const header = multi_terminal ? document.createElement("div") : null;
+		const label = multi_terminal ? document.createElement("span") : null;
+		const close = multi_terminal ? document.createElement("button") : null;
+		const view = multi_terminal ? document.createElement("div") : container;
+		if (multi_terminal) {
+			element.className = "terminal-pane";
+			header.className = "terminal-pane-header";
+			label.className = "terminal-pane-label";
+			close.type = "button";
+			close.textContent = "Close";
+			close.setAttribute("aria-label", "Close terminal " + id);
+			view.className = "terminal-pane-view";
+			header.append(label, close);
+			element.append(header, view);
+		}
 		const pane = {
 			id, element, label, view,
 			term: new Terminal({
@@ -182,7 +196,7 @@ window.onload = function() {
 			}),
 			fit: new FitAddon(),
 			open: false,
-			opening: true,
+			opening: multi_terminal,
 			failure: "",
 			size: "",
 			frame: 0
@@ -190,7 +204,7 @@ window.onload = function() {
 		pane.term.loadAddon(pane.fit);
 		pane.term.loadAddon(new Unicode11Addon());
 		pane.term.unicode.activeVersion = "11";
-		if (previous && direction) {
+		if (multi_terminal && previous && direction) {
 			const split = document.createElement("div");
 			split.className = "terminal-split";
 			split.style.flexDirection = direction === "horizontal" ? "row" : "column";
@@ -199,10 +213,11 @@ window.onload = function() {
 			previous.element.style.flex = "1 1 0";
 			element.style.flex = "1 1 0";
 			split.append(previous.element, divider(split, direction), element);
-		} else {
+		} else if (multi_terminal) {
 			container.append(element);
 		}
-		sessions.set(id, pane);
+		if (multi_terminal) sessions.set(id, pane);
+		else single_terminal = pane;
 		pane.term.open(view);
 		pane.term.onData(data => {
 			if (pane.open) send(id, "iov", [utf8ToBase64(data)]);
@@ -217,18 +232,22 @@ window.onload = function() {
 		pane.observer.observe(view);
 		element.addEventListener("pointerdown", () => select(pane));
 		view.addEventListener("focusin", () => select(pane));
-		close.onclick = () => remove(pane);
-		label.textContent = "Terminal " + id + " — Connecting";
+		if (multi_terminal) {
+			close.onclick = () => remove(pane);
+			label.textContent = "Terminal " + id + " — Connecting";
+		}
 		select(pane);
 		pane.term.focus();
 		fit(pane);
-		send(id, "open", credentials);
+		if (multi_terminal) send(id, "open", credentials);
 	}
 
 	form.onsubmit = event => {
 		event.preventDefault();
 		if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
-		for (const pane of [...sessions.values()]) remove(pane);
+		if (multi_terminal) {
+			for (const pane of [...sessions.values()]) remove(pane);
+		}
 		credentials = mode === "ssh" ? [username.value.trim(), password.value] : ["", ""];
 		password.value = "";
 		login.style.visibility = "hidden";
@@ -247,15 +266,21 @@ window.onload = function() {
 		connection.binaryType = "arraybuffer";
 		connection.onopen = () => {
 			if (socket !== connection) return;
-			status.textContent = "Connected";
-			set_connected(true);
-			create();
+			if (multi_terminal) {
+				status.textContent = "Connected";
+				set_connected(true);
+				create();
+			} else {
+				single_terminal.opening = true;
+				single_terminal.size = "";
+				send(undefined, "open", credentials);
+			}
 		};
 		connection.onmessage = event => {
 			if (socket !== connection) return;
 			try {
 				const message = JSON.parse(typeof event.data === "string" ? event.data : decoder.decode(event.data));
-				const pane = sessions.get(message.session);
+				const pane = multi_terminal ? sessions.get(message.session) : single_terminal;
 				if (!pane) {
 					if (message.type === "error") {
 						error.textContent = message.data.join(" ");
@@ -268,16 +293,25 @@ window.onload = function() {
 				} else if (message.type === "status") {
 					pane.open = message.data[0] === "opened";
 					pane.opening = false;
-					pane.label.textContent = "Terminal " + pane.id + (pane.open ? " — Connected" : " — Closed") + (pane.failure ? ": " + pane.failure : "");
+					if (multi_terminal) pane.label.textContent = "Terminal " + pane.id + (pane.open ? " — Connected" : " — Closed") + (pane.failure ? ": " + pane.failure : "");
 					if (pane.open) {
 						started = true;
+						if (!multi_terminal) {
+							status.textContent = "Connected";
+							set_connected(true);
+							pane.term.clear();
+							pane.term.focus();
+						}
 						fit(pane);
 					} else if (!started) {
 						fail_initial(pane.failure || "Unable to open terminal session");
+					} else if (!multi_terminal) {
+						connection.close();
 					}
 				} else if (message.type === "error") {
 					pane.failure = message.data.join(" ");
-					pane.label.textContent = "Terminal " + pane.id + " — " + message.data.join(" ");
+					if (multi_terminal) pane.label.textContent = "Terminal " + pane.id + " — " + message.data.join(" ");
+					else error.textContent = pane.failure;
 					if (!started) {
 						fail_initial(pane.failure);
 					}
@@ -297,18 +331,23 @@ window.onload = function() {
 			credentials = ["", ""];
 			status.textContent = "Disconnected";
 			set_connected(false);
-			for (const pane of sessions.values()) {
+			for (const pane of multi_terminal ? sessions.values() : [single_terminal]) {
 				pane.open = false;
 				pane.opening = false;
-				pane.label.textContent = "Terminal " + pane.id + " — Disconnected";
+				if (multi_terminal) pane.label.textContent = "Terminal " + pane.id + " — Disconnected";
 			}
 			login.style.visibility = "visible";
 		};
 	};
 	horizontal.onclick = () => create("horizontal");
 	vertical.onclick = () => create("vertical");
-	disconnect.onclick = () => { if (socket) socket.close(); };
+	disconnect.onclick = () => {
+		if (!socket || socket.readyState !== WebSocket.OPEN) return;
+		if (multi_terminal) socket.close();
+		else send(undefined, "close", [""]);
+	};
 	window.addEventListener("pagehide", () => { if (socket) socket.close(); });
+	if (!multi_terminal) create();
 	set_connected(false);
 	fetch_target();
 	if (mode === "ssh" || !auto_connect) login.style.visibility = "visible";

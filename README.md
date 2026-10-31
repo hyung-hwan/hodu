@@ -384,7 +384,12 @@ PTY access. `app.pty-user` selects the operating-system user where configured.
 SSH terminal URLs are listed in the forwarding section. Enter the target SSH
 username and password in the login form.
 
-Use **Split side by side** or **Split stacked** to split the selected panel.
+By default, the page uses the original single-terminal layout: no split
+controls, terminal title bar, or per-terminal Close button. Its WebSocket
+messages omit session IDs, so it can also connect to older terminal handlers.
+
+Enable multi-terminal mode with `mt=1`, `mt=true`, or `mt=yes`
+(case-insensitive). Then use **Split side by side** or **Split stacked** to split the selected panel.
 Drag a divider to resize it; a focused divider also accepts arrow keys. Each
 panel has independent input, terminal dimensions, and a **Close** button.
 **Disconnect** closes every session on that page.
@@ -393,11 +398,12 @@ A page supports up to 32 sessions over one WebSocket, all using the same termina
 type and target. SSH panels share an SSH connection when credentials match.
 Closing one panel or exiting its shell leaves the other panels running.
 
-For PTY and RPTY, add `autoconnect=1`, `autoconnect=true`, or
-`autoconnect=yes` (case-insensitive) to skip the initial Connect prompt:
+For PTY and RPTY, add `ac=1`, `ac=true`, or `ac=yes` (case-insensitive)
+to skip the initial Connect prompt. The options are independent:
 
 ```text
-http://127.0.0.1:8888/_rpty/xterm.html?client-token=demo-client&autoconnect=1
+http://127.0.0.1:8888/_rpty/xterm.html?client-token=demo-client&ac=1
+http://127.0.0.1:8888/_rpty/xterm.html?client-token=demo-client&ac=1&mt=1
 ```
 
 A failed initial attempt shows the Connect prompt for manual retry. Without
@@ -689,7 +695,8 @@ Stop foreground processes with Ctrl+C to request shutdown.
 
 ## Terminal WebSocket protocol
 
-PTY and SSH terminal messages use JSON with an optional string `session` ID:
+PTY and SSH terminal messages use JSON. The default single-terminal page omits
+`session`; the page includes a string `session` ID only when `mt` is enabled:
 
 ```json
 {"session":"1","type":"open","data":["",""]}

@@ -54,12 +54,12 @@
 	}
 
 	#terminal-view-container {
-		display: flex;
 		flex: 1;
 		width: 100%;
 		min-height: 0;
 		/*height: 100%;*/
 	}
+	body.multi-terminal #terminal-view-container { display: flex; }
 	.terminal-split {
 		display: flex;
 		flex: 1;
@@ -153,8 +153,8 @@
 	<div id="terminal-status"></div>
 	<div id="terminal-errmsg"></div>
 	<div id="terminal-control">
-		<button id="terminal-split-horizontal" type="button" disabled>Split side by side</button>
-		<button id="terminal-split-vertical" type="button" disabled>Split stacked</button>
+		<button id="terminal-split-horizontal" type="button" disabled hidden>Split side by side</button>
+		<button id="terminal-split-vertical" type="button" disabled hidden>Split stacked</button>
 		<button id="terminal-disconnect" type="button">Disconnect</button>
 	</div>
 </div>
